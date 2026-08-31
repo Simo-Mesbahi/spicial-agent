@@ -23,4 +23,4 @@ Aucune intégration réelle avec une enseigne ou un transporteur. Aucune notific
 
 ## Critères de validation
 
-Un visiteur ne peut accéder à l’espace d’un autre. Un dossier client non vérifié n’est pas transmis au modèle. Un devis exige une confirmation et une version actuelle du dossier. Une requête rejouée ne répète pas une action. Les documents et dates affichés correspondent aux données. Une indisponibilité du fournisseur est explicite et ne simule pas une réponse IA réussie.
+Un visiteur ne peut accéder à l’espace d’un autre. Un dossier client non vérifié n’est pas transmis au modèle. Un devis exige une confirmation et une version actuelle du dossier. Une requête rejouée ne répète pas une action. Les documents et dates affichés correspondent aux données. Une indisponibilité, un quota ou une réponse fournisseur non vérifiable déclenche un secours déterministe explicitement identifié comme sans IA ; aucune réponse IA réussie n’est simulée.

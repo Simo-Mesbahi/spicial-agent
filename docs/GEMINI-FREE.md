@@ -20,11 +20,11 @@ L’endpoint est figé sur `https://generativelanguage.googleapis.com/v1beta/ope
 3. Définir `LLM_PROVIDER=gemini`, `LLM_BUDGET_MODE=free`, `LLM_MODEL=gemini-2.5-flash` et un plafond `LLM_DAILY_LIMIT` conservateur.
 4. Publier, puis vérifier le mode affiché, le premier appel et les erreurs de quota.
 
-Le fournisseur impose ses propres limites. AtlasCare conserve ses quotas par espace, par réseau et son plafond global journalier. Une erreur de fournisseur ou de quota ne change pas de modèle et ne déclenche aucun repli payant.
+Le fournisseur impose ses propres limites. AtlasCare conserve ses quotas par espace, par réseau et son plafond global journalier. Une erreur de fournisseur, de quota ou de validation ne change pas de modèle et ne déclenche aucun repli payant : AtlasCare affiche explicitement une réponse de secours déterministe, fondée sur les règles et les données fictives disponibles.
 
 ## Garde-fous de réponse
 
-L’API Gemini compatible OpenAI peut appeler seulement `get_case` et `search_knowledge`. L’assistant n’obtient jamais un autre dossier ; les actions de devis et de relais restent des confirmations serveur séparées. Les codes à six chiffres et emails sont masqués avant enregistrement et avant transmission au modèle. Les faits de dossier restent rendus en synthèses construites côté serveur.
+L’API Gemini compatible OpenAI peut appeler seulement `get_case` et `search_knowledge`. L’assistant n’obtient jamais un autre dossier ; les actions de devis et de relais restent des confirmations serveur séparées. Les codes à six chiffres, emails et formats de clés Gemini/OpenAI/Groq sont masqués avant transmission, avant réponse au navigateur et avant enregistrement. Les faits de dossier restent rendus en synthèses construites côté serveur. Les urgences produit et tentatives de contournement restent traitées localement, sans appel Gemini.
 
 ## Validation requise
 

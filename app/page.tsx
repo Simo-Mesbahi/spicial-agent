@@ -129,9 +129,10 @@ type Meta = {
   sources?: { id: string; title: string; version: string }[];
   tools?: string[];
   mode?: string;
+  fallback?: 'daily_limit' | 'provider_unavailable' | null;
   latencyMs?: number;
-  inputTokens?: number;
-  outputTokens?: number;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
   action?: string | null;
   caseVersion?: number | null;
   caseBrief?: CaseBrief | null;
@@ -965,6 +966,15 @@ export default function Home() {
                               )}
                               {m.role === 'assistant' && (
                                 <>
+                                  {m.metadata.fallback && (
+                                    <p className="response-notice" role="status">
+                                      {m.metadata.fallback === 'daily_limit'
+                                        ? 'Quota IA atteint.'
+                                        : 'IA indisponible ou réponse non validée.'}{' '}
+                                      Réponse de secours sans IA, à partir des règles et des données
+                                      de démonstration.
+                                    </p>
+                                  )}
                                   {m.metadata.action === 'handoff' &&
                                     m.id === messages.at(-1)?.id &&
                                     currentVerified &&
@@ -994,9 +1004,11 @@ export default function Home() {
                                   </div>
                                   <div className="message-meta">
                                     <span>
-                                      {m.metadata.mode === 'demo'
-                                        ? 'Réponse déterministe'
-                                        : 'Réponse générée'}{' '}
+                                      {m.metadata.fallback
+                                        ? 'Secours sans IA'
+                                        : m.metadata.mode === 'demo'
+                                          ? 'Réponse déterministe'
+                                          : 'Réponse générée'}{' '}
                                       · {dateTime(m.created_at)}
                                     </span>
                                     <button onClick={() => setTrace(m)}>
@@ -1895,6 +1907,16 @@ export default function Home() {
             </DialogDescription>
           </DialogHeader>
           <div className="facts">
+            {trace?.metadata.fallback && (
+              <div>
+                <span>Continuité de service</span>
+                <strong>
+                  {trace.metadata.fallback === 'daily_limit'
+                    ? 'Quota IA atteint : secours sans IA'
+                    : 'Réponse du modèle indisponible ou non validée : secours sans IA'}
+                </strong>
+              </div>
+            )}
             <div>
               <span>Moteur</span>
               <strong>

@@ -14,7 +14,9 @@ N’utiliser que des données fictives. Le visiteur contrôle les rôles client 
 - Transitions métier explicites, confirmation des devis, version optimiste et identifiant d’opération contre les doublons.
 - Outils du LLM en lecture seule, nom vérifié côté serveur, nombre d’appels limité et timeout.
 - Budget IA zéro par défaut : appels aux fournisseurs externes bloqués avant le réseau. Ollama limité à une boucle locale ; aucune clé transmise ; redirections HTTP refusées. Le lanceur démarre un processus isolé avec cloud désactivé. Cette politique ne neutralise pas un administrateur qui la modifierait ou installerait volontairement un proxy distant.
-- Masquage de certains codes, emails et secrets avant persistance de la conversation. Ce filtrage est une protection partielle, pas une garantie de suppression de toutes les données personnelles.
+- Masquage de certains codes, emails, clés OpenAI/Groq et clés Gemini avant transmission au modèle, avant réponse au navigateur et avant persistance. Ce filtrage est une protection partielle, pas une garantie de suppression de toutes les données personnelles.
+- Réponses fournisseur limitées en taille et validées par schéma ; noms, arguments et identifiants d’outils sont contrôlés. Une réponse qui omet la consultation métier ou documentaire requise est écartée.
+- En cas de quota, panne ou réponse non validée du modèle, continuité déterministe clairement signalée dans l’interface. Ce secours n’exécute aucune action et ne change jamais de fournisseur.
 - Expiration des sessions, suppression des données associées à la réinitialisation et nettoyage lors de nouvelles créations. Aucun export de cookies ou codes dans l’audit.
 
 ## Avant des données réelles

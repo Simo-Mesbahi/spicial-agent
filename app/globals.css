@@ -1,6 +1,16 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import '../vendor/shadcn-tailwind-4.13.0.css';
+
+.response-notice {
+  margin-top: 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 @utility scrollbar-thin {
   scrollbar-width: thin;
 }

@@ -13,7 +13,8 @@
 
 ## Vérifications exécutées
 
-- 31 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles, blocage des fournisseurs payants et contrats d’appel d’outils simulés. Les huit premières questions proposées consultent le bon dossier ; les synthèses restent figées après transition ; les réponses générales ne prétendent pas avoir consulté un dossier.
+- 40 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles, blocage des fournisseurs payants, masquage des secrets, continuité sans IA et contrats stricts d’appel d’outils simulés. Les huit premières questions proposées consultent le bon dossier ; les synthèses restent figées après transition ; les réponses générales ne prétendent pas avoir consulté un dossier.
+- 4 tests de lecture JSON bornée : UTF-8 fragmenté, limite exacte, annulation d’un flux trop volumineux ou bloqué et formats invalides.
 - 12 tests d’expérience : cohérence des aperçus, étapes du guide, versions historiques, suggestions, recherche sans accents, champs autorisés des synthèses, fraîcheur, montants manquants et états terminaux.
 - 9 tests de politique de budget, adresses locales, configuration conservée/sauvegardée et diagnostic Ollama simulé.
 - 5 tests de rendu serveur des synthèses : données courantes, alerte de changement, accès vérifié, historique compact et absence d’action de devis périmé.

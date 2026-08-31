@@ -90,7 +90,8 @@ export const redacted = (s: string) =>
   s
     .replace(/\b\d{6}\b/g, '[code masqué]')
     .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '[email masqué]')
-    .replace(/\b(?:sk-|gsk_)[\w-]+/g, '[secret masqué]');
+    .replace(/\b(?:sk-|gsk_)[\w-]+/g, '[secret masqué]')
+    .replace(/\bAIza[\w-]{20,}\b/g, '[secret masqué]');
 export type Scenario = {
   reference: string;
   kind: CaseKind;
