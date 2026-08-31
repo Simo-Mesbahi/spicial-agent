@@ -8,6 +8,8 @@ Interface React/Vinext → API TypeScript → D1/SQLite relationnel. Le serveur 
 
 Les visiteurs disposent d’un espace de simulation individuel, protégé par un cookie aléatoire HttpOnly. L’accès client à chaque dossier nécessite une référence et un code. Le rôle opérateur est explicitement un rôle de démonstration, limité au même espace ; il ne représente pas une authentification de salarié de production.
 
+Le mode explicite `free` autorise aussi Gemini pour la démonstration fictive, après enregistrement de `GEMINI_API_KEY` dans l’hébergement et vérification d’un compte Google sans facturation. Il ne modifie pas le défaut `demo`/`zero` et ne valide pas à lui seul le fonctionnement réel du modèle.
+
 ## Livraison
 
 - Base relationnelle et scénarios cohérents : réparation, livraison, retour, remboursement, devis et réclamation.
@@ -16,6 +18,7 @@ Les visiteurs disposent d’un espace de simulation individuel, protégé par un
 - Recherche documentaire lexicale et réponses sourcées ; génération LLM seulement après configuration explicite.
 - Interface client, dossiers, espace opérateur, simulation, connaissances et présentation technique.
 - Tests de permissions, transitions, isolation, idempotence et historique.
+- Reprise des messages après coupure, réponses et historique enregistrés atomiquement, information de fraîcheur et attente réseau bornée.
 
 ## Limites à rendre visibles
 

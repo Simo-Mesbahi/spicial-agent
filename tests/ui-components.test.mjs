@@ -12,6 +12,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({
   appType: "custom",
   configFile: false,
+  cacheDir: "node_modules/.vite-ui-component-tests",
   root,
   resolve: { alias: { "@": root } },
   server: { middlewareMode: true },

@@ -250,11 +250,11 @@ svg {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 11px;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 .eyebrow {
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
   font-weight: 700;
   color: var(--primary);
   display: block;
@@ -265,7 +265,7 @@ svg {
   gap: 10px;
   font-size: 27px;
   font-weight: 720;
-  letter-spacing: -1.2px;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .brand-light {
@@ -273,7 +273,7 @@ svg {
 }
 .brand sup {
   font-size: 9px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   position: relative;
   top: -9px;
   margin-left: 4px;
@@ -317,7 +317,7 @@ svg {
 }
 .tag {
   font-size: 9px;
-  letter-spacing: 0.07em;
+  letter-spacing: 0;
   border: 1px solid var(--border);
   padding: 3px 6px;
   border-radius: 4px;
@@ -332,7 +332,7 @@ svg {
 }
 .atlas-sidebar [data-slot='sidebar-group-label'] {
   font-size: 9px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0;
   padding-left: 13px;
   margin-bottom: 8px;
   color: var(--quiet);
@@ -505,7 +505,7 @@ svg {
 .page-heading h1 {
   font-size: 28px;
   line-height: 1.3;
-  letter-spacing: -0.9px;
+  letter-spacing: 0;
   font-weight: 630;
   margin-top: 8px;
 }
@@ -599,7 +599,7 @@ svg {
 }
 .welcome-badge {
   font-size: 9px;
-  letter-spacing: 0.13em;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -608,7 +608,7 @@ svg {
 .welcome-main h2 {
   font-size: 46px;
   line-height: 1.15;
-  letter-spacing: -1.8px;
+  letter-spacing: 0;
   font-weight: 520;
   margin: 26px 0 19px;
 }
@@ -658,7 +658,7 @@ svg {
 }
 .welcome-aside h3 {
   font-size: 20px;
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
   margin-top: 8px;
   margin-bottom: 22px;
 }
@@ -723,6 +723,7 @@ svg {
   align-items: start;
 }
 .chat-panel {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 13px;
   background: var(--surface);
@@ -761,6 +762,36 @@ svg {
   padding: 24px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+}
+.connection-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--soft);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.connection-notice > svg {
+  flex-shrink: 0;
+}
+.connection-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+.connection-notice button {
+  flex-shrink: 0;
+}
+.status-dot-muted {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--quiet);
 }
 .chat-welcome {
   padding: 22px 6px 15px;
@@ -782,7 +813,7 @@ svg {
 }
 .chat-welcome h2 {
   font-size: 23px;
-  letter-spacing: -0.7px;
+  letter-spacing: 0;
   font-weight: 600;
 }
 .chat-welcome > p {
@@ -849,6 +880,7 @@ svg {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .composer-bottom > span {
   font-size: 9px;
@@ -860,8 +892,9 @@ svg {
 .send-button {
   display: grid;
   place-items: center;
-  width: 31px;
-  height: 31px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   background: var(--primary);
   color: var(--primary-foreground);
   border-radius: 8px;
@@ -980,7 +1013,7 @@ svg {
 .context-panel h3 {
   font-size: 19px;
   line-height: 1.4;
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
   font-weight: 550;
   margin: 6px 0 19px;
 }
@@ -1236,7 +1269,7 @@ svg {
 }
 .metric strong {
   font-size: 29px;
-  letter-spacing: -1px;
+  letter-spacing: 0;
   font-weight: 550;
   display: block;
 }
@@ -1310,7 +1343,7 @@ svg {
 .case-card h3 {
   font-size: 17px;
   font-weight: 600;
-  letter-spacing: -0.3px;
+  letter-spacing: 0;
   margin-bottom: 4px;
 }
 .case-card .mono {
@@ -1496,7 +1529,7 @@ svg {
 }
 .lab-title h3 {
   font-size: 19px;
-  letter-spacing: -0.4px;
+  letter-spacing: 0;
 }
 .lab-title p {
   font-size: 11px;
@@ -1538,7 +1571,7 @@ svg {
 }
 .simulation-count > span {
   font-size: 41px;
-  letter-spacing: -2px;
+  letter-spacing: 0;
   color: var(--primary);
   font-weight: 500;
 }
@@ -1565,7 +1598,7 @@ svg {
 .lab-explain h3 {
   font-size: 25px;
   line-height: 1.3;
-  letter-spacing: -0.7px;
+  letter-spacing: 0;
   margin: 15px 0 25px;
 }
 .guide-step {
@@ -1603,7 +1636,7 @@ svg {
 }
 .section-row h3 {
   font-size: 17px;
-  letter-spacing: -0.4px;
+  letter-spacing: 0;
 }
 .section-row .quiet {
   font-size: 10px;
@@ -1650,7 +1683,7 @@ svg {
 }
 .document-card h3 {
   font-size: 15px;
-  letter-spacing: -0.2px;
+  letter-spacing: 0;
   font-weight: 600;
   line-height: 1.5;
   min-height: 45px;
@@ -1687,7 +1720,7 @@ svg {
 .project-hero h2 {
   font-size: 35px;
   line-height: 1.2;
-  letter-spacing: -1px;
+  letter-spacing: 0;
   margin: 20px 0;
 }
 .project-hero > p {
@@ -1769,7 +1802,7 @@ svg {
 }
 .empty-state h3 {
   font-size: 19px;
-  letter-spacing: -0.4px;
+  letter-spacing: 0;
   color: var(--foreground);
   margin-bottom: 9px;
 }
@@ -1798,7 +1831,7 @@ svg {
 .atlas-dialog [data-slot='dialog-title'],
 .atlas-dialog [data-slot='alert-dialog-title'] {
   font-size: 22px;
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
   font-weight: 600;
 }
 .atlas-dialog [data-slot='dialog-description'],
@@ -2149,7 +2182,7 @@ svg {
   }
   .page-heading h1 {
     font-size: 25px;
-    letter-spacing: -0.8px;
+    letter-spacing: 0;
   }
   .page-heading p {
     font-size: 11px;
@@ -2217,7 +2250,7 @@ svg {
   }
   .message-area {
     padding: 18px 14px;
-    height: 390px;
+    height: clamp(260px, 48dvh, 440px);
   }
   .chat-welcome {
     padding: 12px 0;
@@ -2239,13 +2272,13 @@ svg {
     font-size: 16px;
   }
   .composer-bottom > span {
-    font-size: 8px;
+    font-size: 10px;
   }
   .chat-disclaimer {
-    font-size: 8px;
+    font-size: 10px;
   }
   .message-bubble {
-    font-size: 12px;
+    font-size: 14px;
     padding: 10px 12px;
   }
   .message-content {
@@ -2255,7 +2288,19 @@ svg {
     display: none;
   }
   .message-meta {
-    font-size: 8px;
+    font-size: 10px;
+  }
+  .message-meta button,
+  .quick-followups button,
+  .mobile-case-toggle,
+  .demo-code-hint button {
+    min-height: 44px;
+  }
+  .connection-notice {
+    flex-wrap: wrap;
+  }
+  .verify-form input {
+    font-size: 16px;
   }
   .trust-footer {
     gap: 12px;

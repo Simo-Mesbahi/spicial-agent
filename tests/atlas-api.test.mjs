@@ -1031,3 +1031,168 @@ test('Missing quote and refund amounts are not invented as zero in the full answ
     db.sql.close();
   }
 });
+
+test('Retrying a completed chat returns exactly the saved reply without new messages or quota', async () => {
+  const db = database();
+  try {
+    const c = await client(db);
+    const request = { message: 'Bonjour', requestId: crypto.randomUUID() };
+    const first = await c.call('chat', request);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.messages.length, 2);
+    db.sql.prepare('UPDATE spaces SET chat_count=60').run();
+    const retry = await c.call('chat', request);
+    assert.equal(retry.status, 200);
+    assert.deepEqual(retry.body, first.body);
+    assert.equal(db.sql.prepare('SELECT COUNT(*) AS n FROM messages').get().n, 2);
+    assert.equal(
+      db.sql.prepare("SELECT count FROM rate_buckets WHERE id LIKE 'chat:%'").get().count,
+      1,
+    );
+    assert.equal(
+      db.sql.prepare("SELECT COUNT(*) AS n FROM audits WHERE action='chat.completed'").get().n,
+      1,
+    );
+    assert.equal((await c.call('chat', { ...request, message: 'Une autre question' })).status, 409);
+    assert.equal((await c.call('chat', { message: 'Bonjour', requestId: 'bad' })).status, 400);
+  } finally {
+    db.sql.close();
+  }
+});
+
+test('Concurrent copies of a chat share one generation instead of spending quota twice', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  let release;
+  let entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const waiting = new Promise((resolve) => {
+    release = resolve;
+  });
+  try {
+    const c = await client(db);
+    c.env.LLM_PROVIDER = 'ollama';
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      entered();
+      await waiting;
+      return Response.json({ choices: [{ message: { role: 'assistant', content: 'Bonjour.' } }] });
+    };
+    const payload = { message: 'Bonjour', requestId: crypto.randomUUID() };
+    const first = c.call('chat', payload);
+    await started;
+    const concurrent = await c.call('chat', payload);
+    assert.equal(concurrent.status, 409);
+    assert.match(concurrent.body.error, /en cours/);
+    release();
+    assert.equal((await first).status, 200);
+    assert.equal((await c.call('chat', payload)).status, 200);
+    assert.equal(calls, 1);
+    assert.equal(db.sql.prepare('SELECT chat_count FROM spaces').get().chat_count, 1);
+  } finally {
+    release();
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Saved chat replies stay session-scoped and require a current dossier grant on replay', async () => {
+  const db = database();
+  try {
+    const a = await client(db);
+    const b = await client(db);
+    const row = a.snapshot.cases[0];
+    await verify(a, row);
+    const payload = {
+      message: 'Où en est mon dossier ?',
+      caseId: row.id,
+      requestId: crypto.randomUUID(),
+    };
+    assert.equal((await a.call('chat', payload)).status, 200);
+    assert.equal((await b.call('chat', payload)).status, 403);
+    db.sql.prepare('UPDATE grants SET expires_at=0').run();
+    assert.equal((await a.call('chat', payload)).status, 403);
+    await a.call('session', undefined, 'DELETE');
+    assert.equal(db.sql.prepare('SELECT COUNT(*) AS n FROM chat_requests').get().n, 0);
+    assert.equal((await b.call('snapshot')).status, 200);
+  } finally {
+    db.sql.close();
+  }
+});
+
+test('A failed chat transaction leaves neither half a conversation nor a stuck retry', async () => {
+  const db = database();
+  try {
+    const c = await client(db);
+    const originalBatch = db.batch;
+    const request = { message: 'Bonjour', requestId: crypto.randomUUID() };
+    db.batch = async () => {
+      throw new Error('Simulated write failure');
+    };
+    assert.equal((await c.call('chat', request)).status, 503);
+    assert.equal(db.sql.prepare('SELECT COUNT(*) AS n FROM messages').get().n, 0);
+    assert.equal(db.sql.prepare('SELECT COUNT(*) AS n FROM chat_requests').get().n, 0);
+    db.batch = originalBatch;
+    assert.equal((await c.call('chat', request)).status, 200);
+    assert.equal(db.sql.prepare('SELECT COUNT(*) AS n FROM messages').get().n, 2);
+  } finally {
+    db.sql.close();
+  }
+});
+
+test('Quote acceptance requires a valid recorded amount, while an explicit zero quote remains valid', async () => {
+  const db = database();
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find((item) => item.status === 'quote_pending');
+    await verify(c, row);
+    for (const amount of [null, -1, 1.5]) {
+      db.sql.prepare('UPDATE cases SET quote_cents=? WHERE id=?').run(amount, row.id);
+      const reply = await c.call('case-action', action(row, 'accept_quote', { confirm: true }));
+      assert.equal(reply.status, 409);
+      assert.match(reply.body.error, /montant/);
+      assert.equal(
+        db.sql.prepare('SELECT status FROM cases WHERE id=?').get(row.id).status,
+        'quote_pending',
+      );
+    }
+    db.sql.prepare('UPDATE cases SET quote_cents=0 WHERE id=?').run(row.id);
+    assert.equal(
+      (await c.call('case-action', action(row, 'accept_quote', { confirm: true }))).status,
+      200,
+    );
+  } finally {
+    db.sql.close();
+  }
+});
+
+test('Conversation context is selected per dossier before truncating model history', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    const [first, second] = c.snapshot.cases;
+    await verify(c, first);
+    await verify(c, second);
+    await c.call('chat', { caseId: first.id, message: 'Bonjour premier dossier' });
+    for (let i = 0; i < 7; i++)
+      await c.call('chat', { caseId: second.id, message: 'Bonjour second dossier' });
+    c.env.LLM_PROVIDER = 'ollama';
+    globalThis.fetch = async (_url, options) => {
+      const prompt = JSON.parse(options.body);
+      assert.ok(prompt.messages.some((m) => m.content === 'Bonjour premier dossier'));
+      assert.ok(prompt.messages.every((m) => m.content !== 'Bonjour second dossier'));
+      return Response.json({ choices: [{ message: { role: 'assistant', content: 'Bonjour.' } }] });
+    };
+    assert.equal(
+      (await c.call('chat', { caseId: first.id, message: 'Bonjour' })).body.metadata.mode,
+      'ollama',
+    );
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});

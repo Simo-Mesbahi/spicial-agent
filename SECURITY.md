@@ -12,8 +12,11 @@ N’utiliser que des données fictives. Le visiteur contrôle les rôles client 
 - Verrouillage après 5 échecs et quotas atomiques de création de sessions et de conversations.
 - Vérification d’origine, jeton CSRF pour mutations, requêtes SQL paramétrées.
 - Transitions métier explicites, confirmation des devis, version optimiste et identifiant d’opération contre les doublons.
+- Devis sans montant valide non acceptables ; un montant absent n’est pas interprété comme zéro.
+- Identifiant de message limité à la session, réservation atomique et réponse persistée pour les réessais. Les permissions sont recontrôlées avant restitution ; message, réponse et audit sont enregistrés dans une même transaction. Voir les limites de reprise après crash dans le [contrat HTTP](docs/API.md).
 - Outils du LLM en lecture seule, nom vérifié côté serveur, nombre d’appels limité et timeout.
 - Budget IA zéro par défaut : appels aux fournisseurs externes bloqués avant le réseau. Ollama limité à une boucle locale ; aucune clé transmise ; redirections HTTP refusées. Le lanceur démarre un processus isolé avec cloud désactivé. Cette politique ne neutralise pas un administrateur qui la modifierait ou installerait volontairement un proxy distant.
+- Le mode `free` n’autorise que le connecteur Gemini et les modèles explicitement permis. Il ne vérifie pas le statut de facturation du compte Google et ne constitue pas une garantie de coût nul : conserver le compte fournisseur sans facturation pour cette démonstration et contrôler ses quotas.
 - Masquage de certains codes, emails, clés OpenAI/Groq et clés Gemini avant transmission au modèle, avant réponse au navigateur et avant persistance. Ce filtrage est une protection partielle, pas une garantie de suppression de toutes les données personnelles.
 - Réponses fournisseur limitées en taille et validées par schéma ; noms, arguments et identifiants d’outils sont contrôlés. Une réponse qui omet la consultation métier ou documentaire requise est écartée.
 - En cas de quota, panne ou réponse non validée du modèle, continuité déterministe clairement signalée dans l’interface. Ce secours n’exécute aucune action et ne change jamais de fournisseur.

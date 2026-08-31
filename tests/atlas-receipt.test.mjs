@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({
   appType: 'custom',
   configFile: false,
+  cacheDir: 'node_modules/.vite-atlas-receipt-tests',
   root,
   resolve: { alias: { '@': root } },
   server: { middlewareMode: true },

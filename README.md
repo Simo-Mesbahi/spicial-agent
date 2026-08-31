@@ -8,7 +8,7 @@ AtlasCare permet de suivre une réparation, consulter une livraison, examiner un
 
 ## Essayer
 
-[Ouvrir AtlasCare AI](https://atlascare-ai.mohammed-elmesbahi.chatgpt.site)
+[Ouvrir AtlasCare AI](https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site)
 
 1. Explorer l’aperçu interactif de l’accueil : réparation, livraison ou devis.
 2. Choisir **Vivre l’expérience** pour ouvrir son espace isolé sur le scénario choisi.
@@ -37,6 +37,7 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 | Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                           |
 | Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur            |
 | Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable          |
+| Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage               |
 | Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                      |
 
 ## Lancer localement
@@ -100,6 +101,8 @@ Le premier vérifie l’installation ; le second demande aussi une courte géné
 Le lanceur utilise le port **11435** et `OLLAMA_NO_CLOUD=1`. Il conserve le serveur Ollama habituel éventuel sur 11434 et ne le modifie pas. L’API n’envoie aucune clé à Ollama et refuse les redirections HTTP.
 
 `gemini` est le seul fournisseur hébergé autorisé par `LLM_BUDGET_MODE=free`. Il utilise exclusivement `gemini-2.5-flash` ou `gemini-2.5-flash-lite`, l’endpoint officiel compatible OpenAI et `GEMINI_API_KEY` stockée comme secret serveur. Aucun modèle ni endpoint payant ne peut être choisi via l’application. L’offre gratuite dépend des quotas et conditions Google : elle convient à cette démo fictive, pas à une production avec des données clients réelles. Les connecteurs historiques `openai` / `compatible` restent bloqués tant que la politique n’est pas `approved`.
+
+Créer une clé ne l’ajoute pas à l’hébergement. Le [guide Gemini sur téléphone](docs/GEMINI-FREE.md) décrit l’enregistrement sécurisé, l’activation et les limites de gratuité. Un quota AtlasCare n’est pas un plafond financier garanti par Google.
 
 ## Architecture et sécurité
 

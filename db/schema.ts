@@ -151,3 +151,18 @@ export const rateBuckets = sqliteTable('rate_buckets', {
   count: integer('count').notNull(),
   expiresAt: integer('expires_at').notNull(),
 });
+
+// Reserve a chat turn before generation and retain its reply for safe network retries.
+export const chatRequests = sqliteTable(
+  'chat_requests',
+  {
+    id: text('id').primaryKey(),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    inputHash: text('input_hash').notNull(),
+    response: text('response'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('chat_requests_space').on(t.spaceId)],
+);

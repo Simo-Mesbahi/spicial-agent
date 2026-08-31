@@ -9,6 +9,7 @@ import {
   normalized,
   redacted,
   money,
+  validAmount,
   dateTime,
   type CaseKind,
 } from './domain';
@@ -335,6 +336,11 @@ async function change(
     return getCase(db, s, c.id);
   }
   if (expected !== c.version) fail(409, 'Le dossier a changé. Actualisez-le avant de confirmer.');
+  if (action === 'accept_quote' && !validAmount(c.quote_cents))
+    fail(
+      409,
+      'Le montant du devis est manquant ou invalide. Demandez un conseiller avant de confirmer.',
+    );
   const status = transition(c.kind, c.status, action);
   if (!status) fail(409, 'Cette action n’est pas possible à cette étape.');
   const now = Date.now();
@@ -355,7 +361,7 @@ async function change(
       .bind(
         id,
         action === 'accept_quote'
-          ? 'Devis accepté · ' + money(c.quote_cents ?? 0)
+          ? 'Devis accepté · ' + money(c.quote_cents!)
           : action === 'decline_quote'
             ? 'Devis refusé'
             : labels[status],
@@ -466,7 +472,7 @@ async function snapshot(db: Database, s: Space, req: Request, env: AtlasEnv) {
 function grounded(c: CaseRow) {
   let answer = `Votre dossier ${c.reference} (${c.product}) est à l’étape « ${labels[c.status]} ».\n\n`;
   if (c.status === 'quote_pending')
-    answer += `${c.quote_cents == null ? 'Le montant du devis n’est pas renseigné.' : `Un devis de ${money(c.quote_cents)} attend votre décision.`} Aucune réparation ne sera lancée avant votre confirmation. Utilisez le bouton de validation du devis pour accepter ou refuser.\n\n`;
+    answer += `${!validAmount(c.quote_cents) ? 'Le montant du devis n’est pas renseigné. Demandez un conseiller pour le vérifier.' : `Un devis de ${money(c.quote_cents)} attend votre décision.`} Aucune réparation ne sera lancée avant votre confirmation. Utilisez le bouton de validation du devis pour accepter ou refuser.\n\n`;
   else if (c.status === 'waiting_part')
     answer +=
       'Le SAV attend une pièce nécessaire à l’intervention. La réparation ne peut pas encore être terminée.\n\n';
@@ -476,7 +482,7 @@ function grounded(c: CaseRow) {
     answer +=
       'Le transporteur signale un retard. Aucune nouvelle date confirmée n’est enregistrée.\n\n';
   else if (c.kind === 'refund' || c.status === 'refund_pending' || c.status === 'refunded')
-    answer += `${c.refund_cents == null ? 'Le montant du remboursement n’est pas renseigné.' : `Montant enregistré : ${money(c.refund_cents)}.`} ${c.status === 'refunded' ? 'Le dossier indique un remboursement effectué.' : 'Le remboursement est en traitement ; le délai bancaire n’est pas communiqué.'}\n\n`;
+    answer += `${!validAmount(c.refund_cents) ? 'Le montant du remboursement n’est pas renseigné.' : `Montant enregistré : ${money(c.refund_cents)}.`} ${c.status === 'refunded' ? 'Le dossier indique un remboursement effectué.' : 'Le remboursement est en traitement ; le délai bancaire n’est pas communiqué.'}\n\n`;
   else if (nextStep(c.kind, c.status))
     answer += `Prochaine étape prévue : ${labels[nextStep(c.kind, c.status)!]}.\n\n`;
   answer += c.estimate ? c.estimate + '.\n' : '';
@@ -793,6 +799,7 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
 }
 
 export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> {
+  let pendingChat: { db: Database; id: string } | null = null;
   try {
     const path = new URL(req.url).pathname;
     const db = env.DB;
@@ -985,6 +992,30 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const refs = message.match(/(?:SAV|CMD|RET|REM|SC)-\d{4}-\d{4}(?:-\d+)?/gi) ?? [];
       if (refs.some((ref) => ref.toUpperCase() !== c?.reference))
         fail(403, 'Sélectionnez ce dossier et vérifiez son code dans le formulaire sécurisé.');
+      const requestId = b.requestId === undefined ? uuid() : text(b.requestId, 80);
+      if (!/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) fail(400, 'Identifiant de message invalide.');
+      const requestKey = s.id + ':' + requestId;
+      const inputHash = await hash(JSON.stringify({ message, caseId: id }));
+      const claim = await db
+        .prepare(
+          'INSERT OR IGNORE INTO chat_requests (id,space_id,input_hash,created_at) VALUES (?,?,?,?)',
+        )
+        .bind(requestKey, s.id, inputHash, Date.now())
+        .run();
+      if (!claim.meta.changes) {
+        const previous = await db
+          .prepare('SELECT input_hash,response FROM chat_requests WHERE id=? AND space_id=?')
+          .bind(requestKey, s.id)
+          .first<{ input_hash: string; response: string | null }>();
+        if (previous?.input_hash !== inputHash)
+          fail(409, 'Cet identifiant correspond déjà à une autre question.');
+        if (previous.response) return json(JSON.parse(previous.response));
+        fail(
+          409,
+          'Cette question est encore en cours de traitement. Actualisez le suivi avant de réessayer. Si l’attente dépasse deux minutes, rechargez la page.',
+        );
+      }
+      pendingChat = { db, id: requestKey };
       const modelConfig = config(env);
       if (!modelConfig.ready)
         fail(503, modelConfig.blockedReason ?? 'Configuration du modèle invalide.');
@@ -1002,9 +1033,9 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const history = (
         await db
           .prepare(
-            'SELECT * FROM messages WHERE space_id=? ORDER BY created_at DESC,rowid DESC LIMIT 12',
+            'SELECT * FROM messages WHERE space_id=? AND case_id IS ? ORDER BY created_at DESC,rowid DESC LIMIT 12',
           )
-          .bind(s.id)
+          .bind(s.id, id)
           .all<MessageRow>()
       ).results.reverse();
       await reserveQuota(db, 'chat:' + (await networkBucket(req)), 120, HOUR);
@@ -1061,18 +1092,39 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         presentation:
           c && answer.mode === 'demo' && answer.content === grounded(c) ? 'case_brief' : 'text',
       };
+      const userMessage = {
+        id: uuid(),
+        case_id: id,
+        role: 'user',
+        content: message,
+        metadata: {},
+        created_at: timestamp,
+      };
+      const assistantMessage = {
+        id: uuid(),
+        case_id: id,
+        role: 'assistant',
+        content: redacted(answer.content),
+        metadata,
+        created_at: timestamp + 1,
+      };
+      const reply = {
+        content: assistantMessage.content,
+        metadata,
+        messages: [userMessage, assistantMessage],
+      };
       await db.batch([
         db
           .prepare(
             'INSERT INTO messages (id,space_id,case_id,role,content,metadata,created_at) VALUES (?,?,?,?,?,?,?)',
           )
-          .bind(uuid(), s.id, id, 'user', message, '{}', timestamp),
+          .bind(userMessage.id, s.id, id, 'user', message, '{}', timestamp),
         db
           .prepare(
             'INSERT INTO messages (id,space_id,case_id,role,content,metadata,created_at) VALUES (?,?,?,?,?,?,?)',
           )
           .bind(
-            uuid(),
+            assistantMessage.id,
             s.id,
             id,
             'assistant',
@@ -1080,12 +1132,34 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
             JSON.stringify(metadata),
             timestamp + 1,
           ),
+        db
+          .prepare('UPDATE chat_requests SET response=? WHERE id=? AND space_id=?')
+          .bind(JSON.stringify(reply), requestKey, s.id),
+        db
+          .prepare('INSERT INTO audits (id,space_id,action,detail,created_at) VALUES (?,?,?,?,?)')
+          .bind(
+            uuid(),
+            s.id,
+            'chat.completed',
+            answer.mode + ' · ' + answer.tools.join(', '),
+            timestamp,
+          ),
       ]);
-      await audit(db, s, 'chat.completed', answer.mode + ' · ' + answer.tools.join(', '));
-      return json({ content: redacted(answer.content), metadata });
+      pendingChat = null;
+      return json(reply);
     }
     fail(404, 'Ressource introuvable.');
   } catch (e) {
+    if (pendingChat) {
+      try {
+        await pendingChat.db
+          .prepare('DELETE FROM chat_requests WHERE id=? AND response IS NULL')
+          .bind(pendingChat.id)
+          .run();
+      } catch {
+        console.error('Atlas chat reservation cleanup failed');
+      }
+    }
     if (e instanceof ApiError) return json({ error: e.message }, e.status);
     console.error('Atlas API failure', e instanceof Error ? e.name : 'Unknown');
     return json(

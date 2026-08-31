@@ -1,4 +1,4 @@
-import { labels, nextStep, type CaseKind } from './domain';
+import { labels, nextStep, validAmount, type CaseKind } from './domain';
 
 type BriefSource = {
   id: string;
@@ -79,7 +79,9 @@ export function caseBrief(c: BriefSource): CaseBrief {
           ? labels[next]
           : 'Aucune autre étape enregistrée',
     customerStep: quote
-      ? 'Examinez le montant, puis acceptez ou refusez explicitement. Aucun paiement réel.'
+      ? validAmount(cents)
+        ? 'Examinez le montant, puis acceptez ou refusez explicitement. Aucun paiement réel.'
+        : 'Le montant du devis est à confirmer avec un conseiller. N’acceptez aucun montant inconnu.'
       : c.status === 'ready'
         ? 'Préparez votre justificatif de dépôt avant le retrait en magasin.'
         : c.status === 'return_approved'
@@ -88,10 +90,9 @@ export function caseBrief(c: BriefSource): CaseBrief {
             ? 'Demandez un conseiller pour organiser la suite. Le relais est simulé.'
             : 'Aucune action client supplémentaire n’est indiquée à cette étape.',
     estimate: c.estimate,
-    amount:
-      cents !== null && Number.isSafeInteger(cents) && cents >= 0
-        ? { label: quote ? 'Devis à examiner' : 'Montant enregistré', cents }
-        : null,
+    amount: validAmount(cents)
+      ? { label: quote ? 'Devis à examiner' : 'Montant enregistré', cents }
+      : null,
   };
 }
 

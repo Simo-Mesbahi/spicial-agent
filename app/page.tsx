@@ -1,5 +1,12 @@
 'use client';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from 'react';
 import {
   Activity,
   ArrowRight,
@@ -32,6 +39,8 @@ import {
   X,
   Zap,
   CircleDot,
+  WifiOff,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -87,6 +96,7 @@ import { Toaster, toast } from 'sonner';
 import { Discovery } from '@/components/atlas/discovery';
 import { CaseReceipt } from '@/components/atlas/case-receipt';
 import { type CaseBrief } from '@/lib/atlas/case-brief';
+import { ApiRequestError, mergeMessages, newRequestId, requestJson } from '@/lib/atlas/client';
 import { guideStage, suggestedQuestions } from '@/lib/atlas/experience';
 import {
   articles as initialArticles,
@@ -95,6 +105,7 @@ import {
   kindLabels,
   finished,
   money,
+  validAmount,
   dateTime,
   normalized,
   type Article,
@@ -243,6 +254,17 @@ function NavigationButton({ onClick, ...props }: React.ComponentProps<typeof Sid
   );
 }
 
+function subscribeConnection(notify: () => void) {
+  window.addEventListener('online', notify);
+  window.addEventListener('offline', notify);
+  return () => {
+    window.removeEventListener('online', notify);
+    window.removeEventListener('offline', notify);
+  };
+}
+const connectionOffline = () => !navigator.onLine;
+const serverOffline = () => false;
+
 export default function Home() {
   const [view, setView] = useState<View>('assistant');
   const [showDiscovery, setShowDiscovery] = useState(true);
@@ -268,6 +290,19 @@ export default function Home() {
   const [lastError, setLastError] = useState('');
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [pendingCaseId, setPendingCaseId] = useState<string | null>(null);
+  const offline = useSyncExternalStore(subscribeConnection, connectionOffline, serverOffline);
+  const [syncError, setSyncError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [slowReply, setSlowReply] = useState(false);
+  const refreshSequence = useRef(0);
+  const operationInFlight = useRef(false);
+  const chatInFlight = useRef(false);
+  const retryChat = useRef<{
+    message: string;
+    caseId: string | null;
+    requestId: string;
+    spaceId: string;
+  } | null>(null);
   const conversation = useRef<HTMLDivElement>(null);
   const latestMessage = useRef<HTMLDivElement>(null);
   const conversationError = useRef<HTMLDivElement>(null);
@@ -275,49 +310,72 @@ export default function Home() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
-  const api = useCallback(async (path: string, payload?: unknown, method?: string) => {
-    const snapshot = dataRef.current;
-    const res = await fetch('/api/' + path, {
-      method: method ?? (payload === undefined ? 'GET' : 'POST'),
-      headers: {
-        'Content-Type': 'application/json',
-        ...(snapshot ? { 'x-atlas-csrf': snapshot.space.csrf } : {}),
-      },
-      ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
-      signal: AbortSignal.timeout(path === 'chat' ? 45000 : 20000),
-    }).catch((e: unknown) => {
-      if (e instanceof Error && ['TimeoutError', 'AbortError'].includes(e.name))
-        throw new Error('Le service met trop de temps à répondre. Réessayez dans un instant.');
-      throw new Error('La connexion au service a échoué. Vérifiez votre connexion et réessayez.');
-    });
-    const value = await res.json().catch(() => {
-      throw new Error('Le service est momentanément indisponible. Réessayez dans un instant.');
-    });
-    if (!res.ok) {
-      if (res.status === 401 && dataRef.current) {
-        dataRef.current = null;
-        setData(null);
-        setVerify(null);
-        setShowDiscovery(true);
-        setView('assistant');
-        setLastError(
-          'Votre session a expiré. Vous pouvez démarrer un nouvel espace de démonstration.',
+  const api = useCallback(
+    async <T,>(path: string, payload?: unknown, method?: string): Promise<T> => {
+      const snapshot = dataRef.current;
+      try {
+        return await requestJson<T>(
+          '/api/' + path,
+          {
+            method: method ?? (payload === undefined ? 'GET' : 'POST'),
+            headers: {
+              'Content-Type': 'application/json',
+              ...(snapshot ? { 'x-atlas-csrf': snapshot.space.csrf } : {}),
+            },
+            ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+          },
+          path === 'chat' ? 45000 : 20000,
         );
+      } catch (e) {
+        if (
+          e instanceof ApiRequestError &&
+          e.status === 401 &&
+          snapshot &&
+          dataRef.current?.space.id === snapshot.space.id
+        ) {
+          refreshSequence.current++;
+          retryChat.current = null;
+          dataRef.current = null;
+          setData(null);
+          setVerify(null);
+          setShowDiscovery(true);
+          setView('assistant');
+          setLastError(
+            'Votre session a expiré. Vous pouvez démarrer un nouvel espace de démonstration.',
+          );
+        }
+        throw e;
       }
-      const e = new Error(value.error ?? 'Une erreur est survenue.');
-      Object.assign(e, { status: res.status });
-      throw e;
-    }
-    return value;
-  }, []);
+    },
+    [],
+  );
   const refresh = useCallback(async () => {
-    const d = await api('snapshot');
-    dataRef.current = d;
-    setData(d);
-    setSelectedId((current) =>
-      current && d.cases.some((c: Case) => c.id === current) ? current : (d.cases[0]?.id ?? null),
-    );
-    return d;
+    const sequence = ++refreshSequence.current;
+    setSyncing(true);
+    try {
+      const d = await api<Snapshot>('snapshot');
+      if (sequence !== refreshSequence.current) return;
+      dataRef.current = d;
+      setData(d);
+      setSyncError('');
+      setSelectedId((current) =>
+        current && d.cases.some((c: Case) => c.id === current)
+          ? current
+          : (d.messages.findLast(
+              (message) =>
+                message.case_id && d.cases.some((c) => c.id === message.case_id && c.verified),
+            )?.case_id ??
+            d.cases.find((c) => c.verified)?.id ??
+            d.cases[0]?.id ??
+            null),
+      );
+    } catch (e) {
+      if (sequence === refreshSequence.current && dataRef.current)
+        setSyncError('Actualisation interrompue. Le suivi affiché peut avoir changé.');
+      throw e;
+    } finally {
+      if (sequence === refreshSequence.current) setSyncing(false);
+    }
   }, [api]);
   useEffect(() => {
     let active = true;
@@ -347,14 +405,42 @@ export default function Home() {
   const hasData = Boolean(data),
     simulationRunning = Boolean(data?.space.running);
   useEffect(() => {
+    const updateConnection = () => {
+      if (
+        navigator.onLine &&
+        dataRef.current &&
+        !operationInFlight.current &&
+        !chatInFlight.current
+      )
+        void refresh().catch(() => {});
+    };
+    window.addEventListener('online', updateConnection);
+    return () => {
+      window.removeEventListener('online', updateConnection);
+    };
+  }, [refresh]);
+  useEffect(() => {
+    if (!sending) return;
+    const timer = setTimeout(() => setSlowReply(true), 8000);
+    return () => clearTimeout(timer);
+  }, [sending]);
+  useEffect(() => {
     if (!hasData) return;
-    const timer = setInterval(
-      () => {
-        if (document.visibilityState === 'visible') refresh().catch(() => {});
-      },
-      simulationRunning ? 6000 : 30000,
-    );
-    return () => clearInterval(timer);
+    const update = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        navigator.onLine &&
+        !operationInFlight.current &&
+        !chatInFlight.current
+      )
+        void refresh().catch(() => {});
+    };
+    const timer = setInterval(update, simulationRunning ? 6000 : 30000);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', update);
+    };
   }, [hasData, simulationRunning, refresh]);
   const current = data?.cases.find((c) => c.id === selectedId) ?? null;
   const currentVerified = Boolean(current?.verified);
@@ -386,12 +472,16 @@ export default function Home() {
     }
   }
   async function start(reference = 'SAV-2026-1042', guided = false) {
+    if (operationInFlight.current) return;
+    operationInFlight.current = true;
+    refreshSequence.current++;
     setBusy(true);
     setLastError('');
     try {
-      const d = await api('session', {});
+      const d = await api<Snapshot>('session', {});
       dataRef.current = d;
       setData(d);
+      setSyncError('');
       const selected = d.cases.find((c: Case) => c.reference === reference) ?? d.cases[0];
       setSelectedId(selected?.id ?? null);
       setShowDiscovery(false);
@@ -403,6 +493,8 @@ export default function Home() {
     } catch (e) {
       setLastError((e as Error).message);
     } finally {
+      operationInFlight.current = false;
+      setSyncing(false);
       setBusy(false);
     }
   }
@@ -425,10 +517,13 @@ export default function Home() {
   }
   async function doVerify(e: FormEvent) {
     e.preventDefault();
+    if (operationInFlight.current || chatInFlight.current) return;
+    operationInFlight.current = true;
+    refreshSequence.current++;
     setBusy(true);
     setVerifyError('');
     try {
-      const result = await api('verify', { reference: refValue, code });
+      const result = await api<{ case: Case }>('verify', { reference: refValue, code });
       await refresh();
       setSelectedId(result.case.id);
       setVerify(null);
@@ -438,35 +533,69 @@ export default function Home() {
     } catch (e) {
       setVerifyError((e as Error).message);
     } finally {
+      operationInFlight.current = false;
+      setSyncing(false);
       setBusy(false);
     }
   }
   async function send(value?: string, scopedCaseId?: string) {
     const msg = (value ?? input).trim();
-    if (!msg || sending) return;
-    if (!data) {
+    if (!msg || chatInFlight.current || offline || (operationInFlight.current && !scopedCaseId))
+      return;
+    const snapshot = dataRef.current;
+    if (!snapshot) {
       toast.info('Démarrez votre espace pour discuter.');
       return;
     }
+    chatInFlight.current = true;
+    refreshSequence.current++;
+    setSlowReply(false);
     setInput('');
     setSending(true);
     setPendingMessage(msg);
-    const caseId = scopedCaseId ?? (currentVerified ? (current?.id ?? null) : null);
-    setPendingCaseId(caseId);
     setLastError('');
     try {
-      await api('chat', { message: msg, caseId });
-      await refresh();
+      const caseId = scopedCaseId ?? (currentVerified ? (current?.id ?? null) : null);
+      const prior = retryChat.current;
+      const request =
+        prior &&
+        prior.message === msg &&
+        prior.caseId === caseId &&
+        prior.spaceId === snapshot.space.id
+          ? prior
+          : { message: msg, caseId, requestId: newRequestId(), spaceId: snapshot.space.id };
+      retryChat.current = request;
+      setPendingCaseId(caseId);
+      const reply = await api<{ messages: Message[] }>('chat', {
+        message: msg,
+        caseId,
+        requestId: request.requestId,
+      });
+      if (dataRef.current?.space.id === snapshot.space.id) {
+        const updated = {
+          ...dataRef.current,
+          messages: mergeMessages(dataRef.current.messages, reply.messages),
+        };
+        dataRef.current = updated;
+        setData(updated);
+        retryChat.current = null;
+        void refresh().catch(() => {});
+      }
     } catch (e) {
+      setSyncing(false);
       setLastError((e as Error).message);
       setInput(msg);
     } finally {
+      chatInFlight.current = false;
       setSending(false);
       setPendingMessage(null);
       setPendingCaseId(null);
     }
   }
   async function simulate(action: string, extra: Record<string, unknown> = {}) {
+    if (operationInFlight.current || chatInFlight.current) return;
+    operationInFlight.current = true;
+    refreshSequence.current++;
     setBusy(true);
     try {
       await api('simulation', { action, ...extra });
@@ -478,18 +607,23 @@ export default function Home() {
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
+      operationInFlight.current = false;
+      setSyncing(false);
       setBusy(false);
     }
   }
   async function action(c: Case, type: string, confirmed = false) {
+    if (operationInFlight.current || chatInFlight.current) return;
+    operationInFlight.current = true;
+    refreshSequence.current++;
     setBusy(true);
     try {
-      const r = await api('case-action', {
+      const r = await api<{ message?: string }>('case-action', {
         caseId: c.id,
         action: type,
         version: c.version,
         confirm: confirmed,
-        requestId: crypto.randomUUID(),
+        requestId: newRequestId(),
       });
       await refresh();
       toast.success(r.message ?? 'Dossier mis à jour.');
@@ -497,15 +631,21 @@ export default function Home() {
       toast.error((e as Error).message);
       await refresh().catch(() => {});
     } finally {
+      operationInFlight.current = false;
       setBusy(false);
       setConfirm(null);
     }
   }
   async function clear() {
+    if (operationInFlight.current || chatInFlight.current) return;
+    operationInFlight.current = true;
+    refreshSequence.current++;
     setBusy(true);
     try {
       await api('session', undefined, 'DELETE');
       dataRef.current = null;
+      refreshSequence.current++;
+      retryChat.current = null;
       setData(null);
       setSelectedId(null);
       setReset(false);
@@ -513,22 +653,27 @@ export default function Home() {
       setShowDiscovery(true);
       setInput('');
       setLastError('');
+      setSyncError('');
       toast.success('Votre espace et son historique ont été supprimés.');
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
+      operationInFlight.current = false;
+      setSyncing(false);
       setBusy(false);
     }
   }
   const mode = data?.config.provider ?? 'demo';
   const modeLabel =
-    mode === 'demo'
-      ? 'Démo sans LLM'
-      : mode === 'ollama'
-        ? 'Ollama local · sans API payante'
-        : mode === 'gemini'
-          ? 'Gemini · offre gratuite limitée'
-          : (data?.config.model ?? 'Modèle à configurer');
+    data && !data.config.ready
+      ? 'IA non configurée'
+      : mode === 'demo'
+        ? 'Démo sans LLM'
+        : mode === 'ollama'
+          ? 'Ollama local · sans API payante'
+          : mode === 'gemini'
+            ? 'Gemini · offre gratuite limitée'
+            : (data?.config.model ?? 'Modèle à configurer');
   const knowledge = data?.articles ?? initialArticles;
   const filtered =
     data?.cases.filter((c) =>
@@ -550,6 +695,7 @@ export default function Home() {
     Boolean(lastAnswer),
   );
   const questions = suggestedQuestions(currentVerified ? current : null);
+  const unavailable = busy || sending || offline;
   const pendingHere = sending && pendingCaseId === (currentVerified ? current?.id : null);
   const canAdvance = current ? Boolean(nextStep(current.kind, current.status)) : false;
   const guide =
@@ -612,7 +758,11 @@ export default function Home() {
     else setView('dossiers');
   }
   const beginButton = (
-    <button className="button primary" disabled={busy || loading} onClick={() => start()}>
+    <button
+      className="button primary"
+      disabled={busy || loading || offline}
+      onClick={() => start()}
+    >
       {busy ? <RefreshCw className="spin" size={17} /> : <Play size={16} />}Créer mon espace de
       démonstration
       <ArrowRight size={17} />
@@ -623,10 +773,14 @@ export default function Home() {
       <>
         <Toaster position="bottom-right" richColors />
         <Discovery
-          busy={busy}
+          busy={busy || offline}
           loading={loading}
           hasSession={Boolean(data)}
-          error={lastError}
+          error={
+            offline
+              ? 'Vous êtes hors connexion. Reconnectez-vous pour démarrer votre essai.'
+              : lastError
+          }
           theme={theme}
           mode={mode}
           onTheme={changeTheme}
@@ -779,12 +933,18 @@ export default function Home() {
                   </h1>
                   <p>Vos demandes avancent. Gardez le fil, à chaque étape.</p>
                 </div>
-                <div className="engine-status">
-                  <span className="live-dot" />
+                <div
+                  className="engine-status"
+                  title={
+                    data?.config.blockedReason ??
+                    'Mode configuré côté serveur. Le mode utilisé figure sous chaque réponse.'
+                  }
+                >
+                  <span className={data?.config.ready ? 'live-dot' : 'status-dot-muted'} />
                   <span>{modeLabel}</span>
                   <CircleHelp
                     size={14}
-                    aria-label="Le mode démo n’utilise pas de modèle génératif"
+                    aria-label="Le mode utilisé est indiqué sous chaque réponse"
                   />
                 </div>
               </div>
@@ -837,6 +997,26 @@ export default function Home() {
                   </button>
                   <div className="assistant-grid" data-context-open={contextOpen}>
                     <section className="chat-panel">
+                      {(offline || syncError || (data && !data.config.ready)) && (
+                        <div className="connection-notice" role="status">
+                          {offline ? <WifiOff size={17} /> : <AlertCircle size={17} />}
+                          <span>
+                            {offline
+                              ? 'Hors connexion. Vos échanges restent visibles ; reconnectez-vous pour continuer.'
+                              : syncError ||
+                                'L’IA n’est pas encore configurée. Les dossiers restent accessibles.'}
+                          </span>
+                          {!offline && syncError && (
+                            <button
+                              className="text-button"
+                              disabled={syncing || unavailable}
+                              onClick={() => void refresh().catch(() => {})}
+                            >
+                              <RefreshCw size={14} className={syncing ? 'spin' : ''} /> Actualiser
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <div className="chat-header">
                         <Brand small />
                         <div>
@@ -899,7 +1079,11 @@ export default function Home() {
                             </p>
                             <div className="suggestions">
                               {questions.map((s, i) => (
-                                <button disabled={sending} key={s} onClick={() => send(s)}>
+                                <button
+                                  disabled={unavailable || !data?.config.ready}
+                                  key={s}
+                                  onClick={() => send(s)}
+                                >
                                   <span>
                                     {i === 0 ? (
                                       <Wrench size={16} />
@@ -1029,17 +1213,24 @@ export default function Home() {
                           </div>
                         )}
                         {pendingHere && (
-                          <div className="typing" role="status">
+                          <div className="typing" role="status" aria-live="polite">
                             <Brand small />
                             <span>
-                              Consultation des informations<span className="dots">…</span>
+                              {slowReply
+                                ? 'La réponse prend un peu plus de temps. Votre question est en cours de traitement.'
+                                : 'Consultation des informations'}
+                              <span className="dots">…</span>
                             </span>
                           </div>
                         )}
                         {!!messages.length && !sending && (
                           <div className="quick-followups" aria-label="Continuer la conversation">
                             {questions.map((question) => (
-                              <button key={question} onClick={() => send(question)}>
+                              <button
+                                disabled={unavailable || !data?.config.ready}
+                                key={question}
+                                onClick={() => send(question)}
+                              >
                                 {question}
                                 <ArrowUpRight size={12} />
                               </button>
@@ -1056,10 +1247,16 @@ export default function Home() {
                         <div className="action-strip">
                           <FileText size={17} />
                           <span>
-                            Devis en attente : <strong>{money(current.quote_cents ?? 0)}</strong>
+                            Devis en attente :{' '}
+                            <strong>
+                              {validAmount(current.quote_cents)
+                                ? money(current.quote_cents)
+                                : 'montant à confirmer'}
+                            </strong>
                           </span>
                           <button
                             className="text-button"
+                            disabled={unavailable}
                             onClick={() => setConfirm({ action: 'accept_quote', case: current })}
                           >
                             Examiner le devis
@@ -1079,6 +1276,7 @@ export default function Home() {
                           placeholder="Posez votre question…"
                           rows={2}
                           maxLength={1500}
+                          enterKeyHint="send"
                           readOnly={sending}
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
@@ -1097,7 +1295,7 @@ export default function Home() {
                           <button
                             className="send-button"
                             type="submit"
-                            disabled={sending || !input.trim()}
+                            disabled={unavailable || !input.trim() || !data?.config.ready}
                             aria-label="Envoyer le message"
                           >
                             <ArrowRight size={19} />
@@ -1118,9 +1316,11 @@ export default function Home() {
                         <button
                           className="icon-button"
                           aria-label="Actualiser les dossiers"
+                          title="Actualiser les dossiers"
+                          disabled={syncing || unavailable}
                           onClick={() => refresh().catch((e) => toast.error(e.message))}
                         >
-                          <RefreshCw size={15} />
+                          <RefreshCw size={15} className={syncing ? 'spin' : ''} />
                         </button>
                       </div>
                       <h3>
@@ -1966,7 +2166,9 @@ export default function Home() {
                 ? 'Transmettre une demande de contact ?'
                 : confirm?.action === 'decline_quote'
                   ? 'Refuser ce devis ?'
-                  : 'Accepter le devis de ' + money(confirm?.case.quote_cents ?? 0) + ' ?'}
+                  : validAmount(confirm?.case.quote_cents)
+                    ? 'Accepter le devis de ' + money(confirm.case.quote_cents) + ' ?'
+                    : 'Le montant du devis doit être confirmé'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.case.reference} · {confirm?.case.product}.{' '}
@@ -1975,6 +2177,11 @@ export default function Home() {
                 : 'Cette décision modifie le dossier fictif. Aucun paiement réel ne sera effectué. Le serveur vérifiera que le devis n’a pas changé.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirm?.action === 'accept_quote' && !validAmount(confirm.case.quote_cents) && (
+            <p className="inline-error" role="alert">
+              Aucun montant valide n’est enregistré. Contactez un conseiller avant d’accepter.
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             {confirm?.action === 'accept_quote' && (
@@ -1986,7 +2193,10 @@ export default function Home() {
               </button>
             )}
             <AlertDialogAction
-              disabled={busy}
+              disabled={
+                unavailable ||
+                (confirm?.action === 'accept_quote' && !validAmount(confirm.case.quote_cents))
+              }
               onClick={() => confirm && action(confirm.case, confirm.action, true)}
             >
               Confirmer

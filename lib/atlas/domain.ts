@@ -71,6 +71,8 @@ export function transition(kind: CaseKind, status: string, action: string): stri
     return 'delayed';
   return null;
 }
+export const validAmount = (cents: unknown): cents is number =>
+  typeof cents === 'number' && Number.isSafeInteger(cents) && cents >= 0;
 export const money = (cents: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 export const dateTime = (ms: number) =>
