@@ -168,6 +168,7 @@ async function main() {
   delete env.OLLAMA_API_KEY;
   delete env.OPENAI_API_KEY;
   delete env.LLM_API_KEY;
+  delete env.GEMINI_API_KEY;
   const start = (command, args, childEnv = env) => {
     const child = spawn(command, args, {
       cwd: root,

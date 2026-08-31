@@ -32,6 +32,7 @@ export interface AtlasEnv {
   LLM_BASE_URL?: string;
   LLM_API_KEY?: string;
   OPENAI_API_KEY?: string;
+  GEMINI_API_KEY?: string;
   LLM_DAILY_LIMIT?: string;
   LLM_BUDGET_MODE?: string;
 }
@@ -611,7 +612,7 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
       function: {
         name: 'get_case',
         description: 'Consulter uniquement le dossier déjà autorisé de cette session.',
-        strict: true,
+        ...(mode === 'gemini' ? {} : { strict: true }),
         parameters: schema({}),
       },
     },
@@ -620,7 +621,7 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
       function: {
         name: 'search_knowledge',
         description: 'Rechercher les procédures fictives Maison Atlas.',
-        strict: true,
+        ...(mode === 'gemini' ? {} : { strict: true }),
         parameters: schema({ query: { type: 'string' } }),
       },
     },
@@ -654,8 +655,12 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
           messages: msgs,
           tools,
           tool_choice: round === 2 ? 'none' : 'auto',
-          ...(mode === 'openai' ? { max_completion_tokens: 650 } : { max_tokens: 650 }),
-          ...(mode === 'ollama' ? { reasoning_effort: 'none', temperature: 0.2 } : {}),
+          ...(mode === 'openai' || mode === 'gemini'
+            ? { max_completion_tokens: 650 }
+            : { max_tokens: 650 }),
+          ...(mode === 'ollama' || mode === 'gemini'
+            ? { reasoning_effort: 'none', temperature: 0.2 }
+            : {}),
         }),
         signal: deadline,
         redirect: 'error',

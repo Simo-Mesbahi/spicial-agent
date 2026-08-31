@@ -164,7 +164,9 @@ export function Discovery({
                 ? 'Démo interactive sans modèle génératif. Aucun frais d’IA.'
                 : mode === 'ollama'
                   ? 'Ollama local · Sans API payante. Toutes les situations restent fictives.'
-                  : 'Connecteur IA configuré. Toutes les situations restent fictives.'}
+                  : mode === 'gemini'
+                    ? 'Gemini gratuit à quota limité. Les scénarios restent fictifs ; aucune donnée réelle.'
+                    : 'Connecteur IA configuré. Toutes les situations restent fictives.'}
             </div>
           </div>
 

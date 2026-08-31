@@ -597,6 +597,50 @@ test('Compatible model adapter executes only allowed read tools and strips crede
   }
 });
 
+test('Gemini free adapter uses only its fixed endpoint and redacted conversation', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases[0];
+  await verify(c, row);
+  Object.assign(c.env, {
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_API_KEY: 'gemini-test-key',
+  });
+  const original = globalThis.fetch;
+  const captured = [];
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    assert.equal(init.headers.Authorization, 'Bearer gemini-test-key');
+    captured.push(JSON.parse(init.body));
+    return Response.json({
+      choices: [
+        { message: { role: 'assistant', content: 'Je consulte uniquement le dossier autorisé.' } },
+      ],
+      usage: { prompt_tokens: 12, completion_tokens: 8 },
+    });
+  };
+  try {
+    const r = await c.call('chat', {
+      caseId: row.id,
+      message: 'Mon code est ' + row.demoCode + ' et mon email est test@example.com',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.metadata.mode, 'gemini');
+    assert.equal(captured[0].model, 'gemini-2.5-flash');
+    assert.equal(captured[0].max_completion_tokens, 650);
+    assert.equal(captured[0].reasoning_effort, 'none');
+    assert.ok(!('strict' in captured[0].tools[0].function));
+    const outbound = JSON.stringify(captured);
+    assert.ok(!outbound.includes(row.demoCode));
+    assert.ok(!outbound.includes('test@example.com'));
+    assert.ok(!outbound.includes('code_hash'));
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
 test('Zero-budget API blocks paid requests before any network call or message quota', async () => {
   const db = database();
   const original = globalThis.fetch;

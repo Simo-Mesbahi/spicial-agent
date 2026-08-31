@@ -22,21 +22,22 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 
 ## Fonctionnalités livrées
 
-| Fonction                                                             | État                                                             |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                |
-| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                  |
-| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                            |
-| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                        |
-| Demande de conseiller avec contexte                                  | Enregistrée dans l’espace opérateur simulé                       |
-| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                           |
-| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                        |
-| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées |
-| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut             |
-| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                      |
-| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur       |
-| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable     |
-| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                 |
+| Fonction                                                             | État                                                                  |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                     |
+| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                       |
+| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                 |
+| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                             |
+| Demande de conseiller avec contexte                                  | Enregistrée dans l’espace opérateur simulé                            |
+| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                                |
+| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                             |
+| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées      |
+| Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement |
+| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut                  |
+| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                           |
+| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur            |
+| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable          |
+| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                      |
 
 ## Lancer localement
 
@@ -91,13 +92,14 @@ Le premier vérifie l’installation ; le second demande aussi une courte géné
 | ----------------- | ----------------------------------------------------------------- |
 | `LLM_BUDGET_MODE` | `zero` par défaut : seuls `demo` et `ollama` sont permis          |
 | `LLM_PROVIDER`    | `demo`, `ollama` ; connecteurs externes conservés mais désactivés |
+| `GEMINI_API_KEY`  | Secret serveur requis pour le mode `gemini` gratuit               |
 | `LLM_MODEL`       | Modèle local installé ; défaut Ollama : `qwen3:4b`                |
 | `LLM_BASE_URL`    | Ollama : boucle locale HTTP terminée par `/v1`                    |
 | `LLM_DAILY_LIMIT` | Maximum de conversations LLM par fenêtre de 24 h, défaut 100      |
 
 Le lanceur utilise le port **11435** et `OLLAMA_NO_CLOUD=1`. Il conserve le serveur Ollama habituel éventuel sur 11434 et ne le modifie pas. L’API n’envoie aucune clé à Ollama et refuse les redirections HTTP.
 
-Les connecteurs historiques `openai` / `compatible` restent dans le code. Ils ne s’activent qu’avec la politique serveur `LLM_BUDGET_MODE=approved`, un modèle et les paramètres nécessaires (`OPENAI_API_KEY` ou `LLM_BASE_URL` / `LLM_API_KEY`). **Ne pas activer cette option tant que le budget demandé reste nul.** Elle constitue un opt-in administratif, pas un plafond financier. Ne jamais stocker de secret dans Git ou dans le code client.
+`gemini` est le seul fournisseur hébergé autorisé par `LLM_BUDGET_MODE=free`. Il utilise exclusivement `gemini-2.5-flash` ou `gemini-2.5-flash-lite`, l’endpoint officiel compatible OpenAI et `GEMINI_API_KEY` stockée comme secret serveur. Aucun modèle ni endpoint payant ne peut être choisi via l’application. L’offre gratuite dépend des quotas et conditions Google : elle convient à cette démo fictive, pas à une production avec des données clients réelles. Les connecteurs historiques `openai` / `compatible` restent bloqués tant que la politique n’est pas `approved`.
 
 ## Architecture et sécurité
 

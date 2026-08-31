@@ -5,10 +5,13 @@ export type ModelEnvironment = {
   LLM_BASE_URL?: string;
   LLM_API_KEY?: string;
   OPENAI_API_KEY?: string;
+  GEMINI_API_KEY?: string;
   LLM_BUDGET_MODE?: string;
 };
 
 export const localModel = 'qwen3:4b';
+export const geminiModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const;
+const geminiBase = 'https://generativelanguage.googleapis.com/v1beta/openai';
 
 export function localBase(value = 'http://127.0.0.1:11434/v1') {
   const url = new URL(value);
@@ -36,7 +39,7 @@ export function localModelName(value = localModel) {
 export function modelSettings(env: ModelEnvironment) {
   const provider = env.LLM_PROVIDER ?? 'demo';
   const budgetMode = env.LLM_BUDGET_MODE ?? 'zero';
-  if (!['zero', 'approved'].includes(budgetMode))
+  if (!['zero', 'free', 'approved'].includes(budgetMode))
     throw new Error('Politique de budget IA invalide.');
   if (provider === 'demo')
     return { provider, budgetMode, model: null, base: null, key: null, timeoutMs: 20000 };
@@ -49,6 +52,22 @@ export function modelSettings(env: ModelEnvironment) {
       key: null,
       timeoutMs: 40000,
     };
+  if (provider === 'gemini') {
+    if (budgetMode !== 'free')
+      throw new Error('Gemini nécessite la politique gratuite explicitement activée côté serveur.');
+    const model = env.LLM_MODEL ?? 'gemini-2.5-flash';
+    if (!(geminiModels as readonly string[]).includes(model))
+      throw new Error('Ce modèle Gemini n’est pas autorisé dans le mode gratuit AtlasCare.');
+    if (!env.GEMINI_API_KEY) throw new Error('Clé Gemini manquante.');
+    return {
+      provider,
+      budgetMode,
+      model,
+      base: geminiBase,
+      key: env.GEMINI_API_KEY,
+      timeoutMs: 20000,
+    };
+  }
   if (budgetMode !== 'approved')
     throw new Error(
       'Budget IA 0 € : les fournisseurs externes sont désactivés. Utilisez la démo ou Ollama en local.',
@@ -80,7 +99,7 @@ export function publicModelConfig(env: ModelEnvironment) {
       model: s.model,
       ready: true,
       budgetMode: s.budgetMode,
-      externalCallsAllowed: s.budgetMode === 'approved',
+      externalCallsAllowed: s.budgetMode === 'approved' || s.provider === 'gemini',
       blockedReason: null,
     };
   } catch (e) {

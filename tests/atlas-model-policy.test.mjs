@@ -8,6 +8,7 @@ import {
   publicModelConfig,
   localBase,
   localModelName,
+  geminiModels,
 } from '../lib/atlas/model-policy.ts';
 import { configureFile, inspectLocal, localConfiguration } from '../scripts/local-ai.mjs';
 
@@ -32,6 +33,43 @@ test('External providers fail closed regardless of available API keys', () => {
     );
   }
   assert.throws(() => modelSettings({ LLM_BUDGET_MODE: 'typo' }), /invalide/);
+});
+
+test('Gemini free mode is a narrow allowlist with a separate secret', () => {
+  const settings = modelSettings({
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_API_KEY: 'gemini-secret',
+  });
+  assert.equal(settings.base, 'https://generativelanguage.googleapis.com/v1beta/openai');
+  assert.equal(settings.model, 'gemini-2.5-flash');
+  assert.equal(settings.key, 'gemini-secret');
+  assert.ok(geminiModels.includes('gemini-2.5-flash-lite'));
+  assert.throws(
+    () => modelSettings({ LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x' }),
+    /politique gratuite/,
+  );
+  assert.throws(
+    () => modelSettings({ LLM_PROVIDER: 'gemini', LLM_BUDGET_MODE: 'free' }),
+    /Clé Gemini/,
+  );
+  assert.throws(
+    () =>
+      modelSettings({
+        LLM_PROVIDER: 'gemini',
+        LLM_BUDGET_MODE: 'free',
+        GEMINI_API_KEY: 'x',
+        LLM_MODEL: 'gemini-2.5-pro',
+      }),
+    /autorisé/,
+  );
+  const publicConfig = publicModelConfig({
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_API_KEY: 'gemini-secret',
+  });
+  assert.equal(publicConfig.externalCallsAllowed, true);
+  assert.ok(!JSON.stringify(publicConfig).includes('gemini-secret'));
 });
 
 test('Local configuration never forwards keys and disallows external addresses', () => {

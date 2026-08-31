@@ -2,10 +2,11 @@
 
 ## Deux usages distincts
 
-| Usage                            | Moteur                        | Condition                                        |
-| -------------------------------- | ----------------------------- | ------------------------------------------------ |
-| Site public actuel               | Règles et documents, sans LLM | Aucune clé ni facture d’API de modèle            |
-| Application sur votre ordinateur | Ollama et modèle local        | Ordinateur disponible et suffisamment de mémoire |
+| Usage                              | Moteur                        | Condition                                        |
+| ---------------------------------- | ----------------------------- | ------------------------------------------------ |
+| Site public actuel                 | Règles et documents, sans LLM | Aucune clé ni facture d’API de modèle            |
+| Application sur votre ordinateur   | Ollama et modèle local        | Ordinateur disponible et suffisamment de mémoire |
+| Démonstration publique optionnelle | Gemini API Free               | Compte Google, clé secrète et quotas fournisseur |
 
 Le budget nul concerne l’absence d’API d’inférence payante et de nouvelle souscription. Le matériel, l’électricité, l’accès Internet, les quotas d’hébergement et les éventuels abonnements existants ne disparaissent pas. Aucun service gratuit distant n’est présenté comme illimité ou garanti permanent.
 
@@ -65,4 +66,4 @@ Ollama n’accepte ici que des adresses HTTP de boucle locale terminées par `/v
 - **Réponse trop lente** : vérifier la mémoire disponible et fermer les applications lourdes. Ne pas annoncer de performance avant mesure.
 - **Site public toujours sans LLM** : c’est le comportement attendu. La boucle locale du site hébergé n’est pas votre ordinateur. Aucun tunnel public non protégé n’est créé.
 
-L’adaptateur utilise les outils de lecture via l’API compatible documentée par Ollama. [Compatibilité et paramètres](https://docs.ollama.com/api/openai-compatibility)
+Une intégration Gemini gratuite est documentée dans [GEMINI-FREE.md](GEMINI-FREE.md). Elle n’est pas active par défaut et ne convient qu’aux données fictives, car les conditions de l’offre gratuite diffèrent du fonctionnement local Ollama.

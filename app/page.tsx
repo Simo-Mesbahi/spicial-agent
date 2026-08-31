@@ -525,7 +525,9 @@ export default function Home() {
       ? 'Démo sans LLM'
       : mode === 'ollama'
         ? 'Ollama local · sans API payante'
-        : (data?.config.model ?? 'Modèle à configurer');
+        : mode === 'gemini'
+          ? 'Gemini · offre gratuite limitée'
+          : (data?.config.model ?? 'Modèle à configurer');
   const knowledge = data?.articles ?? initialArticles;
   const filtered =
     data?.cases.filter((c) =>
@@ -1093,7 +1095,9 @@ export default function Home() {
                       <p className="chat-disclaimer">
                         {mode === 'demo'
                           ? 'Mode démonstration : règles et documents, sans modèle génératif.'
-                          : 'Les réponses générées peuvent contenir des erreurs. Vérifiez les informations importantes.'}
+                          : mode === 'gemini'
+                            ? 'Mode Gemini gratuit : utilisez uniquement des données fictives ; ne partagez aucun code, paiement ou renseignement personnel.'
+                            : 'Les réponses générées peuvent contenir des erreurs. Vérifiez les informations importantes.'}
                       </p>
                     </section>
                     <aside className="context-panel" id="case-context">
