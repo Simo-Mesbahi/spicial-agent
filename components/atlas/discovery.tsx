@@ -162,7 +162,9 @@ export function Discovery({
               <FlaskConical size={14} />
               {mode === 'demo'
                 ? 'Démo interactive sans modèle génératif. Aucun frais d’IA.'
-                : 'Connecteur IA configuré. Toutes les situations restent fictives.'}
+                : mode === 'ollama'
+                  ? 'Ollama local · Sans API payante. Toutes les situations restent fictives.'
+                  : 'Connecteur IA configuré. Toutes les situations restent fictives.'}
             </div>
           </div>
 
@@ -375,8 +377,10 @@ export function Discovery({
               <AccordionTrigger>Est-ce qu’un modèle IA répond ici ?</AccordionTrigger>
               <AccordionContent>
                 {mode === 'demo'
-                  ? 'Le mode actuel est déterministe : des règles et des documents produisent les réponses, sans LLM. Les connecteurs OpenAI et compatibles sont prêts pour une activation et une évaluation séparées.'
-                  : 'Un connecteur de modèle est configuré côté serveur. Les réponses générées peuvent contenir des erreurs : vérifiez les sources et les informations importantes.'}
+                  ? 'Le mode actuel est déterministe : des règles et des documents produisent les réponses, sans LLM. Pour le budget IA de 0 €, le projet propose aussi Ollama sur votre ordinateur. Aucun fournisseur externe n’est activé par défaut.'
+                  : mode === 'ollama'
+                    ? 'Un modèle Ollama local est configuré côté serveur, sans API payante. Les réponses générées peuvent contenir des erreurs : vérifiez les sources et les informations importantes.'
+                    : 'Un connecteur de modèle est configuré côté serveur. Les réponses générées peuvent contenir des erreurs : vérifiez les sources et les informations importantes.'}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="control">

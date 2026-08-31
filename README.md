@@ -4,7 +4,7 @@
 
 AtlasCare permet de suivre une réparation, consulter une livraison, examiner un devis et transmettre une demande à un conseiller fictif. Le simulateur fait évoluer les dossiers ; l’assistant consulte leur état actualisé via une API contrôlée.
 
-> **Transparence :** Maison Atlas, ses clients et ses produits sont fictifs. Le mode par défaut n’utilise **aucun LLM** : il fonctionne avec des règles et une recherche documentaire lexicale. Les connecteurs OpenAI et compatibles sont implémentés, mais nécessitent un modèle accessible et une configuration serveur. Aucun remboursement, email ou SMS réel n’est envoyé.
+> **Budget IA : 0 €.** Le mode public par défaut n’utilise **aucun LLM** : règles et recherche documentaire lexicale. Un vrai modèle peut fonctionner **localement avec Ollama, sans clé API**. Les fournisseurs externes sont bloqués par défaut, même si une clé est présente. Maison Atlas et toutes les données sont fictives ; aucune opération réelle n’est exécutée.
 
 ## Essayer
 
@@ -22,19 +22,20 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 
 ## Fonctionnalités livrées
 
-| Fonction                                                             | État                                                          |
-| -------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                             |
-| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace               |
-| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                         |
-| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                     |
-| Demande de conseiller avec contexte                                  | Enregistrée dans l’espace opérateur simulé                    |
-| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                        |
-| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                     |
-| OpenAI / API compatible, dont Ollama                                 | Connecteurs avec outils de lecture ; tests de contrat simulés |
-| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                   |
-| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur    |
-| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé              |
+| Fonction                                                             | État                                                             |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                |
+| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                  |
+| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                            |
+| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                        |
+| Demande de conseiller avec contexte                                  | Enregistrée dans l’espace opérateur simulé                       |
+| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                           |
+| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                        |
+| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées |
+| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut             |
+| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                      |
+| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur       |
+| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                 |
 
 ## Lancer localement
 
@@ -60,22 +61,42 @@ npm run build
 
 Les tests d’API utilisent une base SQLite réelle en mémoire et les migrations livrées. Les échanges avec un LLM sont simulés dans les tests de contrat ; aucune clé n’est nécessaire pour les exécuter.
 
-## Brancher un modèle
+## Utiliser un vrai modèle sans frais d’API
 
-Modifier **les secrets serveur**, jamais le code client ni le dépôt :
+Prérequis : **Node.js 24**, macOS ou Linux/WSL, [Ollama installé](https://ollama.com/download) et de la mémoire disponible. Après `npm ci` :
 
-| Variable          | Utilisation                                                |
-| ----------------- | ---------------------------------------------------------- |
-| `LLM_PROVIDER`    | `demo` (défaut), `openai` ou `compatible`                  |
-| `LLM_MODEL`       | Identifiant exact du modèle disponible chez le fournisseur |
-| `OPENAI_API_KEY`  | Clé OpenAI, seulement pour `openai`                        |
-| `LLM_BASE_URL`    | URL de base `/v1` pour un fournisseur compatible           |
-| `LLM_API_KEY`     | Clé éventuelle du fournisseur compatible                   |
-| `LLM_DAILY_LIMIT` | Conversations LLM maximum par fenêtre de 24 h, défaut 100  |
+```bash
+npm run ai:local -- --pull
+```
 
-Pour Ollama en local, utiliser `LLM_BASE_URL=http://localhost:11434/v1` et un modèle installé prenant en charge les outils. Le nom du modèle, sa licence, sa mémoire nécessaire et ses performances doivent être vérifiés avant sélection. Un site hébergé ne peut pas joindre le `localhost` de votre ordinateur : utiliser un service HTTPS privé accessible au serveur, sans exposer une API Ollama non protégée.
+Cette commande démarre un serveur Ollama isolé sur cet ordinateur, désactive son cloud, télécharge le modèle local `qwen3:4b` avec votre accord explicite (`--pull`), prépare la configuration et les migrations locales, puis lance l’application. Les paramètres existants modifiés sont sauvegardés hors Git. Arrêter avec Ctrl+C. Aux lancements suivants, `npm run ai:local` suffit.
 
-Les appels utilisent Chat Completions avec schémas d’outils stricts. La compatibilité des API n’implique pas des performances identiques. Le plafond limite les **conversations**, pas les euros ; configurer aussi les alertes et limites chez le fournisseur.
+Le téléchargement initial représente environ **2,5 Go**, selon la [fiche Ollama du modèle](https://ollama.com/library/qwen3:4b) ; la mémoire nécessaire à son exécution est supérieure à la taille du fichier. Ce choix est un point de départ à évaluer, pas une garantie de performance.
+
+Dans un autre terminal, pendant que le serveur tourne :
+
+```bash
+npm run ai:doctor
+npm run ai:doctor -- --inference
+```
+
+Le premier vérifie l’installation ; le second demande aussi une courte génération locale. Aucun repli vers une API payante. Voir le [guide budget zéro](docs/ZERO-BUDGET.md) pour les limites et le dépannage.
+
+**Le site public n’utilise pas le localhost de votre ordinateur.** Il reste en démonstration sans LLM. Un LLM public permanent exige une ressource d’inférence disponible et son exploitation ; cette livraison ne souscrit aucun hébergement ou abonnement payant.
+
+## Configuration du modèle
+
+| Variable          | Utilisation                                                       |
+| ----------------- | ----------------------------------------------------------------- |
+| `LLM_BUDGET_MODE` | `zero` par défaut : seuls `demo` et `ollama` sont permis          |
+| `LLM_PROVIDER`    | `demo`, `ollama` ; connecteurs externes conservés mais désactivés |
+| `LLM_MODEL`       | Modèle local installé ; défaut Ollama : `qwen3:4b`                |
+| `LLM_BASE_URL`    | Ollama : boucle locale HTTP terminée par `/v1`                    |
+| `LLM_DAILY_LIMIT` | Maximum de conversations LLM par fenêtre de 24 h, défaut 100      |
+
+Le lanceur utilise le port **11435** et `OLLAMA_NO_CLOUD=1`. Il conserve le serveur Ollama habituel éventuel sur 11434 et ne le modifie pas. L’API n’envoie aucune clé à Ollama et refuse les redirections HTTP.
+
+Les connecteurs historiques `openai` / `compatible` restent dans le code. Ils ne s’activent qu’avec la politique serveur `LLM_BUDGET_MODE=approved`, un modèle et les paramètres nécessaires (`OPENAI_API_KEY` ou `LLM_BASE_URL` / `LLM_API_KEY`). **Ne pas activer cette option tant que le budget demandé reste nul.** Elle constitue un opt-in administratif, pas un plafond financier. Ne jamais stocker de secret dans Git ou dans le code client.
 
 ## Architecture et sécurité
 

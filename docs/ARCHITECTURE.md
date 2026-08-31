@@ -32,7 +32,7 @@ Les simulations mettent à jour au plus un dossier éligible par cycle ; elles n
 
 ## Modèles et documents
 
-`demo` : réponses déterministes, zéro appel fournisseur. `openai` : API OpenAI avec une clé serveur. `compatible` : endpoint Chat Completions HTTPS, ou boucle locale pour le développement. Outils exposés : `get_case`, `search_knowledge`. Aucun outil de remboursement ou de modification directe n’est exposé au LLM.
+`demo` : réponses déterministes, zéro appel fournisseur. `ollama` : modèle local, boucle HTTP locale exclusivement, aucune clé transmise, raisonnement désactivé par paramètre pour limiter l’attente. `openai` et `compatible` : connecteurs externes conservés mais bloqués par la politique `zero` par défaut. `lib/atlas/model-policy.ts` valide la politique et l’adresse avant tout appel. Seule une configuration administrative `approved`, après un nouvel accord budgétaire, permettrait ces fournisseurs externes. Outils exposés : `get_case`, `search_knowledge`. Aucun outil de remboursement ou de modification directe n’est exposé au LLM.
 
 Le corpus est statique, fictif, versionné dans le code. La recherche lexicale pondère les mots-clés et les textes. Cette version n’est pas un système hybride/vectoriel. Les historiques de conversation sont conservés par espace et filtrés par dossier avant envoi au modèle. Les changements de documents ou de modèle doivent être évalués avant publication.
 

@@ -148,7 +148,15 @@ type Snapshot = {
   messages: Message[];
   handoffs: { id: string; case_id: string; summary: string; status: string; created_at: number }[];
   logs: { action: string; detail: string; created_at: number }[];
-  config: { provider: string; model: string | null; ready: boolean; retrieval: string };
+  config: {
+    provider: string;
+    model: string | null;
+    ready: boolean;
+    retrieval: string;
+    budgetMode: string;
+    externalCallsAllowed: boolean;
+    blockedReason: string | null;
+  };
   articles: Article[];
   serverTime: number;
 };
@@ -262,7 +270,7 @@ export default function Home() {
         ...(snapshot ? { 'x-atlas-csrf': snapshot.space.csrf } : {}),
       },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(path === 'chat' ? 45000 : 20000),
     }).catch((e: unknown) => {
       if (e instanceof Error && ['TimeoutError', 'AbortError'].includes(e.name))
         throw new Error('Le service met trop de temps à répondre. Réessayez dans un instant.');
@@ -478,7 +486,11 @@ export default function Home() {
   }
   const mode = data?.config.provider ?? 'demo';
   const modeLabel =
-    mode === 'demo' ? 'Démo sans LLM' : (data?.config.model ?? 'Modèle à configurer');
+    mode === 'demo'
+      ? 'Démo sans LLM'
+      : mode === 'ollama'
+        ? 'Ollama local · sans API payante'
+        : (data?.config.model ?? 'Modèle à configurer');
   const knowledge = data?.articles ?? initialArticles;
   const filtered =
     data?.cases.filter((c) =>
@@ -1552,6 +1564,29 @@ export default function Home() {
                   </span>
                 </div>
               </div>
+              <div className="notice">
+                <ShieldCheck size={18} />
+                <div>
+                  <strong>
+                    {data?.config.budgetMode === 'approved'
+                      ? 'Fournisseur externe autorisé par configuration serveur'
+                      : 'Budget IA 0 € · Fournisseurs externes bloqués'}
+                  </strong>
+                  <p>
+                    La démo publique n’appelle aucun LLM par défaut. Un vrai modèle peut fonctionner
+                    avec Ollama sur votre ordinateur, sans clé API. Le matériel, l’électricité et
+                    l’hébergement ne sont pas inclus dans cette politique de frais d’API.
+                  </p>
+                  <a
+                    className="text-button"
+                    href="https://github.com/Simo-Mesbahi/spicial-agent/blob/main/docs/ZERO-BUDGET.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Démarrer l’IA locale <ArrowUpRight size={14} />
+                  </a>
+                </div>
+              </div>
               <div className="project-grid">
                 {[
                   {
@@ -1571,8 +1606,8 @@ export default function Home() {
                   },
                   {
                     icon: Bot,
-                    title: 'Le choix du modèle',
-                    text: 'Mode déterministe sans frais d’IA. Connecteurs OpenAI et API compatible pour un modèle ouvert. Le fournisseur est configuré côté serveur.',
+                    title: 'Le choix du modèle, sans surprise',
+                    text: 'Démo déterministe en ligne et connecteur Ollama local sans clé API. Les fournisseurs externes sont bloqués par défaut. Le mode actif reste visible.',
                   },
                 ].map((x) => (
                   <article className="panel project-card" key={x.title}>

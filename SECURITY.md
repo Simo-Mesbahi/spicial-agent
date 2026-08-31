@@ -13,6 +13,7 @@ N’utiliser que des données fictives. Le visiteur contrôle les rôles client 
 - Vérification d’origine, jeton CSRF pour mutations, requêtes SQL paramétrées.
 - Transitions métier explicites, confirmation des devis, version optimiste et identifiant d’opération contre les doublons.
 - Outils du LLM en lecture seule, nom vérifié côté serveur, nombre d’appels limité et timeout.
+- Budget IA zéro par défaut : appels aux fournisseurs externes bloqués avant le réseau. Ollama limité à une boucle locale ; aucune clé transmise ; redirections HTTP refusées. Le lanceur démarre un processus isolé avec cloud désactivé. Cette politique ne neutralise pas un administrateur qui la modifierait ou installerait volontairement un proxy distant.
 - Masquage de certains codes, emails et secrets avant persistance de la conversation. Ce filtrage est une protection partielle, pas une garantie de suppression de toutes les données personnelles.
 - Expiration des sessions, suppression des données associées à la réinitialisation et nettoyage lors de nouvelles créations. Aucun export de cookies ou codes dans l’audit.
 

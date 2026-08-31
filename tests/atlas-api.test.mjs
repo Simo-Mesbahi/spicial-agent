@@ -394,6 +394,7 @@ test('Missing live model configuration fails explicitly, not as successful mock 
   const db = database(),
     c = await client(db);
   c.env.LLM_PROVIDER = 'openai';
+  c.env.LLM_BUDGET_MODE = 'approved';
   const r = await c.call('chat', { message: 'Bonjour' });
   assert.equal(r.status, 503);
   assert.ok(r.body.error);
@@ -454,6 +455,7 @@ test('Compatible model adapter executes only allowed read tools and strips crede
     row = c.snapshot.cases[0];
   await verify(c, row);
   c.env.LLM_PROVIDER = 'compatible';
+  c.env.LLM_BUDGET_MODE = 'approved';
   c.env.LLM_MODEL = 'test-model';
   c.env.LLM_BASE_URL = 'https://llm.test/v1';
   c.env.LLM_API_KEY = 'test-only-key';
@@ -501,6 +503,132 @@ test('Compatible model adapter executes only allowed read tools and strips crede
     assert.ok(!exchange.includes('code_hash'));
     assert.ok(!exchange.includes(c.cookie));
     assert.equal(captured[1].messages.at(-1).role, 'tool');
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Zero-budget API blocks paid requests before any network call or message quota', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    throw new Error('No external call allowed');
+  };
+  try {
+    const c = await client(db);
+    c.env.LLM_PROVIDER = 'openai';
+    c.env.LLM_MODEL = 'test';
+    c.env.OPENAI_API_KEY = 'test-key';
+    const reply = await c.call('chat', { message: 'Bonjour' });
+    assert.equal(reply.status, 503);
+    assert.match(reply.body.error, /Budget IA 0/);
+    assert.equal(calls, 0);
+    assert.equal(db.sql.prepare('SELECT chat_count FROM spaces').get().chat_count, 0);
+    assert.equal((await c.call('snapshot')).body.messages.length, 0);
+    const health = (await c.call('health')).body;
+    assert.equal(health.ready, false);
+    assert.equal(health.externalCallsAllowed, false);
+    assert.ok(!JSON.stringify(health).includes('test-key'));
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Ollama executes the same authorized dossier tools without a key or paid fallback', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  const captured = [];
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find((x) => x.reference === 'SAV-2026-1042');
+    await verify(c, row);
+    Object.assign(c.env, {
+      LLM_PROVIDER: 'ollama',
+      LLM_BASE_URL: 'http://127.0.0.1:11435/v1',
+      OPENAI_API_KEY: 'must-not-send',
+    });
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, 'http://127.0.0.1:11435/v1/chat/completions');
+      assert.equal(init.redirect, 'error');
+      assert.equal(init.headers.Authorization, undefined);
+      const body = JSON.parse(init.body);
+      captured.push(body);
+      assert.equal(body.reasoning_effort, 'none');
+      assert.equal(body.model, 'qwen3:4b');
+      return Response.json({
+        choices: [
+          {
+            message:
+              captured.length === 1
+                ? {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                      { id: 'local-1', function: { name: 'get_case', arguments: '{}' } },
+                    ],
+                  }
+                : { role: 'assistant', content: 'Votre dossier est en attente de pièce.' },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 8 },
+      });
+    };
+    const result = await c.call('chat', { caseId: row.id, message: 'Où en est mon dossier ?' });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.metadata.mode, 'ollama');
+    assert.equal(result.body.metadata.caseVersion, 0);
+    assert.ok(result.body.metadata.tools.includes('get_case'));
+    assert.equal(captured.length, 2);
+    const context = JSON.parse(captured[1].messages.at(-1).content);
+    assert.equal(context.reference, row.reference);
+    assert.equal(context.code_hash, undefined);
+    assert.ok(!JSON.stringify(captured).includes('must-not-send'));
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Unavailable local model returns an explicit error without switching providers', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  const calls = [];
+  try {
+    const c = await client(db);
+    c.env.LLM_PROVIDER = 'ollama';
+    globalThis.fetch = async (url) => {
+      calls.push(url);
+      throw new Error('ECONNREFUSED');
+    };
+    const reply = await c.call('chat', { message: 'Bonjour' });
+    assert.equal(reply.status, 503);
+    assert.match(reply.body.error, /modèle local ne répond pas/);
+    assert.deepEqual(calls, ['http://127.0.0.1:11434/v1/chat/completions']);
+    assert.equal((await c.call('snapshot')).body.messages.length, 0);
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Malformed model output fails as a dependency error, not an application crash', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    c.env.LLM_PROVIDER = 'ollama';
+    for (const message of [
+      { role: 'assistant', content: [] },
+      { role: 'assistant', tool_calls: [{}] },
+      { role: 'assistant', tool_calls: 'invalid' },
+    ]) {
+      globalThis.fetch = async () => Response.json({ choices: [{ message }] });
+      assert.equal((await c.call('chat', { message: 'Bonjour' })).status, 503);
+    }
   } finally {
     globalThis.fetch = original;
     db.sql.close();

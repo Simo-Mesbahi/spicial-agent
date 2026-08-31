@@ -19,3 +19,5 @@ Actions : `advance`, `delay` (opérateur fictif limité à son espace) ; `accept
 Codes attendus : 400 données invalides, 401 session manquante/expirée, 403 accès/CSRF/code refusé, 404 ressource inaccessible, 409 état incompatible ou périmé, 413 requête trop grande, 415 format incorrect, 429 quota, 503 dépendance indisponible.
 
 `/api/snapshot` est une API de laboratoire, pas un endpoint client de production : elle expose les identifiants des scénarios fictifs au propriétaire de l’espace pour lui permettre de jouer les deux rôles. Ne pas brancher cet endpoint sur des données clients réelles.
+
+La configuration publique inclut `budgetMode`, `externalCallsAllowed` et `blockedReason`. `ready` signifie « configuration valide », pas « génération réelle testée » : `/api/health` n’envoie aucun appel au modèle. En budget `zero`, un fournisseur externe retourne 503 avant appel réseau et consommation du quota de messages. Aucun paramètre HTTP ne peut modifier le budget. Les réponses du modèle conservent `mode` et `caseVersion` dans leurs métadonnées.

@@ -12,6 +12,7 @@ import {
   dateTime,
   type CaseKind,
 } from './domain';
+import { modelSettings, publicModelConfig } from './model-policy';
 
 export interface Statement {
   bind(...values: unknown[]): Statement;
@@ -31,6 +32,7 @@ export interface AtlasEnv {
   LLM_API_KEY?: string;
   OPENAI_API_KEY?: string;
   LLM_DAILY_LIMIT?: string;
+  LLM_BUDGET_MODE?: string;
 }
 type Space = {
   id: string;
@@ -128,13 +130,8 @@ function sessionToken(req: Request) {
   );
 }
 function config(env: AtlasEnv) {
-  const p = env.LLM_PROVIDER ?? 'demo';
   return {
-    provider: p,
-    model: env.LLM_MODEL ?? null,
-    ready:
-      p === 'demo' ||
-      Boolean(env.LLM_MODEL && (p === 'openai' ? env.OPENAI_API_KEY : env.LLM_BASE_URL)),
+    ...publicModelConfig(env),
     retrieval: 'Recherche documentaire lexicale',
     demo: true,
   };
@@ -588,21 +585,17 @@ export function demoAnswer(message: string, c: CaseRow | null) {
 }
 type ToolCall = { id: string; function: { name: string; arguments: string } };
 async function generate(env: AtlasEnv, message: string, c: CaseRow | null, history: MessageRow[]) {
-  const mode = env.LLM_PROVIDER ?? 'demo';
+  let settings: ReturnType<typeof modelSettings>;
+  try {
+    settings = modelSettings(env);
+  } catch (e) {
+    throw new ApiError(503, e instanceof Error ? e.message : 'Configuration du modèle invalide.');
+  }
+  const mode = settings.provider;
   if (mode === 'demo')
     return { ...demoAnswer(message, c), mode: 'demo', inputTokens: 0, outputTokens: 0 };
-  if (!['openai', 'compatible'].includes(mode) || !env.LLM_MODEL)
-    throw new ApiError(
-      503,
-      'Le fournisseur de modèle n’est pas configuré. Le mode démonstration reste disponible.',
-    );
-  const base = mode === 'openai' ? 'https://api.openai.com/v1' : env.LLM_BASE_URL;
-  if (!base) throw new ApiError(503, 'Adresse du fournisseur manquante.');
-  const url = new URL(base);
-  if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname))
-    throw new ApiError(503, 'Le fournisseur doit utiliser HTTPS.');
-  const key = mode === 'openai' ? env.OPENAI_API_KEY : env.LLM_API_KEY;
-  if (mode === 'openai' && !key) throw new ApiError(503, 'Clé du modèle manquante.');
+  const { base, key } = settings;
+  if (!base) throw new ApiError(503, 'Adresse du modèle manquante.');
   const schema = (properties: Record<string, unknown>) => ({
     type: 'object',
     properties,
@@ -642,6 +635,8 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
   ];
   let inputTokens = 0,
     outputTokens = 0;
+  // One deadline for the whole tool loop, not three independent long requests.
+  const deadline = AbortSignal.timeout(settings.timeoutMs);
   for (let round = 0; round < 3; round++) {
     let res: Response;
     try {
@@ -652,18 +647,22 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
           ...(key ? { Authorization: 'Bearer ' + key } : {}),
         },
         body: JSON.stringify({
-          model: env.LLM_MODEL,
+          model: settings.model,
           messages: msgs,
           tools,
           tool_choice: round === 2 ? 'none' : 'auto',
           ...(mode === 'openai' ? { max_completion_tokens: 650 } : { max_tokens: 650 }),
+          ...(mode === 'ollama' ? { reasoning_effort: 'none', temperature: 0.2 } : {}),
         }),
-        signal: AbortSignal.timeout(20000),
+        signal: deadline,
+        redirect: 'error',
       });
     } catch {
       throw new ApiError(
         503,
-        'Le modèle est temporairement indisponible. Vos dossiers restent accessibles.',
+        mode === 'ollama'
+          ? 'Le modèle local ne répond pas. Vérifiez qu’Ollama tourne sur cet ordinateur. Vos dossiers restent accessibles.'
+          : 'Le modèle est temporairement indisponible. Vos dossiers restent accessibles.',
       );
     }
     if (!res.ok)
@@ -671,16 +670,32 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
         503,
         'Le fournisseur IA a refusé la requête ou atteint sa limite. Réessayez plus tard.',
       );
-    const out = (await res.json()) as {
+    const out = (await res.json().catch(() => {
+      throw new ApiError(503, 'Le modèle a renvoyé une réponse invalide.');
+    })) as {
       choices?: { message: { role: string; content: string | null; tool_calls?: ToolCall[] } }[];
       usage?: { prompt_tokens: number; completion_tokens: number };
     };
-    const m = out.choices?.[0]?.message;
-    if (!m) throw new ApiError(503, 'Réponse du modèle invalide.');
-    inputTokens += out.usage?.prompt_tokens ?? 0;
-    outputTokens += out.usage?.completion_tokens ?? 0;
+    const m = out?.choices?.[0]?.message;
+    if (
+      !m ||
+      m.role !== 'assistant' ||
+      (m.tool_calls !== undefined && !Array.isArray(m.tool_calls))
+    )
+      throw new ApiError(503, 'Réponse du modèle invalide.');
+    const inputCount = out.usage?.prompt_tokens;
+    const outputCount = out.usage?.completion_tokens;
+    inputTokens +=
+      typeof inputCount === 'number' && Number.isFinite(inputCount) && inputCount >= 0
+        ? inputCount
+        : 0;
+    outputTokens +=
+      typeof outputCount === 'number' && Number.isFinite(outputCount) && outputCount >= 0
+        ? outputCount
+        : 0;
     if (!m.tool_calls?.length) {
-      if (!m.content) throw new ApiError(503, 'Le modèle n’a pas fourni de réponse.');
+      if (typeof m.content !== 'string' || !m.content.trim())
+        throw new ApiError(503, 'Le modèle n’a pas fourni de réponse.');
       return {
         content: m.content.slice(0, 6000),
         sources: [...sources.values()],
@@ -694,6 +709,13 @@ async function generate(env: AtlasEnv, message: string, c: CaseRow | null, histo
     if (m.tool_calls.length > 4) throw new ApiError(503, 'Trop de demandes d’outils.');
     msgs.push(m);
     for (const call of m.tool_calls) {
+      if (
+        typeof call?.id !== 'string' ||
+        !call.id ||
+        typeof call.function?.name !== 'string' ||
+        typeof call.function?.arguments !== 'string'
+      )
+        throw new ApiError(503, 'Appel d’outil du modèle invalide.');
       let result: unknown = { error: 'Outil non autorisé' };
       trace.push(call.function.name);
       if (call.function.name === 'get_case')
@@ -911,6 +933,9 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const refs = message.match(/(?:SAV|CMD|RET|REM|SC)-\d{4}-\d{4}(?:-\d+)?/gi) ?? [];
       if (refs.some((ref) => ref.toUpperCase() !== c?.reference))
         fail(403, 'Sélectionnez ce dossier et vérifiez son code dans le formulaire sécurisé.');
+      const modelConfig = config(env);
+      if (!modelConfig.ready)
+        fail(503, modelConfig.blockedReason ?? 'Configuration du modèle invalide.');
       if (s.chat_window + HOUR < Date.now())
         await db
           .prepare('UPDATE spaces SET chat_count=0,chat_window=? WHERE id=? AND chat_window=?')

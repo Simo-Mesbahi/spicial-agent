@@ -4,7 +4,7 @@ Plateforme de démonstration pour l’enseigne fictive Maison Atlas. Code et don
 
 ## Architecture
 
-Interface React/Vinext → API TypeScript → D1/SQLite relationnel. Le serveur applique les autorisations, les transitions et les validations. Le modèle ne reçoit jamais les codes d’accès ni les cookies et ne peut écrire directement dans la base. Fournisseurs : démonstration déterministe (sans LLM), OpenAI, API compatible Chat Completions (dont Ollama).
+Interface React/Vinext → API TypeScript → D1/SQLite relationnel. Le serveur applique les autorisations, les transitions et les validations. Le modèle ne reçoit jamais les codes d’accès ni les cookies et ne peut écrire directement dans la base. Budget IA retenu : 0 €. Modes autorisés par défaut : démonstration déterministe (sans LLM) et Ollama local. Les connecteurs externes OpenAI/compatibles restent disponibles dans le code, mais leur activation nécessiterait un nouvel accord budgétaire.
 
 Les visiteurs disposent d’un espace de simulation individuel, protégé par un cookie aléatoire HttpOnly. L’accès client à chaque dossier nécessite une référence et un code. Le rôle opérateur est explicitement un rôle de démonstration, limité au même espace ; il ne représente pas une authentification de salarié de production.
 

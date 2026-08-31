@@ -8,6 +8,8 @@
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
+    "ai:local": "node scripts/local-ai.mjs",
+    "ai:doctor": "node scripts/local-ai.mjs --doctor",
     "build": "bash scripts/build-verified.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "node --test tests/atlas-*.test.mjs",
@@ -15,7 +17,7 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "test:starter": "node --test tests/rendered-html.test.mjs tests/ui-components.test.mjs",
     "typecheck": "tsc --noEmit",
-    "lint:app": "eslint app components/atlas lib/atlas db/schema.ts worker tests/atlas-*.test.mjs",
+    "lint:app": "eslint app components/atlas lib/atlas db/schema.ts worker scripts/local-ai.mjs tests/atlas-*.test.mjs",
     "db:migrate:local": "wrangler d1 migrations apply site-creator-d1 --local --config wrangler.local.jsonc",
     "format": "prettier --write app lib/atlas db/schema.ts worker tests/atlas-api.test.mjs docs README.md SECURITY.md"
   },
