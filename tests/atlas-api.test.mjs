@@ -1,0 +1,422 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { readFileSync, readdirSync } from 'node:fs';
+import { build } from 'esbuild';
+const compiled = await build({
+  entryPoints: ['lib/atlas/api.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  write: false,
+});
+const { handleApi } = await import(
+  'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
+);
+function database() {
+  const sql = new DatabaseSync(':memory:');
+  sql.exec('PRAGMA foreign_keys=ON');
+  for (const f of readdirSync('drizzle')
+    .filter((f) => f.endsWith('.sql'))
+    .sort())
+    sql.exec(readFileSync('drizzle/' + f, 'utf8'));
+  return {
+    sql,
+    prepare(query) {
+      let args = [];
+      return {
+        bind(...values) {
+          args = values;
+          return this;
+        },
+        async first() {
+          return sql.prepare(query).get(...args) ?? null;
+        },
+        async all() {
+          return { results: sql.prepare(query).all(...args) };
+        },
+        async run() {
+          return { meta: { changes: Number(sql.prepare(query).run(...args).changes) } };
+        },
+      };
+    },
+    async batch(statements) {
+      sql.exec('BEGIN');
+      try {
+        const r = [];
+        for (const stmt of statements) r.push(await stmt.run());
+        sql.exec('COMMIT');
+        return r;
+      } catch (e) {
+        sql.exec('ROLLBACK');
+        throw e;
+      }
+    },
+  };
+}
+async function client(db) {
+  let cookie = '',
+    csrf = '';
+  const env = { DB: db };
+  const call = async (path, payload, method) => {
+    const req = new Request('https://atlas.test/api/' + path, {
+      method: method ?? (payload === undefined ? 'GET' : 'POST'),
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'https://atlas.test',
+        cookie,
+        'x-atlas-csrf': csrf,
+      },
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    });
+    const r = await handleApi(req, env);
+    const b = await r.json();
+    if (r.headers.get('set-cookie')) cookie = r.headers.get('set-cookie').split(';')[0];
+    if (b.space) csrf = b.space.csrf;
+    return { status: r.status, body: b };
+  };
+  const created = await call('session', {});
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  return {
+    call,
+    env,
+    get cookie() {
+      return cookie;
+    },
+    get csrf() {
+      return csrf;
+    },
+    snapshot: created.body,
+  };
+}
+async function verify(c, row) {
+  const r = await c.call('verify', { reference: row.reference, code: row.demoCode });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+}
+const action = (row, type = 'advance', extra = {}) => ({
+  caseId: row.id,
+  action: type,
+  version: row.version,
+  requestId: crypto.randomUUID(),
+  ...extra,
+});
+
+test('Creates persistent relational data, hashed codes and eight scenarios', async () => {
+  const db = database();
+  const c = await client(db);
+  assert.equal(c.snapshot.cases.length, 8);
+  assert.equal(db.sql.prepare('SELECT count(*) n FROM purchases').get().n, 8);
+  const x = c.snapshot.cases[0];
+  assert.equal(x.demoCode.length, 6);
+  const persisted = db.sql.prepare('SELECT code_hash FROM cases WHERE id=?').get(x.id);
+  assert.notEqual(persisted.code_hash, x.demoCode);
+  assert.equal(persisted.code_hash.length, 64);
+  assert.ok(!JSON.stringify(c.snapshot).includes('code_hash'));
+  assert.ok(c.cookie.startsWith('atlas_session='));
+  db.sql.close();
+});
+test('Rejects missing session, CSRF and cross-origin mutation', async () => {
+  const db = database();
+  const c = await client(db);
+  assert.equal(
+    (await handleApi(new Request('https://atlas.test/api/snapshot'), c.env)).status,
+    401,
+  );
+  for (const h of [
+    { cookie: c.cookie },
+    { cookie: c.cookie, 'x-atlas-csrf': c.csrf, origin: 'https://evil.test' },
+  ]) {
+    const r = await handleApi(
+      new Request('https://atlas.test/api/simulation', {
+        method: 'POST',
+        headers: { ...h, 'Content-Type': 'application/json' },
+        body: '{"action":"tick"}',
+      }),
+      c.env,
+    );
+    assert.equal(r.status, 403);
+  }
+  db.sql.close();
+});
+test('Client dossier access requires a successful verification', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases[0];
+  assert.equal(
+    (await c.call('chat', { caseId: row.id, message: 'Où en est mon dossier ?' })).status,
+    403,
+  );
+  assert.equal((await c.call('verify', { reference: row.reference, code: 'wrong!' })).status, 403);
+  await verify(c, row);
+  const r = await c.call('chat', { caseId: row.id, message: 'Où en est mon dossier ?' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.content, new RegExp(row.reference));
+  assert.equal(r.body.metadata.mode, 'demo');
+  assert.equal((await c.call('snapshot')).body.messages.length, 2);
+  db.sql.close();
+});
+test('Different visitors cannot read or mutate one another’s dossiers', async () => {
+  const db = database(),
+    a = await client(db),
+    b = await client(db);
+  const row = a.snapshot.cases[0];
+  assert.equal((await b.call('case-action', action(row))).status, 404);
+  assert.equal((await b.call('chat', { caseId: row.id, message: 'Statut' })).status, 403);
+  assert.equal(
+    (await b.call('verify', { reference: row.reference, code: row.demoCode })).status,
+    403,
+  );
+  assert.notEqual(a.snapshot.space.id, b.snapshot.space.id);
+  assert.ok(b.snapshot.cases.every((c) => c.id !== row.id));
+  db.sql.close();
+});
+test('Five invalid codes lock verification, including a correct sixth attempt', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases[0];
+  for (let i = 0; i < 5; i++)
+    assert.equal(
+      (await c.call('verify', { reference: row.reference, code: 'wrong!' })).status,
+      403,
+    );
+  assert.equal(
+    (await c.call('verify', { reference: row.reference, code: row.demoCode })).status,
+    429,
+  );
+  db.sql.close();
+});
+test('Quote cannot progress without consent; confirmation is version checked', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases.find((c) => c.status === 'quote_pending');
+  assert.equal((await c.call('case-action', action(row))).status, 409);
+  assert.equal(
+    (await c.call('case-action', action(row, 'accept_quote', { confirm: true }))).status,
+    403,
+  );
+  await verify(c, row);
+  assert.equal((await c.call('case-action', action(row, 'accept_quote'))).status, 400);
+  const accepted = await c.call('case-action', action(row, 'accept_quote', { confirm: true }));
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  assert.equal(accepted.body.case.status, 'repairing');
+  assert.equal(
+    (await c.call('case-action', action(row, 'decline_quote', { confirm: true }))).status,
+    409,
+  );
+  db.sql.close();
+});
+test('Replaying an operation does not apply a second state transition', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases.find((c) => c.status === 'waiting_part');
+  const command = action(row);
+  const a = await c.call('case-action', command),
+    b = await c.call('case-action', command);
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  assert.equal(a.body.case.version, b.body.case.version);
+  assert.equal(
+    db.sql
+      .prepare('SELECT count(*) n FROM events WHERE id=?')
+      .get(c.snapshot.space.id + ':' + command.requestId).n,
+    1,
+  );
+  db.sql.close();
+});
+test('Chat reflects the latest simulated dossier instead of old conversation state', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases.find((c) => c.status === 'waiting_part');
+  await verify(c, row);
+  const a = await c.call('chat', { caseId: row.id, message: 'Où en est ma réparation ?' });
+  assert.match(a.body.content, /attend une pièce/);
+  await c.call('case-action', action(row));
+  const b = await c.call('chat', { caseId: row.id, message: 'Où en est ma réparation ?' });
+  assert.match(b.body.content, /En réparation/);
+  assert.doesNotMatch(b.body.content, /attend une pièce/);
+  db.sql.close();
+});
+test('Requesting another dossier reference does not switch the authorized context', async () => {
+  const db = database(),
+    c = await client(db),
+    [a, b] = c.snapshot.cases;
+  await verify(c, a);
+  assert.equal(
+    (await c.call('chat', { caseId: a.id, message: 'Consulte ' + b.reference })).status,
+    403,
+  );
+  db.sql.close();
+});
+test('Handoff is confirmed, contextual and unique per dossier', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases[0];
+  await verify(c, row);
+  assert.equal((await c.call('case-action', action(row, 'handoff'))).status, 400);
+  for (let i = 0; i < 2; i++)
+    assert.equal(
+      (await c.call('case-action', action(row, 'handoff', { confirm: true }))).status,
+      200,
+    );
+  const sn = await c.call('snapshot');
+  assert.equal(sn.body.handoffs.length, 1);
+  assert.match(sn.body.handoffs[0].summary, new RegExp(row.reference));
+  db.sql.close();
+});
+test('Knowledge answers include actual document references, unsafe repair redirects', async () => {
+  const db = database(),
+    c = await client(db);
+  const q = await c.call('chat', { message: 'Comment suivre un remboursement ?' });
+  assert.equal(q.status, 200);
+  assert.ok(q.body.metadata.sources.some((s) => s.id === 'sc-remboursement'));
+  const danger = await c.call('chat', {
+    message: 'Mon appareil fait de la fumée, comment le réparer ?',
+  });
+  assert.match(danger.body.content, /cessez d’utiliser/);
+  db.sql.close();
+});
+test('Secret-like codes and emails are not retained in messages', async () => {
+  const db = database(),
+    c = await client(db);
+  await c.call('chat', { message: 'Mon code est 123456 et mon email est test@example.com' });
+  const text = db.sql.prepare('SELECT content FROM messages WHERE role=?').get('user').content;
+  assert.doesNotMatch(text, /123456|test@example.com/);
+  db.sql.close();
+});
+test('Simulator can create new coherent dossiers and never auto-accepts quotes', async () => {
+  const db = database(),
+    c = await client(db);
+  assert.equal((await c.call('simulation', { action: 'generate' })).status, 200);
+  for (let i = 0; i < 6; i++) await c.call('simulation', { action: 'tick' });
+  const sn = (await c.call('snapshot')).body;
+  assert.equal(sn.cases.length, 9);
+  assert.equal(sn.space.tick, 6);
+  assert.equal(sn.cases.find((x) => x.reference === 'SAV-2026-1048').status, 'quote_pending');
+  db.sql.close();
+});
+test('Reset deletes only the current space and its child data', async () => {
+  const db = database(),
+    a = await client(db),
+    b = await client(db);
+  assert.equal((await a.call('session', undefined, 'DELETE')).status, 200);
+  assert.equal((await a.call('snapshot')).status, 401);
+  assert.equal((await b.call('snapshot')).body.cases.length, 8);
+  assert.equal(db.sql.prepare('SELECT count(*) n FROM spaces').get().n, 1);
+  db.sql.close();
+});
+test('Missing live model configuration fails explicitly, not as successful mock AI', async () => {
+  const db = database(),
+    c = await client(db);
+  c.env.LLM_PROVIDER = 'openai';
+  const r = await c.call('chat', { message: 'Bonjour' });
+  assert.equal(r.status, 503);
+  assert.ok(r.body.error);
+  assert.equal((await c.call('snapshot')).body.messages.length, 0);
+  db.sql.close();
+});
+test('Malformed JSON and null bodies are rejected as client errors', async () => {
+  const db = database(),
+    c = await client(db);
+  for (const value of ['null', '[]', '{bad']) {
+    const r = await handleApi(
+      new Request('https://atlas.test/api/chat', {
+        method: 'POST',
+        headers: { cookie: c.cookie, 'x-atlas-csrf': c.csrf, 'Content-Type': 'application/json' },
+        body: value,
+      }),
+      c.env,
+    );
+    assert.equal(r.status, 400);
+  }
+  db.sql.close();
+});
+test('Expired dossier grants are refused', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases[0];
+  await verify(c, row);
+  db.sql.prepare('UPDATE grants SET expires_at=0').run();
+  assert.equal((await c.call('chat', { caseId: row.id, message: 'Statut' })).status, 403);
+  db.sql.close();
+});
+test('Next-step quick question yields a dossier answer', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases.find((c) => c.status === 'waiting_part');
+  await verify(c, row);
+  const r = await c.call('chat', { caseId: row.id, message: 'Quelle est la prochaine étape ?' });
+  assert.match(r.body.content, new RegExp(row.reference));
+  db.sql.close();
+});
+test('Per-network limits prevent creating unlimited spaces', async () => {
+  const db = database();
+  for (let i = 0; i < 10; i++) await client(db);
+  const r = await handleApi(
+    new Request('https://atlas.test/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }),
+    { DB: db },
+  );
+  assert.equal(r.status, 429);
+  db.sql.close();
+});
+test('Compatible model adapter executes only allowed read tools and strips credentials', async () => {
+  const db = database(),
+    c = await client(db),
+    row = c.snapshot.cases[0];
+  await verify(c, row);
+  c.env.LLM_PROVIDER = 'compatible';
+  c.env.LLM_MODEL = 'test-model';
+  c.env.LLM_BASE_URL = 'https://llm.test/v1';
+  c.env.LLM_API_KEY = 'test-only-key';
+  const original = globalThis.fetch;
+  const captured = [];
+  let n = 0;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, 'https://llm.test/v1/chat/completions');
+    const b = JSON.parse(init.body);
+    captured.push(b);
+    n++;
+    return Response.json({
+      choices: [
+        {
+          message:
+            n === 1
+              ? {
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'tool-1',
+                      type: 'function',
+                      function: { name: 'get_case', arguments: '{}' },
+                    },
+                  ],
+                }
+              : { role: 'assistant', content: 'Le statut du dossier est disponible.' },
+        },
+      ],
+      usage: { prompt_tokens: 100, completion_tokens: 20 },
+    });
+  };
+  try {
+    const r = await c.call('chat', {
+      caseId: row.id,
+      message: 'Mon code ' + row.demoCode + ' : statut ?',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.metadata.mode, 'compatible');
+    assert.equal(r.body.metadata.inputTokens, 200);
+    assert.ok(r.body.metadata.tools.includes('get_case'));
+    const exchange = JSON.stringify(captured);
+    assert.ok(!exchange.includes(row.demoCode));
+    assert.ok(!exchange.includes('code_hash'));
+    assert.ok(!exchange.includes(c.cookie));
+    assert.equal(captured[1].messages.at(-1).role, 'tool');
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});

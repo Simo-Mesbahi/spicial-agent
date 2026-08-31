@@ -1,0 +1,10 @@
+node_modules
+.components
+components/ui
+vendor
+build
+.sites-runtime
+.wrangler
+dist
+package-lock.json
+drizzle/meta
