@@ -512,6 +512,33 @@ export function demoAnswer(message: string, c: CaseRow | null) {
       tools: ['prepare_handoff'],
       action: c ? 'handoff' : null,
     };
+  if (/^(bonjour|bonsoir|salut|hello)[ !.,?]*$/.test(q))
+    return {
+      content: c
+        ? `Bonjour ! Votre dossier ${c.reference} est ouvert. Souhaitez-vous connaître son avancement, la prochaine étape ou la prise en charge ?`
+        : 'Bonjour ! Je suis AtlasCare. Je peux vous expliquer les procédures ou suivre un dossier après vérification. Par quoi souhaitez-vous commencer ?',
+      sources: [],
+      tools: [],
+      action: null,
+    };
+  if (
+    /^(merci( beaucoup| pour (votre|ton) aide)?|super( merci)?|parfait|ok( merci)?)[ !.,]*$/.test(q)
+  )
+    return {
+      content:
+        'Avec plaisir. Vous pouvez continuer avec une autre question, consulter votre suivi ou explorer un autre dossier.',
+      sources: [],
+      tools: [],
+      action: null,
+    };
+  if (/^(au revoir|bonne journee|a bientot)[ !.,]*$/.test(q))
+    return {
+      content:
+        'À bientôt ! Votre suivi reste accessible tant que votre session de démonstration est active.',
+      sources: [],
+      tools: [],
+      action: null,
+    };
   if (c && /garantie|prise en charge|couvert/.test(q))
     return {
       content: `Décision enregistrée pour ${c.reference} : ${c.warranty}.\n\n${articles.find((a) => a.id === 'sav-garantie')!.body}`,
@@ -529,9 +556,16 @@ export function demoAnswer(message: string, c: CaseRow | null) {
       tools: ['get_case'],
       action: c.status === 'quote_pending' ? 'quote' : null,
     };
+  if (c && sources.length && /^(comment|quels documents|que faut.il) /.test(q))
+    return {
+      content: sources[0].body,
+      sources: sources.slice(0, 2),
+      tools: ['search_knowledge'],
+      action: null,
+    };
   if (
     c &&
-    /dossier|statut|prochaine|etape|ou en|nouvelle|quand|reparation|livraison|rembourse|suivi|retour|arrive|recuper|pret|retire|delai|mon |ma /.test(
+    /dossier|statut|prochaine|etape|ou en|nouvelle|quand|reparation|livraison|rembourse|suivi|retour|arrive|recuper|pret|retire|delai|date|montant|combien|mon |ma /.test(
       q,
     )
   )
@@ -917,6 +951,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         inputTokens: answer.inputTokens,
         outputTokens: answer.outputTokens,
         action: answer.action,
+        caseVersion: c?.version ?? null,
       };
       await db.batch([
         db

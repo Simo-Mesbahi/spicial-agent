@@ -77,15 +77,17 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster, toast } from 'sonner';
+import { Discovery } from '@/components/atlas/discovery';
+import { guideStage, suggestedQuestions } from '@/lib/atlas/experience';
 import {
   articles as initialArticles,
-  scenarios,
   labels,
   nextStep,
   kindLabels,
   finished,
   money,
   dateTime,
+  normalized,
   type Article,
   type CaseKind,
 } from '@/lib/atlas/domain';
@@ -122,6 +124,7 @@ type Meta = {
   inputTokens?: number;
   outputTokens?: number;
   action?: string | null;
+  caseVersion?: number | null;
 };
 type Message = {
   id: string;
@@ -222,6 +225,10 @@ function NavigationButton({ onClick, ...props }: React.ComponentProps<typeof Sid
 
 export default function Home() {
   const [view, setView] = useState<View>('assistant');
+  const [showDiscovery, setShowDiscovery] = useState(true);
+  const [guideOpen, setGuideOpen] = useState(true);
+  const [consultAfterVerify, setConsultAfterVerify] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const [data, setData] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -240,6 +247,7 @@ export default function Home() {
   const [trace, setTrace] = useState<Message | null>(null);
   const [lastError, setLastError] = useState('');
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [pendingCaseId, setPendingCaseId] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const dataRef = useRef(data);
   useEffect(() => {
@@ -254,9 +262,26 @@ export default function Home() {
         ...(snapshot ? { 'x-atlas-csrf': snapshot.space.csrf } : {}),
       },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+      signal: AbortSignal.timeout(20000),
+    }).catch((e: unknown) => {
+      if (e instanceof Error && ['TimeoutError', 'AbortError'].includes(e.name))
+        throw new Error('Le service met trop de temps à répondre. Réessayez dans un instant.');
+      throw new Error('La connexion au service a échoué. Vérifiez votre connexion et réessayez.');
     });
-    const value = await res.json();
+    const value = await res.json().catch(() => {
+      throw new Error('Le service est momentanément indisponible. Réessayez dans un instant.');
+    });
     if (!res.ok) {
+      if (res.status === 401 && dataRef.current) {
+        dataRef.current = null;
+        setData(null);
+        setVerify(null);
+        setShowDiscovery(true);
+        setView('assistant');
+        setLastError(
+          'Votre session a expiré. Vous pouvez démarrer un nouvel espace de démonstration.',
+        );
+      }
       const e = new Error(value.error ?? 'Une erreur est survenue.');
       Object.assign(e, { status: res.status });
       throw e;
@@ -326,26 +351,33 @@ export default function Home() {
       // Keep the selected theme for this page even when browser storage is unavailable.
     }
   }
-  async function start(reference?: string) {
+  async function start(reference = 'SAV-2026-1042', guided = false) {
     setBusy(true);
     setLastError('');
     try {
       const d = await api('session', {});
       dataRef.current = d;
       setData(d);
-      setSelectedId(d.cases.find((c: Case) => c.reference === reference)?.id ?? d.cases[0]?.id);
-      toast.success('Votre espace personnel de démonstration est prêt.');
+      const selected = d.cases.find((c: Case) => c.reference === reference) ?? d.cases[0];
+      setSelectedId(selected?.id ?? null);
+      setShowDiscovery(false);
+      setView('assistant');
+      setGuideOpen(true);
+      setContextOpen(false);
+      if (guided && selected && !selected.verified) openVerify(selected, true);
+      else toast.success('Votre espace personnel de démonstration est prêt.');
     } catch (e) {
       setLastError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
-  function openVerify(c: Case) {
+  function openVerify(c: Case, consult = false) {
     setVerify(c);
     setRefValue(c.reference);
     setCode('');
     setVerifyError('');
+    setConsultAfterVerify(consult);
   }
   async function doVerify(e: FormEvent) {
     e.preventDefault();
@@ -358,13 +390,14 @@ export default function Home() {
       setVerify(null);
       setCode('');
       toast.success('Accès au dossier vérifié.');
+      if (consultAfterVerify) await send('Où en est mon dossier ?', result.case.id);
     } catch (e) {
       setVerifyError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
-  async function send(value?: string) {
+  async function send(value?: string, scopedCaseId?: string) {
     const msg = (value ?? input).trim();
     if (!msg || sending) return;
     if (!data) {
@@ -374,9 +407,11 @@ export default function Home() {
     setInput('');
     setSending(true);
     setPendingMessage(msg);
+    const caseId = scopedCaseId ?? (currentVerified ? (current?.id ?? null) : null);
+    setPendingCaseId(caseId);
     setLastError('');
     try {
-      await api('chat', { message: msg, caseId: currentVerified ? current?.id : null });
+      await api('chat', { message: msg, caseId });
       await refresh();
     } catch (e) {
       setLastError((e as Error).message);
@@ -384,6 +419,7 @@ export default function Home() {
     } finally {
       setSending(false);
       setPendingMessage(null);
+      setPendingCaseId(null);
     }
   }
   async function simulate(action: string, extra: Record<string, unknown> = {}) {
@@ -430,6 +466,9 @@ export default function Home() {
       setSelectedId(null);
       setReset(false);
       setView('assistant');
+      setShowDiscovery(true);
+      setInput('');
+      setLastError('');
       toast.success('Votre espace et son historique ont été supprimés.');
     } catch (e) {
       toast.error((e as Error).message);
@@ -443,14 +482,85 @@ export default function Home() {
   const knowledge = data?.articles ?? initialArticles;
   const filtered =
     data?.cases.filter((c) =>
-      (c.reference + ' ' + c.product + ' ' + c.customer + ' ' + c.status_label)
-        .toLowerCase()
-        .includes(search.toLowerCase()),
+      normalized(c.reference + ' ' + c.product + ' ' + c.customer + ' ' + c.status_label).includes(
+        normalized(search),
+      ),
     ) ?? [];
   const answered = data?.messages.filter((m) => m.role === 'assistant') ?? [];
   const latency = answered.length
     ? Math.round(answered.reduce((s, m) => s + (m.metadata.latencyMs ?? 0), 0) / answered.length)
     : null;
+  const lastAnswer = messages.findLast(
+    (m) => m.role === 'assistant' && m.metadata.tools?.includes('get_case'),
+  );
+  const stage = guideStage(
+    currentVerified,
+    current?.version ?? 0,
+    lastAnswer?.metadata.caseVersion,
+    Boolean(lastAnswer),
+  );
+  const questions = suggestedQuestions(currentVerified ? current : null);
+  const pendingHere = sending && pendingCaseId === (currentVerified ? current?.id : null);
+  const canAdvance = current ? Boolean(nextStep(current.kind, current.status)) : false;
+  const guide =
+    stage === 'verify'
+      ? {
+          step: '01',
+          title: 'Commençons par votre dossier.',
+          body: 'Le code fictif est fourni. Ouvrez votre suivi personnel en toute simplicité.',
+          cta: 'Ouvrir mon dossier',
+        }
+      : stage === 'ask'
+        ? {
+            step: '02',
+            title: 'Posez votre première question.',
+            body: 'L’assistant consulte les informations du dossier que vous venez de vérifier.',
+            cta: 'Où en est mon dossier ?',
+          }
+        : stage === 'refresh'
+          ? {
+              step: '03',
+              title: 'Votre dossier a évolué. Et la réponse ?',
+              body: 'Interrogez à nouveau l’assistant pour comparer avec son premier état.',
+              cta: 'Consulter le nouvel état',
+            }
+          : stage === 'done'
+            ? {
+                step: '✓',
+                title: 'Vous avez vu le suivi se mettre à jour.',
+                body: 'Continuez la conversation ou explorez une autre situation client.',
+                cta: 'Explorer les autres dossiers',
+              }
+            : current?.status === 'quote_pending'
+              ? {
+                  step: '03',
+                  title: 'Ici, c’est vous qui décidez.',
+                  body: 'La simulation attend votre accord explicite. Aucun paiement réel.',
+                  cta: 'Examiner le devis',
+                }
+              : canAdvance
+                ? {
+                    step: '03',
+                    title: 'Faites avancer votre dossier fictif.',
+                    body: 'Simulez l’étape suivante, puis voyez comment la réponse change.',
+                    cta: 'Simuler l’étape suivante',
+                  }
+                : {
+                    step: '✓',
+                    title: 'Ce parcours est arrivé à son terme.',
+                    body: 'Une autre situation vous attend : livraison, devis, retour ou remboursement.',
+                    cta: 'Explorer les autres dossiers',
+                  };
+  function followGuide() {
+    if (!current) return;
+    if (stage === 'verify') openVerify(current, true);
+    else if (stage === 'ask' || stage === 'refresh') void send('Où en est mon dossier ?');
+    else if (stage === 'done') setView('dossiers');
+    else if (current.status === 'quote_pending')
+      setConfirm({ action: 'accept_quote', case: current });
+    else if (canAdvance) void action(current, 'advance');
+    else setView('dossiers');
+  }
   const beginButton = (
     <button className="button primary" disabled={busy || loading} onClick={() => start()}>
       {busy ? <RefreshCw className="spin" size={17} /> : <Play size={16} />}Créer mon espace de
@@ -458,12 +568,46 @@ export default function Home() {
       <ArrowRight size={17} />
     </button>
   );
+  if ((showDiscovery || !data) && view === 'assistant')
+    return (
+      <>
+        <Toaster position="bottom-right" richColors />
+        <Discovery
+          busy={busy}
+          loading={loading}
+          hasSession={Boolean(data)}
+          error={lastError}
+          theme={theme}
+          mode={mode}
+          onTheme={changeTheme}
+          onStart={(reference) => void start(reference, true)}
+          onResume={() => {
+            setShowDiscovery(false);
+            setView('assistant');
+          }}
+          onExplore={(next) => {
+            setShowDiscovery(false);
+            setView(next);
+            setSearch('');
+          }}
+        />
+      </>
+    );
   return (
     <SidebarProvider style={{ '--sidebar-width': '244px' } as React.CSSProperties}>
       <Toaster position="bottom-right" richColors />
       <Sidebar className="atlas-sidebar" collapsible="offcanvas">
         <SidebarHeader className="brand-header">
-          <Brand />
+          <button
+            className="brand-home"
+            aria-label="Revenir à l’accueil AtlasCare"
+            onClick={() => {
+              setShowDiscovery(true);
+              setView('assistant');
+            }}
+          >
+            <Brand />
+          </button>
           <span className="workspace-name">
             <span className="store-mark">M</span>Maison Atlas <span className="tag">FICTIF</span>
           </span>
@@ -594,389 +738,356 @@ export default function Home() {
                   />
                 </div>
               </div>
-              {!data && !loading ? (
-                <div className="welcome-grid">
-                  <section className="welcome-main">
-                    <div className="welcome-badge">
-                      <Sparkles size={15} />
-                      RENCONTREZ VOTRE ASSISTANT
-                    </div>
-                    <h2>
-                      Tout commence
-                      <br />
-                      par une conversation.
-                    </h2>
-                    <p>
-                      Une réparation à suivre, une livraison en retard, un devis à valider. Explorez
-                      un service client connecté à des dossiers qui évoluent.
-                    </p>
-                    {beginButton}
-                    <div className="welcome-proof">
-                      <span>
-                        <Check size={14} />
-                        Sans données personnelles
-                      </span>
-                      <span>
-                        <Check size={14} />
-                        Sans frais d’IA en mode démo
-                      </span>
-                    </div>
-                    {lastError && (
-                      <div role="alert" className="inline-error">
-                        {lastError}
-                      </div>
-                    )}
-                    <div className="welcome-bottom">
-                      <span>
-                        01 <b>Choisissez un dossier</b>
-                      </span>
-                      <span>
-                        02 <b>Vérifiez votre accès</b>
-                      </span>
-                      <span>
-                        03 <b>Posez votre question</b>
-                      </span>
-                    </div>
-                  </section>
-                  <aside className="welcome-aside">
-                    <MiniLabel>À VOUS D’ESSAYER</MiniLabel>
-                    <h3>Des situations concrètes.</h3>
-                    {scenarios.slice(0, 4).map((s, i) => (
-                      <button
-                        key={s.reference}
-                        className="scenario-preview"
-                        disabled={busy}
-                        onClick={async () => {
-                          await start(s.reference);
-                        }}
-                      >
-                        <span className={'product-icon tone-' + i}>
-                          <KindIcon kind={s.kind} />
-                        </span>
-                        <span>
-                          <strong>{s.title}</strong>
-                          <small>{s.product}</small>
-                        </span>
-                        <ArrowUpRight size={16} />
-                      </button>
-                    ))}
-                    <p className="quiet">
-                      Chaque scénario dispose d’un historique, de règles et d’un code d’accès
-                      fictif.
-                    </p>
-                  </aside>
-                </div>
-              ) : loading ? (
+              {loading ? (
                 <div className="loading-grid">
                   <Skeleton className="h-96 rounded-2xl" />
                   <Skeleton className="h-96 rounded-2xl" />
                 </div>
               ) : (
-                <div className="assistant-grid">
-                  <section className="chat-panel">
-                    <div className="chat-header">
-                      <Brand small />
-                      <div>
-                        <strong>AtlasCare Assistant</strong>
-                        <small>
-                          {currentVerified
-                            ? 'Connecté au dossier ' + current?.reference
-                            : 'À votre écoute · Questions générales'}
-                        </small>
+                <>
+                  {guideOpen && current && (
+                    <section className="trial-guide" aria-label="Votre essai guidé">
+                      <span className="trial-guide-number">{guide.step}</span>
+                      <div className="trial-guide-copy">
+                        <small>VOTRE ESSAI GUIDÉ</small>
+                        <strong>{guide.title}</strong>
+                        <p>{guide.body}</p>
                       </div>
-                      <span className="chat-header-badge">
-                        <ShieldCheck size={13} />
-                        {currentVerified ? 'Accès vérifié' : 'Accès protégé'}
-                      </span>
-                    </div>
-                    <div
-                      className="message-area"
-                      role="log"
-                      aria-live="polite"
-                      aria-label="Conversation avec AtlasCare"
-                    >
-                      {!messages.length && (
-                        <div className="chat-welcome">
-                          <span className="assistant-emblem">
-                            <Sparkles size={25} />
-                          </span>
-                          <h2>Comment puis-je vous aider ?</h2>
-                          <p>
+                      <button
+                        className="button secondary"
+                        disabled={busy || sending}
+                        onClick={followGuide}
+                      >
+                        {guide.cta}
+                        <ArrowRight size={14} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        aria-label="Masquer le guide"
+                        onClick={() => setGuideOpen(false)}
+                      >
+                        <X size={15} />
+                      </button>
+                    </section>
+                  )}
+                  <button
+                    className="mobile-case-toggle"
+                    aria-expanded={contextOpen}
+                    aria-controls="case-context"
+                    onClick={() => setContextOpen(!contextOpen)}
+                  >
+                    <KindIcon kind={current?.kind ?? 'repair'} size={18} />
+                    <span>
+                      <strong>{current?.product ?? 'Votre dossier'}</strong>
+                      <small>
+                        {currentVerified ? current?.status_label : 'Vérifier mon accès au dossier'}
+                      </small>
+                    </span>
+                    <ChevronRight size={17} />
+                  </button>
+                  <div className="assistant-grid" data-context-open={contextOpen}>
+                    <section className="chat-panel">
+                      <div className="chat-header">
+                        <Brand small />
+                        <div>
+                          <strong>AtlasCare Assistant</strong>
+                          <small>
                             {currentVerified
-                              ? `Votre accès au dossier ${current?.reference} est vérifié. Je peux consulter son avancement et vous expliquer la suite.`
-                              : 'Je vous accompagne pour vos réparations, livraisons et retours. Vérifiez un dossier pour obtenir un suivi personnalisé.'}
-                          </p>
-                          <div className="suggestions">
-                            {(currentVerified
-                              ? [
-                                  'Où en est mon dossier ?',
-                                  'Quelle est la prochaine étape ?',
-                                  'Quelle est la prise en charge ?',
-                                  'Je souhaite un conseiller',
-                                ]
-                              : [
-                                  'Comment suivre une réparation ?',
-                                  'Comment fonctionne un retour ?',
-                                  'Que faire si un colis est incomplet ?',
-                                  'Comment suivre un remboursement ?',
-                                ]
-                            ).map((s, i) => (
-                              <button disabled={sending} key={s} onClick={() => send(s)}>
-                                <span>
-                                  {i === 0 ? (
-                                    <Wrench size={16} />
-                                  ) : i === 1 ? (
-                                    <Package size={16} />
-                                  ) : i === 2 ? (
-                                    <Truck size={16} />
-                                  ) : (
-                                    <Headphones size={16} />
-                                  )}
-                                </span>
-                                {s}
-                                <ArrowUpRight size={14} />
+                              ? 'Connecté au dossier ' + current?.reference
+                              : 'À votre écoute · Questions générales'}
+                          </small>
+                        </div>
+                        <span className="chat-header-badge">
+                          <ShieldCheck size={13} />
+                          {currentVerified ? 'Accès vérifié' : 'Accès protégé'}
+                        </span>
+                      </div>
+                      <div
+                        className="message-area"
+                        role="log"
+                        aria-live="polite"
+                        aria-label="Conversation avec AtlasCare"
+                      >
+                        {!messages.length && (
+                          <div className="chat-welcome">
+                            <span className="assistant-emblem">
+                              <Sparkles size={25} />
+                            </span>
+                            <h2>Comment puis-je vous aider ?</h2>
+                            <p>
+                              {currentVerified
+                                ? `Votre accès au dossier ${current?.reference} est vérifié. Je peux consulter son avancement et vous expliquer la suite.`
+                                : 'Je vous accompagne pour vos réparations, livraisons et retours. Vérifiez un dossier pour obtenir un suivi personnalisé.'}
+                            </p>
+                            <div className="suggestions">
+                              {questions.map((s, i) => (
+                                <button disabled={sending} key={s} onClick={() => send(s)}>
+                                  <span>
+                                    {i === 0 ? (
+                                      <Wrench size={16} />
+                                    ) : i === 1 ? (
+                                      <Package size={16} />
+                                    ) : i === 2 ? (
+                                      <Truck size={16} />
+                                    ) : (
+                                      <Headphones size={16} />
+                                    )}
+                                  </span>
+                                  {s}
+                                  <ArrowUpRight size={14} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {messages.map((m) => (
+                          <div key={m.id} className={'message ' + m.role}>
+                            {m.role === 'assistant' && <Brand small />}
+                            <div className="message-content">
+                              <div className="message-bubble">{m.content}</div>
+                              {m.role === 'assistant' && (
+                                <>
+                                  <div className="message-sources">
+                                    {m.metadata.sources?.map((s) => (
+                                      <button
+                                        key={s.id}
+                                        onClick={() =>
+                                          setArticle(knowledge.find((a) => a.id === s.id) ?? null)
+                                        }
+                                      >
+                                        <BookOpen size={12} />
+                                        {s.title}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="message-meta">
+                                    <span>
+                                      {m.metadata.mode === 'demo'
+                                        ? 'Réponse déterministe'
+                                        : 'Réponse générée'}{' '}
+                                      · {dateTime(m.created_at)}
+                                    </span>
+                                    <button onClick={() => setTrace(m)}>
+                                      <FileCheck2 size={12} />
+                                      Sources & outils
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        {pendingMessage && pendingHere && (
+                          <div className="message user">
+                            <div className="message-content">
+                              <div className="message-bubble">{pendingMessage}</div>
+                            </div>
+                          </div>
+                        )}
+                        {pendingHere && (
+                          <div className="typing">
+                            <Brand small />
+                            <span>
+                              Consultation des informations<span className="dots">…</span>
+                            </span>
+                          </div>
+                        )}
+                        {!!messages.length && !sending && (
+                          <div className="quick-followups" aria-label="Continuer la conversation">
+                            {questions.map((question) => (
+                              <button key={question} onClick={() => send(question)}>
+                                {question}
+                                <ArrowUpRight size={12} />
                               </button>
                             ))}
                           </div>
-                        </div>
-                      )}
-                      {messages.map((m) => (
-                        <div key={m.id} className={'message ' + m.role}>
-                          {m.role === 'assistant' && <Brand small />}
-                          <div className="message-content">
-                            <div className="message-bubble">{m.content}</div>
-                            {m.role === 'assistant' && (
-                              <>
-                                <div className="message-sources">
-                                  {m.metadata.sources?.map((s) => (
-                                    <button
-                                      key={s.id}
-                                      onClick={() =>
-                                        setArticle(knowledge.find((a) => a.id === s.id) ?? null)
-                                      }
-                                    >
-                                      <BookOpen size={12} />
-                                      {s.title}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="message-meta">
-                                  <span>
-                                    {m.metadata.mode === 'demo'
-                                      ? 'Réponse déterministe'
-                                      : 'Réponse générée'}{' '}
-                                    · {dateTime(m.created_at)}
-                                  </span>
-                                  <button onClick={() => setTrace(m)}>
-                                    <FileCheck2 size={12} />
-                                    Sources & outils
-                                  </button>
-                                </div>
-                              </>
-                            )}
+                        )}
+                        {lastError && (
+                          <div role="alert" className="inline-error">
+                            {lastError}
                           </div>
-                        </div>
-                      ))}
-                      {pendingMessage && (
-                        <div className="message user">
-                          <div className="message-content">
-                            <div className="message-bubble">{pendingMessage}</div>
-                          </div>
-                        </div>
-                      )}
-                      {sending && (
-                        <div className="typing">
-                          <Brand small />
+                        )}
+                        <div ref={bottom} />
+                      </div>
+                      {currentVerified && current?.status === 'quote_pending' && (
+                        <div className="action-strip">
+                          <FileText size={17} />
                           <span>
-                            Consultation des informations<span className="dots">…</span>
+                            Devis en attente : <strong>{money(current.quote_cents ?? 0)}</strong>
                           </span>
+                          <button
+                            className="text-button"
+                            onClick={() => setConfirm({ action: 'accept_quote', case: current })}
+                          >
+                            Examiner le devis
+                            <ArrowRight size={14} />
+                          </button>
                         </div>
                       )}
-                      {lastError && (
-                        <div role="alert" className="inline-error">
-                          {lastError}
-                        </div>
-                      )}
-                      <div ref={bottom} />
-                    </div>
-                    {currentVerified && current?.status === 'quote_pending' && (
-                      <div className="action-strip">
-                        <FileText size={17} />
-                        <span>
-                          Devis en attente : <strong>{money(current.quote_cents ?? 0)}</strong>
-                        </span>
-                        <button
-                          className="text-button"
-                          onClick={() => setConfirm({ action: 'accept_quote', case: current })}
-                        >
-                          Examiner le devis
-                          <ArrowRight size={14} />
-                        </button>
-                      </div>
-                    )}
-                    <form
-                      className="composer"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        send();
-                      }}
-                    >
-                      <textarea
-                        aria-label="Votre message"
-                        placeholder="Posez votre question…"
-                        rows={2}
-                        maxLength={1500}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                            e.preventDefault();
-                            send();
-                          }
+                      <form
+                        className="composer"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          send();
                         }}
-                      />
-                      <div className="composer-bottom">
-                        <span>
-                          <LockKeyhole size={12} />
-                          Ne partagez aucun code ou secret ici.
-                        </span>
-                        <button
-                          className="send-button"
-                          type="submit"
-                          disabled={sending || !input.trim()}
-                          aria-label="Envoyer le message"
-                        >
-                          <ArrowRight size={19} />
-                        </button>
-                      </div>
-                    </form>
-                    <p className="chat-disclaimer">
-                      {mode === 'demo'
-                        ? 'Mode démonstration : règles et documents, sans modèle génératif.'
-                        : 'Les réponses générées peuvent contenir des erreurs. Vérifiez les informations importantes.'}
-                    </p>
-                  </section>
-                  <aside className="context-panel">
-                    <div className="context-top">
-                      <MiniLabel>VOTRE CONTEXTE</MiniLabel>
-                      <button
-                        className="icon-button"
-                        aria-label="Actualiser les dossiers"
-                        onClick={() => refresh().catch((e) => toast.error(e.message))}
                       >
-                        <RefreshCw size={15} />
-                      </button>
-                    </div>
-                    <h3>
-                      Le bon dossier.
-                      <br />
-                      La bonne information.
-                    </h3>
-                    <button className="case-picker" onClick={() => setView('dossiers')}>
-                      <span className="product-icon">
-                        <KindIcon kind={current?.kind ?? 'repair'} />
-                      </span>
-                      <span>
-                        <strong>{current?.product}</strong>
-                        <small>{current?.reference}</small>
-                      </span>
-                      <ChevronRight size={16} />
-                    </button>
-                    {current && !currentVerified ? (
-                      <>
-                        <div className="access-card">
-                          <LockKeyhole size={22} />
-                          <h4>Votre dossier est protégé</h4>
-                          <p>
-                            Vérifiez votre référence et votre code pour accéder au suivi
-                            personnalisé.
-                          </p>
+                        <textarea
+                          aria-label="Votre message"
+                          placeholder="Posez votre question…"
+                          rows={2}
+                          maxLength={1500}
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              send();
+                            }
+                          }}
+                        />
+                        <div className="composer-bottom">
+                          <span>
+                            <LockKeyhole size={12} />
+                            Ne partagez aucun code ou secret ici.
+                          </span>
                           <button
-                            className="button primary full"
-                            onClick={() => openVerify(current)}
+                            className="send-button"
+                            type="submit"
+                            disabled={sending || !input.trim()}
+                            aria-label="Envoyer le message"
                           >
-                            Vérifier mon accès
-                            <ArrowRight size={15} />
+                            <ArrowRight size={19} />
                           </button>
                         </div>
-                        <details className="demo-credentials">
-                          <summary>
-                            <FlaskConical size={14} />
-                            Identifiants de ce scénario
-                          </summary>
-                          <p>Ces identifiants sont fictifs et propres à votre espace.</p>
-                          <div>
-                            <span>Référence</span>
-                            <code>{current.reference}</code>
-                          </div>
-                          <div>
-                            <span>Code de démonstration</span>
-                            <code>{current.demoCode}</code>
-                          </div>
-                        </details>
-                      </>
-                    ) : (
-                      current && (
-                        <>
-                          <div className="context-status">
-                            <Status status={current.status} />
-                            <p>{current.description}</p>
-                          </div>
-                          <div className="facts">
-                            <div>
-                              <span>Prise en charge</span>
-                              <strong>{current.warranty}</strong>
-                            </div>
-                            <div>
-                              <span>Restitution</span>
-                              <strong>{current.delivery_mode}</strong>
-                            </div>
-                            <div>
-                              <span>Estimation</span>
-                              <strong>{current.estimate ?? 'Non communiquée'}</strong>
-                            </div>
-                          </div>
-                          <MiniLabel>DERNIÈRES ÉTAPES</MiniLabel>
-                          <div className="timeline">
-                            {data?.events
-                              .filter((e) => e.case_id === current.id)
-                              .slice(0, 4)
-                              .map((e, i) => (
-                                <div
-                                  className={'timeline-item ' + (i === 0 ? 'current' : '')}
-                                  key={e.id}
-                                >
-                                  <span className="timeline-dot">
-                                    {i === 0 ? <CircleDot size={15} /> : <Check size={12} />}
-                                  </span>
-                                  <div>
-                                    <strong>{e.label}</strong>
-                                    <small>{dateTime(e.created_at)}</small>
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                          <button
-                            className="button secondary full"
-                            disabled={busy}
-                            onClick={() => setConfirm({ action: 'handoff', case: current })}
-                          >
-                            <Headphones size={16} />
-                            Demander un conseiller
-                          </button>
-                        </>
-                      )
-                    )}
-                    <div className="context-tip">
-                      <Zap size={17} />
-                      <p>
-                        Faites avancer ce dossier dans le{' '}
-                        <button onClick={() => setView('simulation')}>laboratoire</button>, puis
-                        reposez votre question.
+                      </form>
+                      <p className="chat-disclaimer">
+                        {mode === 'demo'
+                          ? 'Mode démonstration : règles et documents, sans modèle génératif.'
+                          : 'Les réponses générées peuvent contenir des erreurs. Vérifiez les informations importantes.'}
                       </p>
-                    </div>
-                  </aside>
-                </div>
+                    </section>
+                    <aside className="context-panel" id="case-context">
+                      <div className="context-top">
+                        <MiniLabel>VOTRE CONTEXTE</MiniLabel>
+                        <button
+                          className="icon-button"
+                          aria-label="Actualiser les dossiers"
+                          onClick={() => refresh().catch((e) => toast.error(e.message))}
+                        >
+                          <RefreshCw size={15} />
+                        </button>
+                      </div>
+                      <h3>
+                        Le bon dossier.
+                        <br />
+                        La bonne information.
+                      </h3>
+                      <button className="case-picker" onClick={() => setView('dossiers')}>
+                        <span className="product-icon">
+                          <KindIcon kind={current?.kind ?? 'repair'} />
+                        </span>
+                        <span>
+                          <strong>{current?.product}</strong>
+                          <small>{current?.reference}</small>
+                        </span>
+                        <ChevronRight size={16} />
+                      </button>
+                      {current && !currentVerified ? (
+                        <>
+                          <div className="access-card">
+                            <LockKeyhole size={22} />
+                            <h4>Votre dossier est protégé</h4>
+                            <p>
+                              Vérifiez votre référence et votre code pour accéder au suivi
+                              personnalisé.
+                            </p>
+                            <button
+                              className="button primary full"
+                              onClick={() => openVerify(current)}
+                            >
+                              Vérifier mon accès
+                              <ArrowRight size={15} />
+                            </button>
+                          </div>
+                          <details className="demo-credentials">
+                            <summary>
+                              <FlaskConical size={14} />
+                              Identifiants de ce scénario
+                            </summary>
+                            <p>Ces identifiants sont fictifs et propres à votre espace.</p>
+                            <div>
+                              <span>Référence</span>
+                              <code>{current.reference}</code>
+                            </div>
+                            <div>
+                              <span>Code de démonstration</span>
+                              <code>{current.demoCode}</code>
+                            </div>
+                          </details>
+                        </>
+                      ) : (
+                        current && (
+                          <>
+                            <div className="context-status">
+                              <Status status={current.status} />
+                              <p>{current.description}</p>
+                            </div>
+                            <div className="facts">
+                              <div>
+                                <span>Prise en charge</span>
+                                <strong>{current.warranty}</strong>
+                              </div>
+                              <div>
+                                <span>Restitution</span>
+                                <strong>{current.delivery_mode}</strong>
+                              </div>
+                              <div>
+                                <span>Estimation</span>
+                                <strong>{current.estimate ?? 'Non communiquée'}</strong>
+                              </div>
+                            </div>
+                            <MiniLabel>DERNIÈRES ÉTAPES</MiniLabel>
+                            <div className="timeline">
+                              {data?.events
+                                .filter((e) => e.case_id === current.id)
+                                .slice(0, 4)
+                                .map((e, i) => (
+                                  <div
+                                    className={'timeline-item ' + (i === 0 ? 'current' : '')}
+                                    key={e.id}
+                                  >
+                                    <span className="timeline-dot">
+                                      {i === 0 ? <CircleDot size={15} /> : <Check size={12} />}
+                                    </span>
+                                    <div>
+                                      <strong>{e.label}</strong>
+                                      <small>{dateTime(e.created_at)}</small>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                            <button
+                              className="button secondary full"
+                              disabled={busy}
+                              onClick={() => setConfirm({ action: 'handoff', case: current })}
+                            >
+                              <Headphones size={16} />
+                              Demander un conseiller
+                            </button>
+                          </>
+                        )
+                      )}
+                      <div className="context-tip">
+                        <Zap size={17} />
+                        <p>
+                          Faites avancer ce dossier dans le{' '}
+                          <button onClick={() => setView('simulation')}>laboratoire</button>, puis
+                          reposez votre question.
+                        </p>
+                      </div>
+                    </aside>
+                  </div>
+                </>
               )}
               <div className="trust-footer">
                 <span>
@@ -1071,7 +1182,11 @@ export default function Home() {
                             onClick={() => {
                               setSelectedId(c.id);
                               setView('assistant');
-                              if (!c.verified) openVerify(c);
+                              setGuideOpen(true);
+                              setContextOpen(false);
+                              setInput('');
+                              setLastError('');
+                              if (!c.verified) openVerify(c, true);
                             }}
                           >
                             <ArrowUpRight size={19} />
@@ -1353,7 +1468,7 @@ export default function Home() {
               <div className="knowledge-grid">
                 {knowledge
                   .filter((a) =>
-                    (a.title + ' ' + a.tags).toLowerCase().includes(search.toLowerCase()),
+                    normalized(a.title + ' ' + a.tags + ' ' + a.body).includes(normalized(search)),
                   )
                   .map((a) => (
                     <button className="document-card" key={a.id} onClick={() => setArticle(a)}>
@@ -1374,6 +1489,15 @@ export default function Home() {
                     </button>
                   ))}
               </div>
+              {!knowledge.some((a) =>
+                normalized(a.title + ' ' + a.tags + ' ' + a.body).includes(normalized(search)),
+              ) && (
+                <Empty
+                  icon={<Search />}
+                  title="Aucun document trouvé"
+                  text="Essayez garantie, retour, livraison ou devis."
+                />
+              )}
               <div className="notice">
                 <CircleHelp size={17} />
                 Corpus fictif validé dans le code. Recherche lexicale ; ces documents ne constituent
@@ -1522,9 +1646,20 @@ export default function Home() {
             </span>
             <DialogTitle>Accéder à votre dossier</DialogTitle>
             <DialogDescription>
-              La vérification est effectuée côté serveur. Votre code n’est pas envoyé au modèle.
+              {consultAfterVerify
+                ? 'Utilisez le code de démonstration ci-dessous pour vérifier votre accès et consulter le suivi.'
+                : 'La vérification est effectuée côté serveur. Votre code n’est pas envoyé au modèle.'}
             </DialogDescription>
           </DialogHeader>
+          <div className="verify-product">
+            <span className="product-icon">
+              <KindIcon kind={verify?.kind ?? 'repair'} />
+            </span>
+            <div>
+              <strong>{verify?.product}</strong>
+              <small>{verify?.reference} · Dossier fictif</small>
+            </div>
+          </div>
           <form onSubmit={doVerify} className="verify-form">
             <label>
               Référence du dossier
@@ -1570,10 +1705,18 @@ export default function Home() {
               disabled={busy || code.length !== 6}
               type="submit"
             >
-              {busy ? 'Vérification…' : 'Vérifier mon accès'}
+              {busy
+                ? 'Vérification…'
+                : consultAfterVerify
+                  ? 'Vérifier et consulter le dossier'
+                  : 'Vérifier mon accès'}
               <ShieldCheck size={16} />
             </button>
           </form>
+          <p className="footnote">
+            Le code reste dans le formulaire sécurisé. Ne saisissez aucune donnée personnelle
+            réelle.
+          </p>
         </DialogContent>
       </Dialog>
       <Dialog open={!!article} onOpenChange={(v) => !v && setArticle(null)}>
@@ -1612,6 +1755,12 @@ export default function Home() {
               <span>Temps de traitement</span>
               <strong>{trace?.metadata.latencyMs} ms</strong>
             </div>
+            {trace?.metadata.caseVersion != null && (
+              <div>
+                <span>Version du dossier consultée</span>
+                <strong>{trace.metadata.caseVersion}</strong>
+              </div>
+            )}
             <div>
               <span>Outils</span>
               <strong>{trace?.metadata.tools?.join(', ') || 'Aucun'}</strong>

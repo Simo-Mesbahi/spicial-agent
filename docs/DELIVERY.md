@@ -4,19 +4,22 @@
 
 - Plateforme AtlasCare AI déployée sur https://atlascare-ai.mohammed-elmesbahi.chatgpt.site.
 - Interface client, dossiers, espace conseiller fictif, laboratoire, documents et présentation du projet.
+- Accueil éditorial avec trois aperçus interactifs, vérification guidée, comparaison avant/après d’un dossier, suggestions contextuelles et panneau de suivi repliable sur mobile.
 - Base relationnelle, 8 scénarios initiaux et 12 documents fictifs versionnés.
 - Connecteurs LLM OpenAI et compatibles, avec outils de consultation contrôlés.
 - Mode actif par défaut : démonstration déterministe sans appel à un LLM.
 
 ## Vérifications exécutées
 
-- 20 tests d’intégration API : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration et contrat d’appel d’outils simulé.
+- 24 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles et contrat d’appel d’outils simulé.
+- 6 tests d’expérience : cohérence des aperçus, étapes du guide, versions historiques, suggestions et recherche sans accents.
 - 5 tests du rendu serveur et des composants du socle.
 - Vérification TypeScript, ESLint applicatif et compilation de production : réussies.
 - Les deux migrations ont été appliquées avec succès sur l’émulateur D1 local.
 - Le service de déploiement a confirmé la publication de la plateforme et le schéma D1 a été contrôlé.
 
 Ces résultats ne constituent pas un test de bout en bout dans un navigateur, un appel à un modèle réel, un test de charge ni un audit de sécurité indépendant. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales et les validations GitHub restent distinctes.
+La satisfaction utilisateur n’est pas encore mesurée : le [protocole d’essai](EXPERIENCE.md) prépare cette évaluation, sans publier de résultat inventé.
 
 ## Blocages et limites
 

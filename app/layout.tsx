@@ -1,13 +1,11 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './experience.css';
 
 export const metadata: Metadata = {
   title: 'AtlasCare AI',
   description:
-    'Le service client, en toute clarté. Plateforme de démonstration SAV, assistant et simulation métier.',
-  other: {
-    'codex-preview': 'development',
-  },
+    'Moins de flou. Plus de réponses. Essayez AtlasCare : un assistant SAV et service client connecté à des dossiers fictifs qui évoluent.',
   icons: {
     icon: '/favicon.svg',
     shortcut: '/favicon.svg',

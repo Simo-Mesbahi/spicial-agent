@@ -2,9 +2,13 @@
 
 ## 1. Suivi de réparation
 
-Créer l’espace, choisir le lave-linge (SAV-2026-1042), vérifier le code fictif via le formulaire. Demander « Où en est mon dossier ? ». Observer l’attente de pièce, la dernière mise à jour et l’absence de date inventée.
+Sur l’accueil, choisir « Une réparation ». L’aperçu permet déjà d’explorer une évolution illustrative sans créer de session. Cliquer « Vivre l’expérience » : le vrai espace de simulation s’ouvre sur le lave-linge (SAV-2026-1042).
 
-Dans l’espace conseiller, faire avancer une fois ce dossier. Revenir au chatbot et reposer la question : l’état doit devenir « En réparation ».
+Dans le formulaire, cliquer « Utiliser ce code », puis « Vérifier et consulter le dossier ». Ce bouton déclenche une vérification côté serveur, puis la question « Où en est mon dossier ? ». Observer l’attente de pièce, la dernière mise à jour et l’absence de date inventée.
+
+Suivre le bandeau : « Simuler l’étape suivante », puis « Consulter le nouvel état ». L’état devient « En réparation ». Le guide compare la version du dossier avec celle consultée pour la réponse. L’espace conseiller et le laboratoire permettent aussi de faire évoluer les dossiers.
+
+Sur mobile, le contexte du dossier s’ouvre avec le bouton au-dessus de la conversation. Le guide peut être masqué. Le logo ramène à l’accueil sans supprimer la session ; « Reprendre » permet de retrouver son espace.
 
 ## 2. Devis et contrôle d’action
 

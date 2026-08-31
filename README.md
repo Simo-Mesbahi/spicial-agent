@@ -10,14 +10,15 @@ AtlasCare permet de suivre une réparation, consulter une livraison, examiner un
 
 [Ouvrir AtlasCare AI](https://atlascare-ai.mohammed-elmesbahi.chatgpt.site)
 
-1. Ouvrir la plateforme et choisir **Créer mon espace de démonstration**.
-2. Choisir un dossier dans **Mes dossiers**.
-3. Ouvrir **Vérifier mon accès** et utiliser le code fictif du scénario.
-4. Demander « Où en est mon dossier ? ».
-5. Dans **Espace conseiller**, faire avancer le dossier, puis reposer la question.
-6. Tester un devis, un remboursement ou une demande de conseiller.
+1. Explorer l’aperçu interactif de l’accueil : réparation, livraison ou devis.
+2. Choisir **Vivre l’expérience** pour ouvrir son espace isolé sur le scénario choisi.
+3. Cliquer **Utiliser ce code**, puis **Vérifier et consulter le dossier**. La référence et le code sont contrôlés par le serveur avant la première réponse.
+4. Suivre le bandeau guidé : **Simuler l’étape suivante**, puis **Consulter le nouvel état**.
+5. Comparer les réponses et consulter **Sources & outils**. La version du dossier consultée est enregistrée avec chaque réponse.
+6. Explorer **Mes dossiers** pour un devis, un remboursement ou un relais conseiller simulé.
 
 Voir le [guide de démonstration](docs/DEMO.md).
+Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce qui est automatisé de ce qui doit encore être évalué par des testeurs.
 
 ## Fonctionnalités livrées
 
@@ -32,6 +33,7 @@ Voir le [guide de démonstration](docs/DEMO.md).
 | 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                     |
 | OpenAI / API compatible, dont Ollama                                 | Connecteurs avec outils de lecture ; tests de contrat simulés |
 | Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                   |
+| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur    |
 | Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé              |
 
 ## Lancer localement
