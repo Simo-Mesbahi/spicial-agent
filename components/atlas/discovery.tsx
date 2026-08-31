@@ -125,8 +125,8 @@ export function Discovery({
               « patientez ».
             </p>
             <p className="discovery-sublead">
-              Découvrez un assistant qui relie votre question à votre dossier. Et vous aide à
-              comprendre la suite.
+              Où en est votre dossier ? Quelle est la suite ? Que devez-vous faire ? Trois réponses
+              réunies dans un suivi clair, que vous pouvez faire évoluer pendant l’essai.
             </p>
             <div className="discovery-hero-actions">
               <button

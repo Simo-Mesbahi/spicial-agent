@@ -64,6 +64,24 @@ export function suggestedQuestions(c: { kind: CaseKind; status: string } | null)
     ];
   if (c.kind === 'return')
     return ['Où en est mon retour ?', 'Comment préparer un retour ?', 'Je souhaite un conseiller'];
+  if (c.kind === 'complaint')
+    return [
+      'Où en est ma réclamation ?',
+      'Quelle est la prochaine étape ?',
+      'Je souhaite un conseiller',
+    ];
+  if (c.kind === 'exchange')
+    return [
+      'Où en est mon échange ?',
+      'Quelle est la prochaine étape ?',
+      'Quelle est la prise en charge ?',
+    ];
+  if (c.status === 'ready')
+    return [
+      'Où récupérer mon produit ?',
+      'Quels documents faut-il pour le retrait ?',
+      'Je souhaite un conseiller',
+    ];
   return [
     'Où en est mon dossier ?',
     'Quelle est la prochaine étape ?',

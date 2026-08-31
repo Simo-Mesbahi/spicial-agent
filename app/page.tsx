@@ -76,8 +76,17 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Toaster, toast } from 'sonner';
 import { Discovery } from '@/components/atlas/discovery';
+import { CaseReceipt } from '@/components/atlas/case-receipt';
+import { type CaseBrief } from '@/lib/atlas/case-brief';
 import { guideStage, suggestedQuestions } from '@/lib/atlas/experience';
 import {
   articles as initialArticles,
@@ -125,6 +134,8 @@ type Meta = {
   outputTokens?: number;
   action?: string | null;
   caseVersion?: number | null;
+  caseBrief?: CaseBrief | null;
+  presentation?: 'case_brief' | 'text';
 };
 type Message = {
   id: string;
@@ -256,7 +267,9 @@ export default function Home() {
   const [lastError, setLastError] = useState('');
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [pendingCaseId, setPendingCaseId] = useState<string | null>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+  const conversation = useRef<HTMLDivElement>(null);
+  const latestMessage = useRef<HTMLDivElement>(null);
+  const conversationError = useRef<HTMLDivElement>(null);
   const dataRef = useRef(data);
   useEffect(() => {
     dataRef.current = data;
@@ -347,8 +360,20 @@ export default function Home() {
   const messages =
     data?.messages.filter((m) => m.case_id === (currentVerified ? current?.id : null)) ?? [];
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages.length, sending]);
+    const container = conversation.current;
+    if (!container) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const last = lastError ? conversationError.current : latestMessage.current;
+    const top = sending
+      ? container.scrollHeight
+      : last
+        ? container.scrollTop +
+          last.getBoundingClientRect().top -
+          container.getBoundingClientRect().top -
+          16
+        : 0;
+    container.scrollTo({ top, behavior: reduced ? 'instant' : 'smooth' });
+  }, [messages.length, sending, selectedId, showDiscovery, view, lastError]);
   function changeTheme() {
     const next = theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark';
     setTheme(next);
@@ -386,6 +411,16 @@ export default function Home() {
     setCode('');
     setVerifyError('');
     setConsultAfterVerify(consult);
+  }
+  function selectCase(c: Case) {
+    if (busy || sending) return;
+    setSelectedId(c.id);
+    setView('assistant');
+    setGuideOpen(true);
+    setContextOpen(false);
+    setInput('');
+    setLastError('');
+    if (!c.verified) openVerify(c, true);
   }
   async function doVerify(e: FormEvent) {
     e.preventDefault();
@@ -539,7 +574,7 @@ export default function Home() {
           : stage === 'done'
             ? {
                 step: '✓',
-                title: 'Vous avez vu le suivi se mettre à jour.',
+                title: 'Votre suivi reflète le dossier actuel.',
                 body: 'Continuez la conversation ou explorez une autre situation client.',
                 cta: 'Explorer les autres dossiers',
               }
@@ -814,8 +849,36 @@ export default function Home() {
                           {currentVerified ? 'Accès vérifié' : 'Accès protégé'}
                         </span>
                       </div>
+                      {data && (
+                        <div className="conversation-case-bar">
+                          <label id="conversation-case-label">Votre dossier</label>
+                          <Select
+                            value={selectedId ?? ''}
+                            disabled={busy || sending}
+                            onValueChange={(id) => {
+                              const chosen = data.cases.find((c) => c.id === id);
+                              if (chosen) selectCase(chosen);
+                            }}
+                          >
+                            <SelectTrigger
+                              className="conversation-case-select"
+                              aria-labelledby="conversation-case-label"
+                            >
+                              <SelectValue placeholder="Choisir un dossier" />
+                            </SelectTrigger>
+                            <SelectContent position="popper" className="conversation-case-options">
+                              {data.cases.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.product} · {c.reference}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                       <div
                         className="message-area"
+                        ref={conversation}
                         role="log"
                         aria-live="polite"
                         aria-label="Conversation avec AtlasCare"
@@ -853,12 +916,67 @@ export default function Home() {
                           </div>
                         )}
                         {messages.map((m) => (
-                          <div key={m.id} className={'message ' + m.role}>
+                          <div
+                            key={m.id}
+                            ref={m.id === messages.at(-1)?.id ? latestMessage : undefined}
+                            className={'message ' + m.role}
+                          >
                             {m.role === 'assistant' && <Brand small />}
                             <div className="message-content">
-                              <div className="message-bubble">{m.content}</div>
+                              {m.role === 'assistant' &&
+                              m.metadata.caseBrief &&
+                              m.metadata.presentation === 'case_brief' ? (
+                                <>
+                                  <CaseReceipt
+                                    brief={m.metadata.caseBrief}
+                                    current={current}
+                                    compact={m.id !== lastAnswer?.id}
+                                    busy={busy || sending}
+                                    onRefresh={() => void send('Où en est mon dossier ?')}
+                                    onQuote={() =>
+                                      current &&
+                                      setConfirm({ action: 'accept_quote', case: current })
+                                    }
+                                  />
+                                  <details className="answer-transcript">
+                                    <summary>Lire la réponse complète</summary>
+                                    <div className="message-bubble">{m.content}</div>
+                                  </details>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="message-bubble">{m.content}</div>
+                                  {m.role === 'assistant' && m.metadata.caseBrief && (
+                                    <CaseReceipt
+                                      brief={m.metadata.caseBrief}
+                                      current={current}
+                                      compact={m.id !== lastAnswer?.id}
+                                      busy={busy || sending}
+                                      onRefresh={() => void send('Où en est mon dossier ?')}
+                                      onQuote={() =>
+                                        current &&
+                                        setConfirm({ action: 'accept_quote', case: current })
+                                      }
+                                    />
+                                  )}
+                                </>
+                              )}
                               {m.role === 'assistant' && (
                                 <>
+                                  {m.metadata.action === 'handoff' &&
+                                    m.id === messages.at(-1)?.id &&
+                                    currentVerified &&
+                                    current && (
+                                      <button
+                                        className="button secondary reply-action"
+                                        disabled={busy || sending}
+                                        onClick={() =>
+                                          setConfirm({ action: 'handoff', case: current })
+                                        }
+                                      >
+                                        <Headphones size={15} /> Demander un conseiller
+                                      </button>
+                                    )}
                                   <div className="message-sources">
                                     {m.metadata.sources?.map((s) => (
                                       <button
@@ -897,7 +1015,7 @@ export default function Home() {
                           </div>
                         )}
                         {pendingHere && (
-                          <div className="typing">
+                          <div className="typing" role="status">
                             <Brand small />
                             <span>
                               Consultation des informations<span className="dots">…</span>
@@ -915,11 +1033,10 @@ export default function Home() {
                           </div>
                         )}
                         {lastError && (
-                          <div role="alert" className="inline-error">
+                          <div ref={conversationError} role="alert" className="inline-error">
                             {lastError}
                           </div>
                         )}
-                        <div ref={bottom} />
                       </div>
                       {currentVerified && current?.status === 'quote_pending' && (
                         <div className="action-strip">
@@ -948,6 +1065,7 @@ export default function Home() {
                           placeholder="Posez votre question…"
                           rows={2}
                           maxLength={1500}
+                          readOnly={sending}
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
                           onKeyDown={(e) => {
@@ -1191,15 +1309,8 @@ export default function Home() {
                           <button
                             className="icon-circle"
                             aria-label={'Ouvrir ' + c.reference}
-                            onClick={() => {
-                              setSelectedId(c.id);
-                              setView('assistant');
-                              setGuideOpen(true);
-                              setContextOpen(false);
-                              setInput('');
-                              setLastError('');
-                              if (!c.verified) openVerify(c, true);
-                            }}
+                            disabled={busy || sending}
+                            onClick={() => selectCase(c)}
                           >
                             <ArrowUpRight size={19} />
                           </button>

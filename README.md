@@ -14,8 +14,8 @@ AtlasCare permet de suivre une réparation, consulter une livraison, examiner un
 2. Choisir **Vivre l’expérience** pour ouvrir son espace isolé sur le scénario choisi.
 3. Cliquer **Utiliser ce code**, puis **Vérifier et consulter le dossier**. La référence et le code sont contrôlés par le serveur avant la première réponse.
 4. Suivre le bandeau guidé : **Simuler l’étape suivante**, puis **Consulter le nouvel état**.
-5. Comparer les réponses et consulter **Sources & outils**. La version du dossier consultée est enregistrée avec chaque réponse.
-6. Explorer **Mes dossiers** pour un devis, un remboursement ou un relais conseiller simulé.
+5. Lire **Le dossier en clair** : état, suite prévue et consigne client. Une alerte signale une réponse devenue historique ; **Actualiser le suivi** consulte à nouveau le dossier. Le texte complet et **Sources & outils** restent disponibles.
+6. Changer de dossier directement dans la conversation, ou explorer **Mes dossiers** pour un devis, un remboursement ou un relais conseiller simulé.
 
 Voir le [guide de démonstration](docs/DEMO.md).
 Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce qui est automatisé de ce qui doit encore être évalué par des testeurs.
@@ -35,6 +35,7 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 | Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut             |
 | Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                      |
 | Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur       |
+| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable     |
 | Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                 |
 
 ## Lancer localement

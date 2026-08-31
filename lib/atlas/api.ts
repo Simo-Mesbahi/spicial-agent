@@ -13,6 +13,7 @@ import {
   type CaseKind,
 } from './domain';
 import { modelSettings, publicModelConfig } from './model-policy';
+import { caseBrief } from './case-brief';
 
 export interface Statement {
   bind(...values: unknown[]): Statement;
@@ -500,7 +501,9 @@ export function demoAnswer(message: string, c: CaseRow | null) {
       tools: ['search_knowledge'],
       action: null,
     };
-  if (/conseiller|humain|reclamation|contact/.test(q))
+  const complaintFollowup =
+    c?.kind === 'complaint' && /ou en|statut|avanc|suivi|etape|nouvelle|quand/.test(q);
+  if (/conseiller|humain|contact/.test(q) || (/reclamation/.test(q) && !complaintFollowup))
     return {
       content: c
         ? 'Je peux transmettre une demande avec la référence, le statut et le résumé de cet échange. Confirmez avec « Demander un conseiller ». Le relais reste simulé dans cette démonstration.'
@@ -562,7 +565,7 @@ export function demoAnswer(message: string, c: CaseRow | null) {
     };
   if (
     c &&
-    /dossier|statut|prochaine|etape|ou en|nouvelle|quand|reparation|livraison|rembourse|suivi|retour|arrive|recuper|pret|retire|delai|date|montant|combien|mon |ma /.test(
+    /dossier|statut|prochaine|etape|ou en|nouvelle|quand|reparation|livraison|rembourse|reclamation|echange|suivi|retour|arrive|recuper|pret|retire|delai|date|montant|combien|mon |ma /.test(
       q,
     )
   )
@@ -976,7 +979,10 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         inputTokens: answer.inputTokens,
         outputTokens: answer.outputTokens,
         action: answer.action,
-        caseVersion: c?.version ?? null,
+        caseVersion: c && answer.tools.includes('get_case') ? c.version : null,
+        caseBrief: c && answer.tools.includes('get_case') ? caseBrief(c) : null,
+        presentation:
+          c && answer.mode === 'demo' && answer.content === grounded(c) ? 'case_brief' : 'text',
       };
       await db.batch([
         db

@@ -9,12 +9,14 @@
 - Connecteurs LLM OpenAI et compatibles, avec outils de consultation contrôlés.
 - Mode actif par défaut : démonstration déterministe sans appel à un LLM.
 - Budget IA 0 € appliqué par défaut au serveur : fournisseurs externes bloqués, connecteur Ollama local sans clé, lanceur isolé avec cloud désactivé et diagnostic séparant installation et génération réelle.
+- Suivi conversationnel « Le dossier en clair » : synthèse factuelle construite côté serveur, version historique conservée, alerte de changement et nouvelle consultation. Changement de dossier dans le chat, réponses de réclamation mieux orientées et relais conseiller accessible depuis sa réponse, avec confirmation.
 
 ## Vérifications exécutées
 
-- 28 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles, blocage des fournisseurs payants et contrats d’appel d’outils simulés.
-- 6 tests d’expérience : cohérence des aperçus, étapes du guide, versions historiques, suggestions et recherche sans accents.
+- 31 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles, blocage des fournisseurs payants et contrats d’appel d’outils simulés. Les huit premières questions proposées consultent le bon dossier ; les synthèses restent figées après transition ; les réponses générales ne prétendent pas avoir consulté un dossier.
+- 12 tests d’expérience : cohérence des aperçus, étapes du guide, versions historiques, suggestions, recherche sans accents, champs autorisés des synthèses, fraîcheur, montants manquants et états terminaux.
 - 9 tests de politique de budget, adresses locales, configuration conservée/sauvegardée et diagnostic Ollama simulé.
+- 5 tests de rendu serveur des synthèses : données courantes, alerte de changement, accès vérifié, historique compact et absence d’action de devis périmé.
 - 5 tests du rendu serveur et des composants du socle.
 - Vérification TypeScript, ESLint applicatif et compilation de production : réussies.
 - Les deux migrations ont été appliquées avec succès sur l’émulateur D1 local.

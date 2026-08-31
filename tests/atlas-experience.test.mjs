@@ -17,6 +17,20 @@ async function load(entry) {
 const { guideStage, suggestedQuestions, discoveryScenarios } =
   await load('lib/atlas/experience.ts');
 const { scenarios, nextStep, labels, normalized } = await load('lib/atlas/domain.ts');
+const { caseBrief, briefFreshness } = await load('lib/atlas/case-brief.ts');
+
+const source = {
+  id: 'case-1',
+  reference: 'SAV-2026-1042',
+  product: 'Lave-linge',
+  kind: 'repair',
+  status: 'waiting_part',
+  version: 0,
+  updated_at: 1788159600000,
+  quote_cents: null,
+  refund_cents: null,
+  estimate: null,
+};
 
 test('Discovery scenarios point to seeded cases and real simulated transitions', () => {
   for (const preview of discoveryScenarios) {
@@ -60,4 +74,78 @@ test('Suggested questions reflect delivery, refunds and pending decisions', () =
 test('Search accepts case and accent differences without removing useful identifiers', () => {
   assert.equal(normalized('RÉPARATION'), normalized('reparation'));
   assert.ok(normalized('SAV-2026-1042 Lave-linge').includes(normalized('sav-2026-1042')));
+});
+
+test('Case briefs explicitly allowlist facts and do not expose codes or customer data', () => {
+  const brief = caseBrief({
+    ...source,
+    code_hash: 'secret',
+    demoCode: '654321',
+    customer: 'Private',
+    receipt: 'receipt-secret',
+    space_id: 'private-space',
+  });
+  assert.equal(brief.schema, 1);
+  assert.equal(brief.caseId, source.id);
+  assert.equal(brief.nextLabel, labels.repairing);
+  assert.equal(brief.estimate, null);
+  assert.equal(brief.amount, null);
+  assert.doesNotMatch(JSON.stringify(brief), /secret|654321|Private|private-space/);
+});
+
+test('Briefs retain the read version rather than mutating when the case evolves', () => {
+  const row = { ...source };
+  const brief = caseBrief(row);
+  row.status = 'repairing';
+  row.version = 1;
+  assert.equal(brief.status, 'waiting_part');
+  assert.equal(brief.version, 0);
+  assert.equal(
+    briefFreshness(brief, { id: row.id, version: row.version, verified: true }),
+    'outdated',
+  );
+});
+
+test('Freshness is scoped to a verified case and never treats unknown data as current', () => {
+  const brief = caseBrief({ ...source, version: 2 });
+  assert.equal(briefFreshness(brief, null), 'unavailable');
+  assert.equal(
+    briefFreshness(brief, { id: source.id, version: 2, verified: false }),
+    'unavailable',
+  );
+  assert.equal(briefFreshness(brief, { id: 'other', version: 2, verified: true }), 'unavailable');
+  assert.equal(briefFreshness(brief, { id: source.id, version: 2, verified: true }), 'current');
+  assert.equal(briefFreshness(brief, { id: source.id, version: 1, verified: true }), 'unknown');
+});
+
+test('Quote summaries require a decision and never invent a missing amount', () => {
+  const brief = caseBrief({ ...source, status: 'quote_pending', quote_cents: 8900 });
+  assert.equal(brief.amount.cents, 8900);
+  assert.match(brief.nextLabel, /décision/);
+  assert.match(brief.customerStep, /explicitement/);
+  assert.equal(caseBrief({ ...source, status: 'quote_pending' }).amount, null);
+  assert.equal(caseBrief({ ...source, status: 'quote_pending', quote_cents: -1 }).amount, null);
+  assert.equal(caseBrief({ ...source, status: 'quote_pending', quote_cents: 0 }).amount.cents, 0);
+});
+
+test('Completed cases have no invented next stage and declined quotes are not completed repairs', () => {
+  for (const status of ['ready', 'delivered', 'refunded', 'resolved'])
+    assert.equal(caseBrief({ ...source, status }).nextLabel, 'Aucune autre étape enregistrée');
+  const declined = caseBrief({ ...source, status: 'declined' });
+  assert.match(declined.explanation, /Aucune réparation/);
+  assert.match(declined.nextLabel, /conseiller/);
+});
+
+test('Every initial scenario has a factual brief without an invented delivery or bank deadline', () => {
+  for (const c of scenarios) {
+    const brief = caseBrief({ ...source, ...c, quote_cents: c.quote, refund_cents: c.refund });
+    assert.equal(brief.statusLabel, labels[c.status]);
+    assert.equal(brief.estimate, null);
+    assert.ok(brief.explanation.length > 20);
+    if (c.kind === 'delivery') assert.match(brief.explanation, /Aucune nouvelle date confirmée/);
+    if (c.kind === 'refund') {
+      assert.equal(brief.amount.cents, 7900);
+      assert.match(brief.explanation, /Aucun délai bancaire/);
+    }
+  }
 });

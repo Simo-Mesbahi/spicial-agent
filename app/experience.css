@@ -775,6 +775,274 @@
   color: var(--quiet);
   font-size: 12px;
 }
+
+/* A service receipt: recorded facts first, interpretation and future steps clearly separated. */
+.conversation-case-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--soft);
+}
+.conversation-case-bar > label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--quiet);
+}
+.conversation-case-select {
+  min-width: 0;
+  width: 100%;
+  max-width: 460px;
+  min-height: 42px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--ink);
+}
+.conversation-case-select [data-slot='select-value'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-case-options {
+  max-width: min(560px, calc(100vw - 24px));
+}
+.conversation-case-options [data-slot='select-item'] {
+  min-height: 44px;
+  font-size: 12px;
+  white-space: normal;
+}
+.case-receipt {
+  container-type: inline-size;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--primary);
+  border-radius: 3px 3px 15px 15px;
+  background: var(--surface);
+  overflow: hidden;
+  text-align: left;
+}
+.message.assistant:has(.case-receipt) .message-content {
+  width: 100%;
+}
+.message-bubble + .case-receipt {
+  margin-top: 12px;
+}
+.receipt-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 10px;
+  color: var(--quiet);
+}
+.receipt-heading > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  letter-spacing: 0.7px;
+  font-weight: 700;
+}
+.receipt-current {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 20px 18px 18px;
+}
+.receipt-marker {
+  display: grid;
+  place-items: center;
+  flex: 0 0 35px;
+  height: 35px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--primary);
+}
+.receipt-current small {
+  color: var(--quiet);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.8px;
+}
+.receipt-current h3 {
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: -0.55px;
+  color: var(--ink);
+  margin-top: 5px;
+}
+.receipt-current p {
+  color: var(--quiet);
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+.receipt-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 17px;
+  margin: 0 18px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.receipt-facts dt {
+  color: var(--quiet);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.receipt-facts dd {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.65;
+  font-weight: 550;
+}
+.receipt-facts small {
+  display: block;
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.receipt-amount {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--accent);
+  color: var(--primary);
+  padding: 13px 18px;
+  font-size: 12px;
+}
+.receipt-amount strong {
+  font-size: 23px;
+  letter-spacing: -0.6px;
+  margin-left: auto;
+}
+.receipt-amount .text-button {
+  min-height: 40px;
+  padding-inline: 10px;
+}
+.receipt-date {
+  display: flex;
+  gap: 9px;
+  padding: 12px 18px;
+  color: var(--quiet);
+  background: var(--soft);
+  font-size: 11px;
+  line-height: 1.65;
+}
+.receipt-date > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.receipt-date strong {
+  font-weight: 550;
+}
+.receipt-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 11px 18px;
+  border-top: 1px dashed var(--border);
+  color: var(--quiet);
+  font-size: 9px;
+}
+.receipt-update {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--accent);
+  color: var(--primary);
+  border-top: 1px solid var(--border);
+}
+.receipt-update > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.receipt-update > div {
+  flex: 1;
+  min-width: 150px;
+}
+.receipt-update strong {
+  font-size: 12px;
+}
+.receipt-update p {
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 3px;
+}
+.receipt-update .button {
+  min-height: 40px;
+}
+.receipt-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  color: var(--quiet);
+  font-size: 11px;
+  line-height: 1.6;
+  padding-block: 7px;
+}
+.answer-transcript {
+  margin-top: 8px;
+}
+.answer-transcript summary {
+  padding-block: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--primary);
+  min-height: 34px;
+}
+.answer-transcript .message-bubble {
+  margin-top: 6px;
+}
+.reply-action {
+  margin-top: 10px;
+}
+@container (max-width: 360px) {
+  .receipt-current {
+    padding: 16px 13px;
+    gap: 9px;
+  }
+  .receipt-marker {
+    flex-basis: 28px;
+    height: 28px;
+  }
+  .receipt-current h3 {
+    font-size: 19px;
+  }
+  .receipt-heading,
+  .receipt-date,
+  .receipt-footer,
+  .receipt-update {
+    padding-inline: 13px;
+  }
+  .receipt-facts {
+    grid-template-columns: 1fr;
+    margin-inline: 13px;
+    gap: 12px;
+  }
+}
+@media (max-width: 560px) {
+  .conversation-case-bar {
+    display: block;
+    padding: 10px 14px;
+  }
+  .conversation-case-bar > label {
+    display: block;
+    margin-bottom: 6px;
+  }
+  .conversation-case-select {
+    max-width: none;
+  }
+}
 @media (max-width: 380px) {
   .discovery-nav-actions .icon-button {
     display: none;

@@ -21,3 +21,11 @@ Codes attendus : 400 données invalides, 401 session manquante/expirée, 403 acc
 `/api/snapshot` est une API de laboratoire, pas un endpoint client de production : elle expose les identifiants des scénarios fictifs au propriétaire de l’espace pour lui permettre de jouer les deux rôles. Ne pas brancher cet endpoint sur des données clients réelles.
 
 La configuration publique inclut `budgetMode`, `externalCallsAllowed` et `blockedReason`. `ready` signifie « configuration valide », pas « génération réelle testée » : `/api/health` n’envoie aucun appel au modèle. En budget `zero`, un fournisseur externe retourne 503 avant appel réseau et consommation du quota de messages. Aucun paramètre HTTP ne peut modifier le budget. Les réponses du modèle conservent `mode` et `caseVersion` dans leurs métadonnées.
+
+## Synthèse du dossier dans la conversation
+
+Les nouvelles réponses contiennent `metadata.caseBrief` (schéma 1) uniquement si `get_case` a effectivement été utilisé avec un dossier autorisé. Ce petit instantané est construit côté serveur depuis le dossier, jamais depuis le texte généré par un LLM : référence, produit, état, version, dernière mise à jour, prochaine étape du parcours, consigne client, estimation éventuellement enregistrée et montant pertinent. Il exclut codes, secrets et identité client. `caseVersion` est nul sans consultation du dossier.
+
+L’instantané est conservé dans les métadonnées JSON du message existant, sans changement de schéma ni nouvelle table. Il reste historique lorsque le simulateur fait avancer le dossier. L’interface compare sa version à celle du même dossier vérifié : une ancienne synthèse propose une nouvelle consultation et ne permet pas de valider son ancien devis. Le serveur continue de vérifier la version et la confirmation de toute action. Les conversations antérieures dépourvues de synthèse restent lisibles.
+
+`metadata.presentation = "case_brief"` ne concerne que les réponses de statut déterministes reconnues par le serveur. Leur texte intégral reste accessible sous la synthèse. Les réponses génératives, documentaires, de sécurité et de relais restent présentées comme du texte ; un éventuel instantané métier est distinct de leur contenu.
