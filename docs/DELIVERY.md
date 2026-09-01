@@ -28,7 +28,7 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 - 4 tests du contact email : destinataire fixe, Unicode, adresse de réponse, neutralisation des retours de ligne et bornes de validation.
 - 5 tests du rendu serveur et des composants du socle.
 - Vérification TypeScript, ESLint applicatif et compilation de production : réussies.
-- Audit npm de production après mise à jour des correctifs de sécurité : aucune vulnérabilité connue signalée.
+- Audit npm complet après mise à jour contrôlée du runtime et des outils de développement : aucune vulnérabilité connue signalée.
 - Les trois migrations ont été appliquées avec succès sur l’émulateur D1 local. La nouvelle migration ajoute le registre `chat_requests` ; la base applicative comprend 12 tables.
 - Parcours dans le navigateur de prévisualisation : vérification du dossier, première réponse, transition de réparation et historique, changement de dossier, annulation puis acceptation explicite d’un devis fictif, demande de conseiller et présence du contexte dans l’espace opérateur, recherche et ouverture d’une procédure versionnée.
 
