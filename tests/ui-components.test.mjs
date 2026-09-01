@@ -96,9 +96,13 @@ test('renders a contextual contact draft without exposing a secret', async () =>
     }),
   );
 
-  assert.match(html, /Votre contexte est déjà repris/);
+  assert.match(html, /Contexte de votre demande repris/);
   assert.match(html, /SAV-2026-1042 · Lave-linge/);
-  assert.match(html, /Copier le message complet/);
+  assert.match(html, /Application email du téléphone/);
+  assert.match(html, /Gmail/);
+  assert.match(html, /Outlook/);
+  assert.match(html, /Copier les informations de contact/);
+  assert.doesNotMatch(html, /<form|<input|<textarea/);
   assert.match(html, /mohammed\.elmesbahi31@gmail\.com/);
   assert.doesNotMatch(html, /GEMINI_API_KEY|OPENAI_API_KEY/);
 });

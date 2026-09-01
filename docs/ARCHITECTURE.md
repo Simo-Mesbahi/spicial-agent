@@ -24,7 +24,7 @@ flowchart TD
 
 `app/page.tsx` : sept espaces de navigation, dont une page de contact ; composants UI accessibles du catalogue Shadcn. Toute décision sensible reste côté serveur.
 
-`lib/atlas/contact.ts` : validation et construction d’un lien `mailto:` vers une adresse fixe. Le navigateur n’envoie ni ne stocke le message : le visiteur le relit et confirme l’envoi dans son application mail.
+`lib/atlas/contact.ts` : validation et construction cohérente des brouillons pour l’application email par défaut, Gmail et Outlook. Le navigateur n’envoie ni ne stocke le message : le visiteur le relit et confirme l’envoi dans la messagerie choisie.
 
 `lib/atlas/support-routing.ts` : politique de résolution avant transfert. Une première demande de contact propose une aide guidée ; une confirmation du client, une opération d’écriture, un sujet sensible ou une information métier manquante ouvre le relais sans nouvelle boucle de rétention. Cette décision est déterministe et testée séparément du LLM.
 

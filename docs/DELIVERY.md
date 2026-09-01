@@ -15,7 +15,7 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 - Fiabilité des échanges : identifiants de messages, reprise sans doublon après erreur réseau, enregistrement atomique, historique sélectionné par dossier et absence de validation d’un devis sans montant.
 - Fluidité : affichage immédiat de la réponse enregistrée, attente bornée, information hors ligne et d’actualisation interrompue, meilleur dimensionnement des contrôles sur mobile. Aperçu de partage propre au projet.
 - Identité produit renommée **SAV SC Assistant AI** dans l’interface, les métadonnées, le partage social, les messages du moteur local et la documentation.
-- Contact email dédié depuis l’accueil, la navigation et le relais conversationnel : dossier et dernier besoin préremplis, adresse de réponse, objet et message validés, destinataire fixe visible, copie complète de secours, aucune persistance applicative et confirmation finale dans l’application mail du visiteur.
+- Contact email dédié depuis l’accueil, la navigation et le relais conversationnel : aucun formulaire, dossier et dernier besoin préremplis, choix entre l’application du téléphone, Gmail et Outlook, versions web mobiles de secours, destinataire fixe visible, copie complète, aucune persistance applicative et confirmation finale dans la messagerie du visiteur.
 
 ## Vérifications exécutées
 
@@ -25,15 +25,15 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 - 10 tests de politique de budget, adresses locales, configuration conservée/sauvegardée et diagnostic Ollama simulé.
 - 6 tests client : identifiants compatibles avec la prévisualisation HTTP, erreurs de session, lecture bloquée, réponses invalides, absence de rejeu automatique et fusion sans doublons.
 - 5 tests de rendu serveur des synthèses : données courantes, alerte de changement, accès vérifié, historique compact et absence d’action de devis périmé.
-- 5 tests du contact email : destinataire fixe, Unicode, adresse de réponse, cohérence entre copie et application mail, neutralisation des retours de ligne et bornes de validation.
+- 5 tests du contact email : destinataire fixe, Unicode, cohérence des brouillons `mailto:`, Gmail et Outlook, liens d’applications mobiles, neutralisation des retours de ligne et bornes de validation.
 - 5 tests de routage support : aide initiale, confirmation sans boucle, opérations humaines, absence de faux positif et devis sans montant.
-- 6 tests du rendu serveur et des composants du socle, dont le formulaire contextualisé.
+- 6 tests du rendu serveur et des composants du socle, dont le sélecteur contextualisé sans formulaire.
 - Vérification TypeScript, ESLint applicatif et compilation de production : réussies.
 - Audit npm complet après mise à jour contrôlée du runtime et des outils de développement : aucune vulnérabilité connue signalée.
 - Les trois migrations ont été appliquées avec succès sur l’émulateur D1 local. La nouvelle migration ajoute le registre `chat_requests` ; la base applicative comprend 12 tables.
 - Parcours HTTP local de bout en bout : création de session, vérification d’un dossier, première demande de conseiller, réponse d’aide avec choix rapides, confirmation du relais et contrôle de l’entrée Contact dans le rendu serveur. La recette visuelle précédente reste documentée ; les nouveaux contrôles visuels seront rejoués après publication.
 
-Total : **95 tests applicatifs et 6 tests du socle réussis**. La recette précédente inclut le nouveau nom, le parcours Contact, l’erreur d’email, les thèmes clair/sombre et l’absence de débordement horizontal au format contrôlé. Cette passe ajoute le routage progressif et le formulaire contextualisé, validés en code, en rendu serveur et par un parcours HTTP réel. Elle reste ciblée, pas exhaustive : inspection visuelle après publication, Safari/iPhone physique, charge, appel à un modèle réel et audit indépendant restent à valider. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales, les validations GitHub et la publication restent distinctes.
+Total : **95 tests applicatifs et 6 tests du socle réussis**. La recette couvre le routage progressif, le contact sans formulaire, les brouillons cohérents pour trois familles de messageries, la copie de secours et le retour vers l’assistant. Un parcours utilisateur local a contrôlé l’ouverture de la page, l’aperçu, la copie complète et la poursuite dans l’assistant. Elle reste ciblée, pas exhaustive : Safari/iPhone physique, charge, appel à un modèle réel et audit indépendant restent à valider. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales, les validations GitHub et la publication restent distinctes.
 La satisfaction utilisateur n’est pas encore mesurée : le [protocole d’essai](EXPERIENCE.md) prépare cette évaluation, sans publier de résultat inventé.
 
 ## Blocages et limites

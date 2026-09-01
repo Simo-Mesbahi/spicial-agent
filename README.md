@@ -39,7 +39,7 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 | Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable          |
 | Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage               |
 | Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                      |
-| Contact email guidé                                                  | Dossier et dernier besoin préremplis ; copie de secours et envoi mail |
+| Contact email guidé                                                  | Appareil, Gmail ou Outlook ; contexte prérempli et copie de secours   |
 
 ## Lancer localement
 
@@ -125,7 +125,7 @@ Les sources et les configurations de test sont incluses dans la livraison ; aucu
 
 - Données synthétiques, scénarios bornés et procédures fictives ; pas de connexion à un SI réel.
 - Recherche lexicale ; embeddings, recherche hybride et reranking restent des évolutions à évaluer.
-- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. Le formulaire prépare un email contextualisé vers `mohammed.elmesbahi31@gmail.com` ; le visiteur doit relire puis confirmer l’envoi dans son application mail. Une copie complète est proposée si aucune application mail n’est configurée.
+- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. La page Contact prépare localement un email contextualisé vers `mohammed.elmesbahi31@gmail.com`, puis laisse choisir l’application par défaut, Gmail ou Outlook. Le visiteur relit et confirme l’envoi dans sa messagerie ; une copie complète reste disponible en secours.
 - La simulation avance à la consultation et par actions explicites. Une exécution permanente demande un ordonnanceur distinct.
 - L’appel réel aux modèles n’a pas été validé sans identifiants de fournisseur.
 - Les tests ne constituent pas un audit de sécurité indépendant ni une certification de production.

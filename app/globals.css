@@ -1857,7 +1857,7 @@ svg {
   align-items: stretch;
 }
 .contact-promise,
-.contact-form-card {
+.contact-clients-card {
   border: 1px solid var(--border);
   border-radius: 14px;
   min-width: 0;
@@ -1958,7 +1958,7 @@ svg {
   color: #eff5f0;
   font-size: 10px;
 }
-.contact-form-card {
+.contact-clients-card {
   background: var(--surface);
   padding: 34px;
   box-shadow: var(--shadow);
@@ -2015,59 +2015,207 @@ svg {
   font-size: 10px;
   line-height: 1.5;
 }
-.contact-form {
-  display: grid;
-  gap: 18px;
-  margin-top: 24px;
-}
-.contact-form label {
-  position: relative;
-  display: grid;
-  gap: 8px;
-  color: var(--foreground);
-  font-size: 11px;
-  font-weight: 650;
-}
-.contact-form input,
-.contact-form textarea {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid var(--input);
-  border-radius: 8px;
+.contact-email-preview {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
   background: var(--soft);
-  color: var(--foreground);
-  padding: 12px 13px;
-  font-size: 14px;
-  line-height: 1.55;
-  outline: none;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background 160ms ease;
+  overflow: hidden;
 }
-.contact-form textarea {
-  min-height: 150px;
-  resize: vertical;
-  padding-bottom: 32px;
+.contact-preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px;
 }
-.contact-form input:focus,
-.contact-form textarea:focus {
-  border-color: var(--ring);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 16%, transparent);
+.contact-preview-heading > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
 }
-.contact-form input::placeholder,
-.contact-form textarea::placeholder {
-  color: var(--quiet);
-  font-weight: 400;
+.contact-preview-heading > div {
+  min-width: 0;
 }
-.contact-counter {
-  position: absolute;
-  right: 11px;
-  bottom: 9px;
+.contact-preview-heading small,
+.contact-preview-heading strong {
+  display: block;
+}
+.contact-preview-heading small {
+  margin-bottom: 3px;
   color: var(--quiet);
   font-size: 9px;
-  font-weight: 400;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+.contact-preview-heading strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contact-email-preview details {
+  border-top: 1px solid var(--border);
+}
+.contact-email-preview summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  color: var(--quiet);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+  list-style: none;
+}
+.contact-email-preview summary::-webkit-details-marker {
+  display: none;
+}
+.contact-email-preview details[open] summary svg {
+  transform: rotate(180deg);
+}
+.contact-email-preview summary svg {
+  transition: transform 160ms ease;
+}
+.contact-email-preview details p {
+  margin: 0;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--quiet);
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.contact-client-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.contact-client-card-group {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+.contact-client-card-group:hover {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
+  box-shadow: 0 10px 25px color-mix(in srgb, var(--foreground) 6%, transparent);
+  transform: translateY(-1px);
+}
+.contact-client-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  min-height: 76px;
+  padding: 13px 14px;
+  color: var(--foreground);
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+.contact-client-card.recommended {
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+}
+.contact-client-card.recommended:hover {
+  border-color: var(--primary);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--primary) 11%, transparent);
+  transform: translateY(-1px);
+}
+.contact-client-card:focus-visible,
+.contact-web-fallback:focus-visible,
+.contact-assistant-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 26%, transparent);
+  outline-offset: 2px;
+}
+.contact-client-badge {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 800;
+}
+.contact-client-badge.default-mail {
+  background: #173f32;
+  color: #d9ec9d;
+}
+.contact-client-badge.gmail {
+  background: #fff4f2;
+  color: #c73b31;
+  border: 1px solid #f2d6d2;
+}
+.contact-client-badge.outlook {
+  background: #edf6ff;
+  color: #0967c2;
+  border: 1px solid #cfe3f7;
+}
+.contact-client-copy {
+  display: block;
+  min-width: 0;
+}
+.contact-client-copy strong,
+.contact-client-copy small,
+.contact-recommended-label {
+  display: block;
+}
+.contact-client-copy strong {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.contact-client-copy small {
+  margin-top: 3px;
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.contact-recommended-label {
+  margin-bottom: 3px;
+  color: var(--primary);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.contact-client-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.contact-web-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border-top: 1px solid var(--border);
+  color: var(--primary);
+  background: var(--soft);
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
 }
 .contact-error,
 .contact-success {
@@ -2089,16 +2237,58 @@ svg {
   background: color-mix(in srgb, var(--primary) 9%, var(--surface));
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
-.contact-submit {
+.contact-copy-message {
+  display: flex;
+  margin-top: 12px;
   min-height: 48px;
   justify-content: center;
   width: 100%;
   font-size: 12px;
 }
+.contact-assistant-link {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--foreground);
+  background: transparent;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+.contact-assistant-link:hover {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--soft);
+}
+.contact-assistant-link > svg:first-child,
+.contact-assistant-link > svg:last-child {
+  color: var(--primary);
+}
+.contact-assistant-link span,
+.contact-assistant-link strong {
+  display: block;
+}
+.contact-assistant-link span {
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.contact-assistant-link strong {
+  margin-bottom: 2px;
+  color: var(--foreground);
+  font-size: 11px;
+}
 .contact-privacy {
   display: flex;
   align-items: flex-start;
   gap: 7px;
+  margin-top: 14px;
   color: var(--quiet);
   font-size: 10px;
   line-height: 1.65;
@@ -2534,8 +2724,11 @@ svg {
     align-items: flex-start;
   }
   .contact-promise,
-  .contact-form-card {
+  .contact-clients-card {
     padding: 24px;
+  }
+  .contact-clients-card {
+    order: -1;
   }
   .contact-promise {
     min-height: auto;
@@ -2552,9 +2745,21 @@ svg {
   .contact-address-card button {
     margin-left: 31px;
   }
-  .contact-form input,
-  .contact-form textarea {
-    font-size: 16px;
+  .contact-client-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+    min-height: 82px;
+    padding: 13px;
+  }
+  .contact-client-badge {
+    width: 42px;
+    height: 42px;
+  }
+  .contact-client-action {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .contact-preview-heading strong {
+    white-space: normal;
   }
   .eyebrow {
     font-size: 9px;

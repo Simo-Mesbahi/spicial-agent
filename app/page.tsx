@@ -1917,7 +1917,16 @@ export default function Home() {
             </>
           )}
           {view === 'contact' && (
-            <ContactPage key={contactPrefill?.id ?? 'blank'} initialDraft={contactPrefill} />
+            <ContactPage
+              key={contactPrefill?.id ?? 'blank'}
+              initialDraft={contactPrefill}
+              onContinue={() => {
+                if (data) {
+                  setShowDiscovery(false);
+                  setView('assistant');
+                } else void start();
+              }}
+            />
           )}
           {view === 'project' && (
             <>
