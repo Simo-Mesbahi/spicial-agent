@@ -18,13 +18,15 @@ Choisir la machine à café (SAV-2026-1048), vérifier l’accès. Le devis fict
 
 Choisir CMD-2026-2086 et vérifier l’accès. Demander la date de livraison. Le dossier est retardé et ne possède pas de date confirmée : l’assistant doit le dire. Ne pas présenter une estimation comme une promesse.
 
-## 4. Relais humain simulé
+## 4. Aide guidée et relais humain simulé
 
-Sur un dossier vérifié, demander un conseiller et confirmer. Ouvrir l’espace conseiller : la demande contient la référence, le problème et le contexte disponible. Le relais est enregistré, sans conseiller réel ni envoi externe.
+Sur un dossier vérifié, demander un conseiller. L’assistant propose d’abord de traiter la demande et affiche trois étapes utiles. Choisir « Continuer avec un conseiller » : le choix du client est alors respecté sans nouveau triage. Confirmer le relais, puis ouvrir l’espace conseiller : la demande contient la référence, le problème et le contexte disponible. Le relais est enregistré, sans conseiller réel ni envoi externe.
+
+Essayer ensuite « Je veux modifier mon adresse de livraison ». Cette action dépasse les outils de lecture : l’assistant explique la limite et propose directement le relais humain.
 
 ## 5. Contact email contrôlé
 
-Ouvrir « Nous contacter », saisir une adresse de réponse, un objet et un message. Le destinataire est affiché. Le bouton prépare un email dans l’application mail du visiteur ; rien n’est envoyé ni stocké par le site. Relire puis confirmer l’envoi dans l’application mail. Le relais conseiller fictif reste un parcours distinct.
+Depuis la dernière réponse de relais, choisir « Écrire par email ». Le dossier et le besoin formulé dans le chat sont déjà repris. Saisir l’adresse de réponse, vérifier l’objet et le message. Le destinataire est affiché. Le bouton prépare un email dans l’application mail du visiteur ; rien n’est envoyé ni stocké par le site. Relire puis confirmer l’envoi dans l’application mail. En l’absence d’application mail configurée, utiliser « Copier le message complet ». Le relais conseiller fictif reste un parcours distinct.
 
 ## 6. Tester les limites
 

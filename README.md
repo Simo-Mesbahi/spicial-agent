@@ -2,7 +2,7 @@
 
 **Une plateforme de démonstration SAV et service client, connectée à un système métier simulé.**
 
-SAV SC Assistant AI permet de suivre une réparation, consulter une livraison, examiner un devis et transmettre une demande à un conseiller fictif. Le simulateur fait évoluer les dossiers ; l’assistant consulte leur état actualisé via une API contrôlée.
+SAV SC Assistant AI permet de suivre une réparation, consulter une livraison, examiner un devis et être accompagné jusqu’au bon niveau de résolution. Le chatbot essaie d’abord de traiter la demande avec le client ; il prépare un relais contextualisé lorsqu’une intervention humaine est nécessaire ou confirmée. Le simulateur fait évoluer les dossiers et l’assistant consulte leur état actualisé via une API contrôlée.
 
 > **Budget IA : 0 €.** Le mode public par défaut n’utilise **aucun LLM** : règles et recherche documentaire lexicale. Un vrai modèle peut fonctionner **localement avec Ollama, sans clé API**. Les fournisseurs externes sont bloqués par défaut, même si une clé est présente. Maison Atlas et toutes les données sont fictives ; aucune opération réelle n’est exécutée.
 
@@ -22,24 +22,24 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 
 ## Fonctionnalités livrées
 
-| Fonction                                                             | État                                                                    |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                       |
-| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                         |
-| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                   |
-| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                               |
-| Demande de conseiller avec contexte                                  | Enregistrée dans l’espace opérateur simulé                              |
-| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                                  |
-| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                               |
-| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées        |
-| Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement   |
-| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut                    |
-| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                             |
-| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur              |
-| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable            |
-| Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage                 |
-| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                        |
-| Contact email guidé                                                  | Message prérempli, relisible et envoyé par l’application mail du client |
+| Fonction                                                             | État                                                                  |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                     |
+| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                       |
+| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                 |
+| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                             |
+| Aide guidée puis relais conseiller avec contexte                     | Triage progressif ; confirmation respectée et transfert simulé        |
+| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                                |
+| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                             |
+| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées      |
+| Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement |
+| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut                  |
+| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                           |
+| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur            |
+| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable          |
+| Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage               |
+| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                      |
+| Contact email guidé                                                  | Dossier et dernier besoin préremplis ; copie de secours et envoi mail |
 
 ## Lancer localement
 
@@ -125,7 +125,7 @@ Les sources et les configurations de test sont incluses dans la livraison ; aucu
 
 - Données synthétiques, scénarios bornés et procédures fictives ; pas de connexion à un SI réel.
 - Recherche lexicale ; embeddings, recherche hybride et reranking restent des évolutions à évaluer.
-- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. Le formulaire de contact ouvre l’application mail du visiteur : il doit relire et confirmer lui-même l’envoi.
+- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. Le formulaire prépare un email contextualisé vers `mohammed.elmesbahi31@gmail.com` ; le visiteur doit relire puis confirmer l’envoi dans son application mail. Une copie complète est proposée si aucune application mail n’est configurée.
 - La simulation avance à la consultation et par actions explicites. Une exécution permanente demande un ordonnanceur distinct.
 - L’appel réel aux modèles n’a pas été validé sans identifiants de fournisseur.
 - Les tests ne constituent pas un audit de sécurité indépendant ni une certification de production.

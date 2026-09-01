@@ -985,6 +985,43 @@ svg {
   gap: 8px;
   margin-top: 10px;
 }
+.guided-replies {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+.guided-replies button {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+.guided-replies button:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--accent);
+  transform: translateY(-1px);
+}
+.guided-replies button:last-child {
+  color: var(--primary);
+}
+.guided-replies button:disabled {
+  opacity: 0.55;
+  transform: none;
+}
 .context-contact-actions {
   display: grid;
   gap: 8px;
@@ -1949,6 +1986,34 @@ svg {
 .contact-form-title p {
   color: var(--quiet);
   font-size: 11px;
+}
+.contact-context-ready {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  color: var(--primary);
+}
+.contact-context-ready > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.contact-context-ready strong,
+.contact-context-ready span {
+  display: block;
+}
+.contact-context-ready strong {
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.contact-context-ready span {
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.5;
 }
 .contact-form {
   display: grid;

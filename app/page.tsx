@@ -96,7 +96,7 @@ import {
 import { Toaster, toast } from 'sonner';
 import { Discovery } from '@/components/atlas/discovery';
 import { CaseReceipt } from '@/components/atlas/case-receipt';
-import { ContactPage } from '@/components/atlas/contact-page';
+import { ContactPage, type ContactPrefill } from '@/components/atlas/contact-page';
 import { type CaseBrief } from '@/lib/atlas/case-brief';
 import { ApiRequestError, mergeMessages, newRequestId, requestJson } from '@/lib/atlas/client';
 import { guideStage, suggestedQuestions } from '@/lib/atlas/experience';
@@ -147,6 +147,8 @@ type Meta = {
   inputTokens?: number | null;
   outputTokens?: number | null;
   action?: string | null;
+  quickReplies?: string[];
+  supportPath?: 'assist_first' | 'human_required' | 'human_confirmed' | null;
   caseVersion?: number | null;
   caseBrief?: CaseBrief | null;
   presentation?: 'case_brief' | 'text';
@@ -291,6 +293,7 @@ export default function Home() {
   const [confirm, setConfirm] = useState<{ action: string; case: Case } | null>(null);
   const [reset, setReset] = useState(false);
   const [trace, setTrace] = useState<Message | null>(null);
+  const [contactPrefill, setContactPrefill] = useState<ContactPrefill | null>(null);
   const [lastError, setLastError] = useState('');
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [pendingCaseId, setPendingCaseId] = useState<string | null>(null);
@@ -518,6 +521,28 @@ export default function Home() {
     setInput('');
     setLastError('');
     if (!c.verified) openVerify(c, true);
+  }
+  function openContact(source?: Message) {
+    const customerMessage = messages.findLast(
+      (message) => message.role === 'user' && (!source || message.created_at <= source.created_at),
+    );
+    const caseContext = currentVerified && current ? current : null;
+    const request = customerMessage?.content.trim().slice(0, 1600);
+    const subject = caseContext
+      ? `Dossier ${caseContext.reference} — demande d’accompagnement`
+      : 'Demande SAV / service client';
+    const message = caseContext
+      ? `Bonjour,\n\nJe souhaite être accompagné au sujet du dossier ${caseContext.reference} (${caseContext.product}).\n\nMa demande :\n${request || 'Merci de me recontacter afin de m’accompagner dans ma démarche.'}\n\nMerci.`
+      : `Bonjour,\n\nJe souhaite être accompagné par le SAV ou le service client.\n\nMa demande :\n${request || 'Merci de me recontacter afin de m’accompagner dans ma démarche.'}\n\nMerci.`;
+    setContactPrefill({
+      id: newRequestId(),
+      subject,
+      message,
+      contextLabel: caseContext
+        ? `${caseContext.reference} · ${caseContext.product}`
+        : 'Demande issue de votre conversation',
+    });
+    setView('contact');
   }
   async function doVerify(e: FormEvent) {
     e.preventDefault();
@@ -795,6 +820,7 @@ export default function Home() {
           }}
           onExplore={(next) => {
             setShowDiscovery(false);
+            if (next === 'contact') setContactPrefill(null);
             setView(next);
             setSearch('');
           }}
@@ -829,6 +855,7 @@ export default function Home() {
                   <NavigationButton
                     isActive={view === n.id}
                     onClick={() => {
+                      if (n.id === 'contact') setContactPrefill(null);
                       setView(n.id);
                       setSearch('');
                     }}
@@ -1179,10 +1206,37 @@ export default function Home() {
                                         </button>
                                         <button
                                           className="button primary reply-action"
-                                          onClick={() => setView('contact')}
+                                          onClick={() => openContact(m)}
                                         >
                                           <Mail size={15} /> Écrire par email
                                         </button>
+                                      </div>
+                                    )}
+                                  {m.metadata.action === 'contact' &&
+                                    m.id === messages.at(-1)?.id && (
+                                      <div className="reply-actions">
+                                        <button
+                                          className="button primary reply-action"
+                                          onClick={() => openContact(m)}
+                                        >
+                                          <Mail size={15} /> Préparer mon message
+                                        </button>
+                                      </div>
+                                    )}
+                                  {Boolean(m.metadata.quickReplies?.length) &&
+                                    m.id === messages.at(-1)?.id && (
+                                      <div className="guided-replies" aria-label="Étapes proposées">
+                                        {m.metadata.quickReplies?.map((reply) => (
+                                          <button
+                                            key={reply}
+                                            type="button"
+                                            disabled={busy || sending}
+                                            onClick={() => void send(reply)}
+                                          >
+                                            {reply}
+                                            <ArrowRight size={14} />
+                                          </button>
+                                        ))}
                                       </div>
                                     )}
                                   <div className="message-sources">
@@ -1433,10 +1487,7 @@ export default function Home() {
                                 <Headphones size={16} />
                                 Simuler le relais conseiller
                               </button>
-                              <button
-                                className="button primary full"
-                                onClick={() => setView('contact')}
-                              >
+                              <button className="button primary full" onClick={() => openContact()}>
                                 <Mail size={16} />
                                 Contacter par email
                               </button>
@@ -1865,7 +1916,9 @@ export default function Home() {
               </div>
             </>
           )}
-          {view === 'contact' && <ContactPage />}
+          {view === 'contact' && (
+            <ContactPage key={contactPrefill?.id ?? 'blank'} initialDraft={contactPrefill} />
+          )}
           {view === 'project' && (
             <>
               <SectionTitle

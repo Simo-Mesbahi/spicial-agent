@@ -9,9 +9,10 @@ const compiled = await build({
   format: 'esm',
   write: false,
 });
-const { buildContactMailto, CONTACT_RECIPIENT, validateContactDraft } = await import(
-  'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
-);
+const { buildContactEmail, buildContactMailto, CONTACT_RECIPIENT, validateContactDraft } =
+  await import(
+    'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
+  );
 
 test('Contact messages always target the configured recipient', () => {
   const link = buildContactMailto({
@@ -33,6 +34,19 @@ test('Contact link preserves readable Unicode content and a reply address', () =
   assert.equal(url.searchParams.get('subject'), '[SAV SC Assistant AI] Produit défectueux');
   assert.match(url.searchParams.get('body'), /^Adresse de réponse : client@example\.com/m);
   assert.match(url.searchParams.get('body'), /Deuxième ligne avec un café\./);
+});
+
+test('Copied contact content matches the email application draft', () => {
+  const input = {
+    email: 'client@example.com',
+    subject: 'Dossier SAV-2026-1042',
+    message: 'Bonjour, je souhaite être accompagné pour mon dossier.',
+  };
+  const email = buildContactEmail(input);
+  const url = new URL(buildContactMailto(input));
+  assert.equal(email.recipient, CONTACT_RECIPIENT);
+  assert.equal(url.searchParams.get('subject'), email.subject);
+  assert.equal(url.searchParams.get('body'), email.body);
 });
 
 test('Contact subject cannot inject mail headers', () => {

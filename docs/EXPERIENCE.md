@@ -14,9 +14,9 @@ Donner envie d’essayer en montrant une situation compréhensible, puis permett
 - Suivi « Le dossier en clair » : état consulté, explication, prochaine étape prévue, action du client et montant pertinent. L’estimation reste explicitement non garantie ; son absence n’est pas remplacée par une date inventée. Les réponses de statut déterministes privilégient cette synthèse et conservent le texte intégral dépliable.
 - Historique fiable : synthèse figée à la version consultée, alerte lorsque le dossier évolue et nouvelle consultation en un clic. Un ancien devis n’expose plus son bouton d’examen. Les anciennes conversations sans synthèse restent lisibles.
 - Changement de dossier directement dans la conversation avec contrôle d’accès inchangé. Suggestions spécifiques aux réclamations, échanges et retraits ; le suivi d’une réclamation ne déclenche plus à tort une proposition de relais.
-- Relais conseiller accessible depuis la réponse qui le propose, toujours précédé d’une confirmation et toujours simulé. Défilement limité à la conversation, centré sur le début de la dernière réponse ; préférence de réduction des animations respectée.
+- Résolution avant transfert : à la première demande de contact, l’assistant propose son aide et trois prochaines étapes pertinentes. Si le client confirme son choix, le relais apparaît immédiatement. Une modification de commande, de compte ou de paiement, une contestation, un devis sans montant ou une situation de sécurité déclenche directement l’orientation humaine. Le transfert métier reste simulé.
 - Mobile : conversation prioritaire, panneau du dossier repliable, saisie en 16 px. Thèmes clair, sombre et système ; navigation clavier et préférence de réduction des animations prises en compte dans le code.
-- Contact : page dédiée accessible depuis l’accueil, la navigation et les réponses de relais. Les champs sont validés, le destinataire est visible et aucun message ne part avant confirmation dans l’application mail du visiteur.
+- Contact : page dédiée accessible depuis l’accueil, la navigation et les réponses de relais. Depuis le chat, le dossier et le dernier besoin sont préremplis pour éviter la répétition. Les champs sont validés, le destinataire est visible, une copie complète est disponible et aucun message ne part avant confirmation dans l’application mail du visiteur.
 
 ## Essai utilisateur à organiser
 
@@ -30,6 +30,8 @@ Commencer avec cinq personnes qui ne connaissent pas le projet. Ce petit groupe 
 6. Refaire un parcours sur téléphone et au clavier.
 7. Masquer le guide, changer de dossier depuis la conversation, puis retrouver son premier suivi. Vérifier que le code est encore demandé pour un dossier non vérifié.
 8. Faire évoluer le dossier après une réponse : demander au testeur de distinguer l’ancien état consulté du nouvel état et de retrouver la nouvelle réponse.
+9. Demander « Je souhaite un conseiller » : vérifier que l’assistant propose d’abord une aide utile, puis que « Continuer avec un conseiller » ouvre le relais sans recommencer le triage.
+10. Demander de modifier une adresse de livraison : vérifier que l’assistant explique pourquoi un humain est requis et préremplit le contact avec le bon dossier.
 
 Relever pour chaque tâche : réussite sans aide, temps observé, endroit du blocage, erreur affichée, compréhension du caractère fictif et commentaire libre. Demander ensuite une note de facilité sur cinq et la principale amélioration souhaitée. Aucun suivi analytique externe n’est installé par cette livraison.
 

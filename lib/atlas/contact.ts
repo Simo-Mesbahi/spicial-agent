@@ -29,10 +29,19 @@ export function validateContactDraft(draft: ContactDraft): ContactDraft {
 }
 
 export function buildContactMailto(draft: ContactDraft) {
-  const clean = validateContactDraft(draft);
+  const { subject, body } = buildContactEmail(draft);
   const params = new URLSearchParams({
-    subject: `[SAV SC Assistant AI] ${clean.subject}`,
-    body: `Adresse de réponse : ${clean.email}\n\n${clean.message}\n\n— Message préparé depuis SAV SC Assistant AI`,
+    subject,
+    body,
   });
   return `mailto:${CONTACT_RECIPIENT}?${params.toString()}`;
+}
+
+export function buildContactEmail(draft: ContactDraft) {
+  const clean = validateContactDraft(draft);
+  return {
+    recipient: CONTACT_RECIPIENT,
+    subject: `[SAV SC Assistant AI] ${clean.subject}`,
+    body: `Adresse de réponse : ${clean.email}\n\n${clean.message}\n\n— Message préparé depuis SAV SC Assistant AI`,
+  };
 }
