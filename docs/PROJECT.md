@@ -1,4 +1,4 @@
-# AtlasCare AI — périmètre et décisions
+# SAV SC Assistant AI — périmètre et décisions
 
 Plateforme de démonstration pour l’enseigne fictive Maison Atlas. Code et données synthétiques uniquement. Le produit couvre les consultations SAV et service client, les explications documentaires, les demandes de contact, les confirmations de devis et les simulations.
 
@@ -16,13 +16,13 @@ Le mode explicite `free` autorise aussi Gemini pour la démonstration fictive, a
 - API de consultation, événements, vérification de code, devis et demande de conseiller.
 - Simulation manuelle et horloge automatique rattrapée à la consultation (pas de promesse de processus permanent sur un serveur inactif).
 - Recherche documentaire lexicale et réponses sourcées ; génération LLM seulement après configuration explicite.
-- Interface client, dossiers, espace opérateur, simulation, connaissances et présentation technique.
+- Interface client, dossiers, contact email, espace opérateur, simulation, connaissances et présentation technique.
 - Tests de permissions, transitions, isolation, idempotence et historique.
 - Reprise des messages après coupure, réponses et historique enregistrés atomiquement, information de fraîcheur et attente réseau bornée.
 
 ## Limites à rendre visibles
 
-Aucune intégration réelle avec une enseigne ou un transporteur. Aucune notification externe, facturation, décision juridique ou remboursement réel. Les estimations sont fictives et identifiées. Un modèle ne sera qualifié de performant qu’après évaluation réelle. La connexion LLM exige un modèle accessible et, selon le fournisseur, une clé configurée comme secret.
+Aucune intégration réelle avec une enseigne ou un transporteur. Aucune notification automatique, facturation, décision juridique ou remboursement réel. Le contact email est préparé localement puis envoyé uniquement si le visiteur le confirme dans son application mail. Les estimations sont fictives et identifiées. Un modèle ne sera qualifié de performant qu’après évaluation réelle. La connexion LLM exige un modèle accessible et, selon le fournisseur, une clé configurée comme secret.
 
 ## Critères de validation
 

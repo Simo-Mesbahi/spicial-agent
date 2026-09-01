@@ -1,4 +1,4 @@
-# Gemini gratuit dans AtlasCare
+# Gemini gratuit dans SAV SC Assistant AI
 
 ## Périmètre
 
@@ -11,7 +11,7 @@ Le serveur ne reconnaît que :
 - `LLM_MODEL=gemini-2.5-flash` ou `gemini-2.5-flash-lite`
 - `GEMINI_API_KEY` comme secret serveur
 
-L’endpoint est figé sur `https://generativelanguage.googleapis.com/v1beta/openai`. Aucun champ de l’interface ou de l’API AtlasCare ne peut modifier le fournisseur, le budget, le modèle ou la clé. OpenAI et les endpoints compatibles génériques restent bloqués en budget `zero`.
+L’endpoint est figé sur `https://generativelanguage.googleapis.com/v1beta/openai`. Aucun champ de l’interface ou de l’API SAV SC Assistant AI ne peut modifier le fournisseur, le budget, le modèle ou la clé. OpenAI et les endpoints compatibles génériques restent bloqués en budget `zero`.
 
 ## Activation contrôlée
 
@@ -32,11 +32,11 @@ La clé reste exclusivement côté serveur. Les noms de variables ne doivent rec
 
 ## Budget et confidentialité
 
-`free` est une politique d’activation AtlasCare, pas une preuve de gratuité du compte Google. Ne pas activer la facturation pour cet essai à budget nul. La disponibilité de l’offre gratuite dépend du modèle, de la région et des limites du fournisseur ; le quota applicatif ne garantit pas un plafond financier.
+`free` est une politique d’activation SAV SC Assistant AI, pas une preuve de gratuité du compte Google. Ne pas activer la facturation pour cet essai à budget nul. La disponibilité de l’offre gratuite dépend du modèle, de la région et des limites du fournisseur ; le quota applicatif ne garantit pas un plafond financier.
 
 Documentation officielle vérifiée le 31 août 2026 : [tarifs et utilisation des données](https://ai.google.dev/gemini-api/docs/pricing), [niveaux de facturation](https://ai.google.dev/gemini-api/docs/billing), [API compatible OpenAI](https://ai.google.dev/gemini-api/docs/openai), [cycle de vie des modèles](https://ai.google.dev/gemini-api/docs/deprecations). Les modèles autorisés doivent être revérifiés avant une activation ultérieure.
 
-Le fournisseur impose ses propres limites. AtlasCare conserve ses quotas par espace, par réseau et son plafond global journalier. Une erreur de fournisseur, de quota ou de validation ne change pas de modèle et ne déclenche aucun repli payant : AtlasCare affiche explicitement une réponse de secours déterministe, fondée sur les règles et les données fictives disponibles.
+Le fournisseur impose ses propres limites. SAV SC Assistant AI conserve ses quotas par espace, par réseau et son plafond global journalier. Une erreur de fournisseur, de quota ou de validation ne change pas de modèle et ne déclenche aucun repli payant : l’application affiche explicitement une réponse de secours déterministe, fondée sur les règles et les données fictives disponibles.
 
 ## Garde-fous de réponse
 

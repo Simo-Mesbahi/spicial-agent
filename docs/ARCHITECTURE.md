@@ -22,7 +22,9 @@ flowchart TD
 
 `db/schema.ts` et `drizzle/` : schéma et migrations. Le runtime ne crée aucune table. Les données synthétiques sont insérées après création de la session.
 
-`app/page.tsx` : six espaces de navigation ; composants UI accessibles du catalogue Shadcn. Toute décision sensible reste côté serveur.
+`app/page.tsx` : sept espaces de navigation, dont une page de contact ; composants UI accessibles du catalogue Shadcn. Toute décision sensible reste côté serveur.
+
+`lib/atlas/contact.ts` : validation et construction d’un lien `mailto:` vers une adresse fixe. Le navigateur n’envoie ni ne stocke le message : le visiteur le relit et confirme l’envoi dans son application mail.
 
 ## Données et cohérence
 

@@ -12,6 +12,7 @@ import {
   FileCheck2,
   FlaskConical,
   LockKeyhole,
+  Mail,
   Moon,
   Play,
   RefreshCw,
@@ -41,7 +42,7 @@ type Props = {
   onTheme: () => void;
   onStart: (reference?: string) => void;
   onResume: () => void;
-  onExplore: (view: 'knowledge' | 'project') => void;
+  onExplore: (view: 'knowledge' | 'contact' | 'project') => void;
 };
 
 export function Discovery({
@@ -68,18 +69,21 @@ export function Discovery({
         Aller au contenu
       </a>
       <header className="discovery-nav discovery-container">
-        <a href="#" className="discovery-brand" aria-label="AtlasCare AI, accueil">
+        <a href="#" className="discovery-brand" aria-label="SAV SC Assistant AI, accueil">
           <span className="brand-symbol">
             <Sparkles size={22} />
           </span>
           <span>
-            atlas<span className="brand-light">care</span>
+            SAV SC <span className="brand-light">Assistant</span>
             <sup>AI</sup>
           </span>
         </a>
-        <nav aria-label="Découvrir AtlasCare">
+        <nav aria-label="Découvrir SAV SC Assistant AI">
           <a href="#try-atlas">L’expérience</a>
           <a href="#how-atlas">Comment ça marche</a>
+          <button onClick={() => onExplore('contact')}>
+            Nous contacter <Mail size={13} />
+          </button>
           <button onClick={() => onExplore('project')}>
             Le projet <ArrowUpRight size={13} />
           </button>
@@ -205,7 +209,7 @@ export function Discovery({
                         <Sparkles size={19} />
                       </span>
                       <div>
-                        <strong>AtlasCare</strong>
+                        <strong>SAV SC Assistant AI</strong>
                         <small>Votre question. Votre dossier.</small>
                       </div>
                       <span className="preview-sandbox">APERÇU FICTIF</span>
@@ -281,7 +285,7 @@ export function Discovery({
 
         <section
           className="discovery-value-strip discovery-container"
-          aria-label="Les principes d’AtlasCare"
+          aria-label="Les principes de SAV SC Assistant AI"
         >
           <div>
             <span>01</span>
@@ -411,23 +415,31 @@ export function Discovery({
               Commencez par un dossier.
             </h2>
           </div>
-          <button
-            className="discovery-primary"
-            disabled={unavailable}
-            onClick={() => onStart(choice.reference)}
-          >
-            Essayer AtlasCare <ArrowRight size={19} />
-          </button>
+          <div className="discovery-final-actions">
+            <button className="discovery-contact-cta" onClick={() => onExplore('contact')}>
+              Nous contacter <Mail size={18} />
+            </button>
+            <button
+              className="discovery-primary"
+              disabled={unavailable}
+              onClick={() => onStart(choice.reference)}
+            >
+              Essayer l’assistant <ArrowRight size={19} />
+            </button>
+          </div>
         </section>
       </main>
       <footer className="discovery-footer discovery-container">
         <span>
-          AtlasCare AI <span>par Simo Mesbahi</span>
+          SAV SC Assistant AI <span>par Simo Mesbahi</span>
         </span>
         <span>Démonstration · Données fictives</span>
-        <button onClick={() => onExplore('project')}>
-          Architecture & limites <ChevronRight size={14} />
-        </button>
+        <div className="discovery-footer-actions">
+          <button onClick={() => onExplore('contact')}>Nous contacter</button>
+          <button onClick={() => onExplore('project')}>
+            Architecture & limites <ChevronRight size={14} />
+          </button>
+        </div>
       </footer>
     </div>
   );

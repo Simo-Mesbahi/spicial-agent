@@ -1,4 +1,4 @@
-# AtlasCare avec un budget IA de 0 €
+# SAV SC Assistant AI avec un budget IA de 0 €
 
 ## Deux usages distincts
 
@@ -62,7 +62,7 @@ Ollama n’accepte ici que des adresses HTTP de boucle locale terminées par `/v
 
 - **Ollama absent** : installer l’application officielle et ouvrir un nouveau terminal.
 - **Modèle absent** : relancer avec `--pull` ; prévoir l’espace disque du téléchargement.
-- **Port 11435 utilisé** : arrêter votre ancienne session AtlasCare avec Ctrl+C ; ne pas supprimer un processus inconnu.
+- **Port 11435 utilisé** : arrêter votre ancienne session SAV SC Assistant AI avec Ctrl+C ; ne pas supprimer un processus inconnu.
 - **Réponse trop lente** : vérifier la mémoire disponible et fermer les applications lourdes. Ne pas annoncer de performance avant mesure.
 - **Site public toujours sans LLM** : c’est le comportement attendu. La boucle locale du site hébergé n’est pas votre ordinateur. Aucun tunnel public non protégé n’est créé.
 

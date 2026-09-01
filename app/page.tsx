@@ -24,6 +24,7 @@ import {
   FlaskConical,
   Headphones,
   LockKeyhole,
+  Mail,
   MessageSquareText,
   Moon,
   Package,
@@ -95,6 +96,7 @@ import {
 import { Toaster, toast } from 'sonner';
 import { Discovery } from '@/components/atlas/discovery';
 import { CaseReceipt } from '@/components/atlas/case-receipt';
+import { ContactPage } from '@/components/atlas/contact-page';
 import { type CaseBrief } from '@/lib/atlas/case-brief';
 import { ApiRequestError, mergeMessages, newRequestId, requestJson } from '@/lib/atlas/client';
 import { guideStage, suggestedQuestions } from '@/lib/atlas/experience';
@@ -183,10 +185,12 @@ type Snapshot = {
   articles: Article[];
   serverTime: number;
 };
-type View = 'assistant' | 'dossiers' | 'operations' | 'simulation' | 'knowledge' | 'project';
+type View =
+  'assistant' | 'dossiers' | 'contact' | 'operations' | 'simulation' | 'knowledge' | 'project';
 const nav = [
   { id: 'assistant', label: 'Assistant', icon: MessageSquareText },
   { id: 'dossiers', label: 'Mes dossiers', icon: FileText },
+  { id: 'contact', label: 'Nous contacter', icon: Mail },
   { id: 'operations', label: 'Espace conseiller', icon: Headphones },
   { id: 'simulation', label: 'Laboratoire', icon: FlaskConical },
   { id: 'knowledge', label: 'Connaissances', icon: BookOpen },
@@ -200,7 +204,7 @@ function Brand({ small = false }: { small?: boolean }) {
       </span>
       {!small && (
         <span>
-          atlas<span className="brand-light">care</span>
+          SAV SC <span className="brand-light">Assistant</span>
           <sup>AI</sup>
         </span>
       )}
@@ -804,7 +808,7 @@ export default function Home() {
         <SidebarHeader className="brand-header">
           <button
             className="brand-home"
-            aria-label="Revenir à l’accueil AtlasCare"
+            aria-label="Revenir à l’accueil SAV SC Assistant AI"
             onClick={() => {
               setShowDiscovery(true);
               setView('assistant');
@@ -820,7 +824,7 @@ export default function Home() {
           <SidebarGroup>
             <SidebarGroupLabel>ESPACE DE TRAVAIL</SidebarGroupLabel>
             <SidebarMenu>
-              {nav.slice(0, 2).map((n) => (
+              {nav.slice(0, 3).map((n) => (
                 <SidebarMenuItem key={n.id}>
                   <NavigationButton
                     isActive={view === n.id}
@@ -844,7 +848,7 @@ export default function Home() {
           <SidebarGroup>
             <SidebarGroupLabel>DÉMONSTRATION</SidebarGroupLabel>
             <SidebarMenu>
-              {nav.slice(2).map((n) => (
+              {nav.slice(3).map((n) => (
                 <SidebarMenuItem key={n.id}>
                   <NavigationButton
                     isActive={view === n.id}
@@ -877,7 +881,7 @@ export default function Home() {
             <span className="avatar">{data ? 'DM' : 'V'}</span>
             <div>
               <strong>{data ? 'Mode démonstration' : 'Visiteur'}</strong>
-              <small>{data ? 'Session de 24 heures' : 'Découvrez AtlasCare'}</small>
+              <small>{data ? 'Session de 24 heures' : 'Découvrez SAV SC Assistant AI'}</small>
             </div>
             <button
               className="icon-button"
@@ -1020,7 +1024,7 @@ export default function Home() {
                       <div className="chat-header">
                         <Brand small />
                         <div>
-                          <strong>AtlasCare Assistant</strong>
+                          <strong>SAV SC Assistant AI</strong>
                           <small>
                             {currentVerified
                               ? 'Connecté au dossier ' + current?.reference
@@ -1064,7 +1068,7 @@ export default function Home() {
                         ref={conversation}
                         role="log"
                         aria-live="polite"
-                        aria-label="Conversation avec AtlasCare"
+                        aria-label="Conversation avec SAV SC Assistant AI"
                       >
                         {!messages.length && (
                           <div className="chat-welcome">
@@ -1163,15 +1167,23 @@ export default function Home() {
                                     m.id === messages.at(-1)?.id &&
                                     currentVerified &&
                                     current && (
-                                      <button
-                                        className="button secondary reply-action"
-                                        disabled={busy || sending}
-                                        onClick={() =>
-                                          setConfirm({ action: 'handoff', case: current })
-                                        }
-                                      >
-                                        <Headphones size={15} /> Demander un conseiller
-                                      </button>
+                                      <div className="reply-actions">
+                                        <button
+                                          className="button secondary reply-action"
+                                          disabled={busy || sending}
+                                          onClick={() =>
+                                            setConfirm({ action: 'handoff', case: current })
+                                          }
+                                        >
+                                          <Headphones size={15} /> Simuler le relais
+                                        </button>
+                                        <button
+                                          className="button primary reply-action"
+                                          onClick={() => setView('contact')}
+                                        >
+                                          <Mail size={15} /> Écrire par email
+                                        </button>
+                                      </div>
                                     )}
                                   <div className="message-sources">
                                     {m.metadata.sources?.map((s) => (
@@ -1412,14 +1424,23 @@ export default function Home() {
                                   </div>
                                 ))}
                             </div>
-                            <button
-                              className="button secondary full"
-                              disabled={busy}
-                              onClick={() => setConfirm({ action: 'handoff', case: current })}
-                            >
-                              <Headphones size={16} />
-                              Demander un conseiller
-                            </button>
+                            <div className="context-contact-actions">
+                              <button
+                                className="button secondary full"
+                                disabled={busy}
+                                onClick={() => setConfirm({ action: 'handoff', case: current })}
+                              >
+                                <Headphones size={16} />
+                                Simuler le relais conseiller
+                              </button>
+                              <button
+                                className="button primary full"
+                                onClick={() => setView('contact')}
+                              >
+                                <Mail size={16} />
+                                Contacter par email
+                              </button>
+                            </div>
                           </>
                         )
                       )}
@@ -1637,7 +1658,7 @@ export default function Home() {
                             <p className="quiet">{dateTime(h.created_at)}</p>
                             <pre>{h.summary}</pre>
                             <span className="footnote">
-                              Enregistrée localement dans votre espace. Aucun envoi externe.
+                              Enregistrée localement dans votre espace. Aucun envoi automatique.
                             </span>
                           </article>
                         ))}
@@ -1844,10 +1865,11 @@ export default function Home() {
               </div>
             </>
           )}
+          {view === 'contact' && <ContactPage />}
           {view === 'project' && (
             <>
               <SectionTitle
-                label="ATLASCARE AI · PROJET DE DÉMONSTRATION"
+                label="SAV SC ASSISTANT AI · PROJET DE DÉMONSTRATION"
                 title="Conçu pour expliquer. Bâti pour vérifier."
                 description="Une plateforme SAV et service client qui relie conversation, documents et données métier."
                 action={
@@ -1975,10 +1997,10 @@ export default function Home() {
                 <div>
                   <strong>Ce que cette version ne prétend pas faire</strong>
                   <p>
-                    Aucune connexion à une enseigne réelle, aucun remboursement ou envoi externe. Le
-                    mode sans LLM est déterministe. La recherche n’utilise pas encore d’index
-                    vectoriel. Les accès salariés, la supervision permanente et l’évaluation
-                    comparative des modèles nécessitent une intégration de production.
+                    Aucune connexion à une enseigne réelle, aucun remboursement ou envoi
+                    automatique. Le mode sans LLM est déterministe. La recherche n’utilise pas
+                    encore d’index vectoriel. Les accès salariés, la supervision permanente et
+                    l’évaluation comparative des modèles nécessitent une intégration de production.
                   </p>
                 </div>
               </div>
@@ -1987,7 +2009,8 @@ export default function Home() {
         </main>
         <footer className="app-footer">
           <span>
-            AtlasCare AI <span className="footer-sep">/</span> Une démonstration par Simo Mesbahi
+            SAV SC Assistant AI <span className="footer-sep">/</span> Une démonstration par Simo
+            Mesbahi
           </span>
           <span>Données fictives · v0.1</span>
         </footer>

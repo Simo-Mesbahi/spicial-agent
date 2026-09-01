@@ -305,7 +305,7 @@ export const articles: Article[] = [
     version: '1.0',
     effective: '2026-08-01',
     tags: 'livraison retard colis transporteur date commande arriver',
-    body: 'Le statut et l’estimation proviennent du suivi enregistré. Une estimation ne constitue pas une date garantie. Si la date n’est pas communiquée ou si le colis est signalé perdu, une demande de contact peut être créée pour le service client. La démonstration n’envoie aucun SMS ni email réel.',
+    body: 'Le statut et l’estimation proviennent du suivi enregistré. Une estimation ne constitue pas une date garantie. Si la date n’est pas communiquée ou si le colis est signalé perdu, une demande de contact peut être créée pour le service client. La simulation métier ne déclenche aucun SMS ni email automatique.',
   },
   {
     id: 'sc-incomplet',
@@ -368,7 +368,7 @@ export const articles: Article[] = [
     version: '1.0',
     effective: '2026-08-01',
     tags: 'conseiller humain contact reclamation magasin horaires telephone adresse',
-    body: 'Une demande de contact rassemble la référence du dossier, le statut et le résumé du problème. Elle apparaît dans l’espace de gestion. Le relais est simulé : aucun conseiller réel, appel, email ou SMS n’est déclenché. Les horaires des magasins ne sont pas disponibles dans cette version.',
+    body: 'Une demande de contact rassemble la référence du dossier, le statut et le résumé du problème. Elle apparaît dans l’espace de gestion. Le relais conseiller est simulé : aucun appel, email ou SMS automatique n’est déclenché. La page de contact séparée permet au visiteur de préparer puis de confirmer lui-même un email. Les horaires des magasins ne sont pas disponibles dans cette version.',
   },
 ];
 const stop = new Set([

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-test('renders AtlasCare discovery and production metadata before hydration', async () => {
+test('renders SAV SC Assistant AI discovery and production metadata before hydration', async () => {
   const workerUrl = new URL('../dist/server/index.js', import.meta.url);
   workerUrl.searchParams.set('test', `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -24,7 +24,7 @@ test('renders AtlasCare discovery and production metadata before hydration', asy
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>AtlasCare AI<\/title>/);
+  assert.match(html, /<title>SAV SC Assistant AI<\/title>/);
   assert.match(html, /Moins de flou/);
   assert.match(html, /Vivre l’expérience/);
   assert.match(html, /APERÇU FICTIF/);

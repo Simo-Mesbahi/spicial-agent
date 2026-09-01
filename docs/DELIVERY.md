@@ -1,10 +1,10 @@
-# Bilan de livraison — 31 août 2026
+# Bilan de livraison — 1er septembre 2026
 
-La révision décrite ici est validée localement. Une mise à jour du dépôt ne prouve pas sa publication : celle-ci et l’activation de Gemini sont contrôlées séparément. Le [rapport de recette](QA-2026-08-31.md) détaille les résultats et les limites de cette passe.
+La révision décrite ici est validée localement. Une mise à jour du dépôt ne prouve pas sa publication : celle-ci et l’activation de Gemini sont contrôlées séparément. Le [rapport de recette du 1er septembre](QA-2026-09-01.md) détaille les résultats et les limites de cette passe ; le [rapport du 31 août](QA-2026-08-31.md) reste disponible pour l’historique.
 
 ## Livré
 
-- Plateforme existante : [AtlasCare AI](https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site).
+- Plateforme existante : [SAV SC Assistant AI](https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site).
 - Interface client, dossiers, espace conseiller fictif, laboratoire, documents et présentation du projet.
 - Accueil éditorial avec trois aperçus interactifs, vérification guidée, comparaison avant/après d’un dossier, suggestions contextuelles et panneau de suivi repliable sur mobile.
 - Base relationnelle, 8 scénarios initiaux et 12 documents fictifs versionnés.
@@ -14,6 +14,8 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 - Suivi conversationnel « Le dossier en clair » : synthèse factuelle construite côté serveur, version historique conservée, alerte de changement et nouvelle consultation. Changement de dossier dans le chat, réponses de réclamation mieux orientées et relais conseiller accessible depuis sa réponse, avec confirmation.
 - Fiabilité des échanges : identifiants de messages, reprise sans doublon après erreur réseau, enregistrement atomique, historique sélectionné par dossier et absence de validation d’un devis sans montant.
 - Fluidité : affichage immédiat de la réponse enregistrée, attente bornée, information hors ligne et d’actualisation interrompue, meilleur dimensionnement des contrôles sur mobile. Aperçu de partage propre au projet.
+- Identité produit renommée **SAV SC Assistant AI** dans l’interface, les métadonnées, le partage social, les messages du moteur local et la documentation.
+- Contact email dédié depuis l’accueil, la navigation et le relais conversationnel : adresse de réponse, objet et message validés, destinataire fixe visible, aucune persistance applicative et confirmation finale dans l’application mail du visiteur.
 
 ## Vérifications exécutées
 
@@ -23,12 +25,14 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 - 10 tests de politique de budget, adresses locales, configuration conservée/sauvegardée et diagnostic Ollama simulé.
 - 6 tests client : identifiants compatibles avec la prévisualisation HTTP, erreurs de session, lecture bloquée, réponses invalides, absence de rejeu automatique et fusion sans doublons.
 - 5 tests de rendu serveur des synthèses : données courantes, alerte de changement, accès vérifié, historique compact et absence d’action de devis périmé.
+- 4 tests du contact email : destinataire fixe, Unicode, adresse de réponse, neutralisation des retours de ligne et bornes de validation.
 - 5 tests du rendu serveur et des composants du socle.
 - Vérification TypeScript, ESLint applicatif et compilation de production : réussies.
+- Audit npm de production après mise à jour des correctifs de sécurité : aucune vulnérabilité connue signalée.
 - Les trois migrations ont été appliquées avec succès sur l’émulateur D1 local. La nouvelle migration ajoute le registre `chat_requests` ; la base applicative comprend 12 tables.
 - Parcours dans le navigateur de prévisualisation : vérification du dossier, première réponse, transition de réparation et historique, changement de dossier, annulation puis acceptation explicite d’un devis fictif, demande de conseiller et présence du contexte dans l’espace opérateur, recherche et ouverture d’une procédure versionnée.
 
-Total : **83 tests applicatifs et 5 tests du socle réussis**. La recette navigateur est ciblée, pas exhaustive : Safari/iPhone physique, charge, appel à un modèle réel et audit indépendant restent à valider. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales, les validations GitHub et la publication restent distinctes.
+Total : **87 tests applicatifs et 5 tests du socle réussis**. La recette navigateur inclut le nouveau nom, le parcours Contact, l’erreur d’email, les thèmes clair/sombre et l’absence de débordement horizontal au format contrôlé. Elle reste ciblée, pas exhaustive : Safari/iPhone physique, charge, appel à un modèle réel et audit indépendant restent à valider. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales, les validations GitHub et la publication restent distinctes.
 La satisfaction utilisateur n’est pas encore mesurée : le [protocole d’essai](EXPERIENCE.md) prépare cette évaluation, sans publier de résultat inventé.
 
 ## Blocages et limites

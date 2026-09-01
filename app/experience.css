@@ -1,4 +1,4 @@
-/* AtlasCare discovery: warm paper, forest ink, and an interactive proof of the product. */
+/* SAV SC Assistant AI discovery: warm paper, forest ink, and an interactive proof. */
 .discovery-page {
   background: var(--background);
   min-height: 100svh;
@@ -34,8 +34,8 @@
   display: inline-flex;
   align-items: center;
   gap: 11px;
-  font-size: 29px;
-  letter-spacing: -1.5px;
+  font-size: 20px;
+  letter-spacing: 0;
   color: var(--ink);
   font-weight: 700;
 }
@@ -94,7 +94,7 @@
   font-size: 11px;
   line-height: 1.6;
   font-weight: 650;
-  letter-spacing: 1.65px;
+  letter-spacing: 0;
   color: var(--primary);
   display: inline-flex;
   align-items: center;
@@ -110,7 +110,7 @@
 .discovery-intro h1 {
   font-size: clamp(52px, 5.9vw, 82px);
   line-height: 1.05;
-  letter-spacing: -4.2px;
+  letter-spacing: 0;
   font-weight: 570;
   margin: 25px 0 25px;
 }
@@ -119,7 +119,7 @@
   font-family: Georgia, 'Times New Roman', serif;
   font-style: italic;
   font-weight: 400;
-  letter-spacing: -4px;
+  letter-spacing: 0;
 }
 .discovery-lead {
   max-width: 425px;
@@ -215,7 +215,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  letter-spacing: 1.5px;
+  letter-spacing: 0;
   color: #c6d7c7;
   padding: 1px 2px 16px;
 }
@@ -285,7 +285,7 @@
 .preview-sandbox {
   margin-left: auto;
   color: var(--quiet);
-  letter-spacing: 0.7px;
+  letter-spacing: 0;
   font-size: 11px;
   border: 1px solid var(--border);
   padding: 4px 6px;
@@ -364,7 +364,7 @@
 .preview-case-top small {
   display: block;
   font-size: 11px;
-  letter-spacing: 1px;
+  letter-spacing: 0;
   color: var(--quiet);
 }
 .preview-case-top strong {
@@ -515,7 +515,7 @@
 .discovery-final h2 {
   font-size: clamp(30px, 3vw, 44px);
   line-height: 1.18;
-  letter-spacing: -1.7px;
+  letter-spacing: 0;
   font-weight: 550;
   margin-top: 17px;
 }
@@ -551,7 +551,7 @@
 }
 .discovery-steps h3 {
   font-size: 16px;
-  letter-spacing: -0.4px;
+  letter-spacing: 0;
   font-weight: 600;
 }
 .discovery-steps p {
@@ -631,6 +631,28 @@
 .discovery-final .discovery-primary:hover:not(:disabled) {
   background: #e7f4bf;
 }
+.discovery-final-actions {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-shrink: 0;
+}
+.discovery-contact-cta {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #ffffff45;
+  color: #f0f5eb;
+  padding: 0 18px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.discovery-contact-cta:hover {
+  border-color: #d9ec9d;
+  color: #d9ec9d;
+}
 .discovery-footer {
   display: flex;
   align-items: center;
@@ -655,6 +677,11 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+.discovery-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
 .brand-home {
   text-align: left;
@@ -692,7 +719,7 @@
   display: block;
   color: var(--primary);
   font-size: 11px;
-  letter-spacing: 1.2px;
+  letter-spacing: 0;
   margin-bottom: 3px;
 }
 .trial-guide-copy > strong {
@@ -843,7 +870,7 @@
   align-items: center;
   gap: 6px;
   color: var(--primary);
-  letter-spacing: 0.7px;
+  letter-spacing: 0;
   font-weight: 700;
 }
 .receipt-current {
@@ -865,12 +892,12 @@
   color: var(--quiet);
   font-size: 9px;
   font-weight: 650;
-  letter-spacing: 0.8px;
+  letter-spacing: 0;
 }
 .receipt-current h3 {
   font-size: 21px;
   line-height: 1.25;
-  letter-spacing: -0.55px;
+  letter-spacing: 0;
   color: var(--ink);
   margin-top: 5px;
 }
@@ -918,7 +945,7 @@
 }
 .receipt-amount strong {
   font-size: 23px;
-  letter-spacing: -0.6px;
+  letter-spacing: 0;
   margin-left: auto;
 }
 .receipt-amount .text-button {
@@ -1072,10 +1099,10 @@
   }
   .discovery-intro h1 {
     font-size: 60px;
-    letter-spacing: -3px;
+    letter-spacing: 0;
   }
   .discovery-intro h1 > span {
-    letter-spacing: -3px;
+    letter-spacing: 0;
   }
   .discovery-nav nav {
     gap: 17px;
@@ -1235,7 +1262,7 @@
     min-height: 76px;
   }
   .discovery-brand {
-    font-size: 25px;
+    font-size: 14px;
     gap: 9px;
   }
   .discovery-brand .brand-symbol {
@@ -1257,11 +1284,11 @@
   }
   .discovery-intro h1 {
     font-size: clamp(48px, 11.8vw, 67px);
-    letter-spacing: -2.8px;
+    letter-spacing: 0;
     margin-block: 22px;
   }
   .discovery-intro h1 > span {
-    letter-spacing: -2.8px;
+    letter-spacing: 0;
   }
   .discovery-lead {
     font-size: 15px;
@@ -1271,7 +1298,7 @@
   }
   .discovery-eyebrow {
     font-size: 11px;
-    letter-spacing: 1.2px;
+    letter-spacing: 0;
   }
   .discovery-hero-actions {
     gap: 18px;
@@ -1400,10 +1427,16 @@
   }
   .discovery-final h2 {
     font-size: 29px;
-    letter-spacing: -1.2px;
+    letter-spacing: 0;
   }
-  .discovery-final .discovery-primary {
+  .discovery-final-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
     margin-top: 25px;
+  }
+  .discovery-final .discovery-primary,
+  .discovery-contact-cta {
     width: 100%;
   }
   .discovery-footer {
@@ -1416,6 +1449,10 @@
   }
   .discovery-footer > span:nth-child(2) {
     font-size: 11px;
+  }
+  .discovery-footer-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -4,13 +4,13 @@ import './experience.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site'),
-  title: 'AtlasCare AI',
+  title: 'SAV SC Assistant AI',
   description:
-    'Moins de flou. Plus de réponses. Essayez AtlasCare : un assistant SAV et service client connecté à des dossiers fictifs qui évoluent.',
+    'Moins de flou. Plus de réponses. Essayez SAV SC Assistant AI, une expérience SAV et service client fondée sur des dossiers fictifs qui évoluent.',
   openGraph: {
     type: 'website',
     locale: 'fr_FR',
-    title: 'AtlasCare AI',
+    title: 'SAV SC Assistant AI',
     description:
       'Votre SAV, en clair. Essayez le suivi de réparation, les devis et le service client avec des dossiers fictifs.',
     images: [
@@ -18,13 +18,13 @@ export const metadata: Metadata = {
         url: '/og.png',
         width: 1731,
         height: 909,
-        alt: 'AtlasCare AI. Votre SAV, en clair. Démonstration interactive.',
+        alt: 'SAV SC Assistant AI. Votre SAV, en clair. Démonstration interactive.',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AtlasCare AI',
+    title: 'SAV SC Assistant AI',
     description: 'Votre SAV, en clair. Démonstration interactive avec des dossiers fictifs.',
     images: ['/og.png'],
   },

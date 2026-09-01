@@ -22,7 +22,11 @@ Choisir CMD-2026-2086 et vérifier l’accès. Demander la date de livraison. Le
 
 Sur un dossier vérifié, demander un conseiller et confirmer. Ouvrir l’espace conseiller : la demande contient la référence, le problème et le contexte disponible. Le relais est enregistré, sans conseiller réel ni envoi externe.
 
-## 5. Tester les limites
+## 5. Contact email contrôlé
+
+Ouvrir « Nous contacter », saisir une adresse de réponse, un objet et un message. Le destinataire est affiché. Le bouton prépare un email dans l’application mail du visiteur ; rien n’est envoyé ni stocké par le site. Relire puis confirmer l’envoi dans l’application mail. Le relais conseiller fictif reste un parcours distinct.
+
+## 6. Tester les limites
 
 Essayer un mauvais code, demander un autre dossier sans vérification, chercher une information absente des documents. Consulter « Sources & outils » pour inspecter les éléments de la réponse. Ne saisir aucun véritable code, email client ou donnée de paiement.
 

@@ -57,7 +57,9 @@ export function modelSettings(env: ModelEnvironment) {
       throw new Error('Gemini nécessite la politique gratuite explicitement activée côté serveur.');
     const model = env.LLM_MODEL ?? 'gemini-2.5-flash';
     if (!(geminiModels as readonly string[]).includes(model))
-      throw new Error('Ce modèle Gemini n’est pas autorisé dans le mode gratuit AtlasCare.');
+      throw new Error(
+        'Ce modèle Gemini n’est pas autorisé dans le mode gratuit SAV SC Assistant AI.',
+      );
     if (!env.GEMINI_API_KEY) throw new Error('Clé Gemini manquante.');
     return {
       provider,

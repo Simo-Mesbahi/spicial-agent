@@ -1,4 +1,4 @@
-# AtlasCare — critères d’expérience
+# SAV SC Assistant AI — critères d’expérience
 
 ## Intention
 
@@ -16,6 +16,7 @@ Donner envie d’essayer en montrant une situation compréhensible, puis permett
 - Changement de dossier directement dans la conversation avec contrôle d’accès inchangé. Suggestions spécifiques aux réclamations, échanges et retraits ; le suivi d’une réclamation ne déclenche plus à tort une proposition de relais.
 - Relais conseiller accessible depuis la réponse qui le propose, toujours précédé d’une confirmation et toujours simulé. Défilement limité à la conversation, centré sur le début de la dernière réponse ; préférence de réduction des animations respectée.
 - Mobile : conversation prioritaire, panneau du dossier repliable, saisie en 16 px. Thèmes clair, sombre et système ; navigation clavier et préférence de réduction des animations prises en compte dans le code.
+- Contact : page dédiée accessible depuis l’accueil, la navigation et les réponses de relais. Les champs sont validés, le destinataire est visible et aucun message ne part avant confirmation dans l’application mail du visiteur.
 
 ## Essai utilisateur à organiser
 

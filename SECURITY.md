@@ -21,6 +21,7 @@ N’utiliser que des données fictives. Le visiteur contrôle les rôles client 
 - Réponses fournisseur limitées en taille et validées par schéma ; noms, arguments et identifiants d’outils sont contrôlés. Une réponse qui omet la consultation métier ou documentaire requise est écartée.
 - En cas de quota, panne ou réponse non validée du modèle, continuité déterministe clairement signalée dans l’interface. Ce secours n’exécute aucune action et ne change jamais de fournisseur.
 - Expiration des sessions, suppression des données associées à la réinitialisation et nettoyage lors de nouvelles créations. Aucun export de cookies ou codes dans l’audit.
+- Le contact email est un lien `mailto:` construit localement vers une destination fixe. L’adresse, l’objet et le message ne transitent pas par l’API et ne sont pas persistés par l’application. Le visiteur garde la confirmation finale dans son application mail. L’adresse de destination est publique dans l’interface et dans le code source ; ce n’est pas un secret.
 
 ## Avant des données réelles
 

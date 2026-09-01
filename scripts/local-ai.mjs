@@ -126,7 +126,7 @@ async function main() {
     throw new Error('Option inconnue. Utilisez --help.');
   if (args.includes('--help')) {
     console.log(
-      'AtlasCare local : npm run ai:local -- [--pull] [--model qwen3:4b]\nDiagnostic : npm run ai:doctor -- [--inference]\n--pull autorise le téléchargement du modèle. Aucun compte ni clé API requis.',
+      'SAV SC Assistant AI local : npm run ai:local -- [--pull] [--model qwen3:4b]\nDiagnostic : npm run ai:doctor -- [--inference]\n--pull autorise le téléchargement du modèle. Aucun compte ni clé API requis.',
     );
     return;
   }
@@ -154,7 +154,7 @@ async function main() {
     port.once('error', () =>
       reject(
         new Error(
-          'Le port local 11435 est déjà utilisé. Arrêtez uniquement votre ancienne session AtlasCare, puis réessayez.',
+          'Le port local 11435 est déjà utilisé. Arrêtez uniquement votre ancienne session SAV SC Assistant AI, puis réessayez.',
         ),
       ),
     );
@@ -207,7 +207,7 @@ async function main() {
   process.once('SIGTERM', stop);
   try {
     console.log(
-      'AtlasCare : lancement d’un serveur Ollama isolé, cloud désactivé, accès limité à cet ordinateur.',
+      'SAV SC Assistant AI : lancement d’un serveur Ollama isolé, cloud désactivé, accès limité à cet ordinateur.',
     );
     const server = start('ollama', ['serve']);
     let serverError;
@@ -263,7 +263,7 @@ async function main() {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
   main().catch((e) => {
     console.error(
-      'AtlasCare : ' +
+      'SAV SC Assistant AI : ' +
         (e.cause?.code === 'ECONNREFUSED'
           ? 'Aucun serveur Ollama local ne répond. Lancez npm run ai:local dans un autre terminal.'
           : e.message),
