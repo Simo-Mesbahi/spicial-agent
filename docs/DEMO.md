@@ -2,7 +2,7 @@
 
 ## 1. Suivi de réparation
 
-Sur l’accueil, choisir « Une réparation ». L’aperçu permet déjà d’explorer une évolution illustrative sans créer de session. Cliquer « Vivre l’expérience » : le vrai espace de simulation s’ouvre sur le lave-linge (SAV-2026-1042).
+Sur l’accueil, choisir « Une réparation ». L’aperçu permet déjà d’explorer une évolution illustrative sans créer de session. Cliquer « Vivre l’expérience » : l’espace client fictif s’ouvre sur le lave-linge (SAV-2026-1042).
 
 Dans le formulaire, cliquer « Utiliser ce code », puis « Vérifier et consulter le dossier ». Ce bouton déclenche une vérification côté serveur, puis la question « Où en est mon dossier ? ». Observer l’attente de pièce, la dernière mise à jour et l’absence de date inventée.
 
@@ -20,7 +20,7 @@ Choisir CMD-2026-2086 et vérifier l’accès. Demander la date de livraison. Le
 
 ## 4. Aide guidée et relais humain simulé
 
-Sur un dossier vérifié, demander un conseiller. L’assistant propose d’abord de traiter la demande et affiche trois étapes utiles. Choisir « Continuer avec un conseiller » : le choix du client est alors respecté sans nouveau triage. Confirmer le relais, puis ouvrir l’espace conseiller : la demande contient la référence, le problème et le contexte disponible. Le relais est enregistré, sans conseiller réel ni envoi externe.
+Sur un dossier vérifié, demander un conseiller. L’assistant propose d’abord de traiter la demande et affiche trois étapes utiles. Choisir « Continuer avec un conseiller » : le choix du client est respecté sans nouveau triage. La confirmation précise que le relais reste fictif ; aucune page conseiller ni commande d’exploitation n’est exposée au visiteur.
 
 Essayer ensuite « Je veux modifier mon adresse de livraison ». Cette action dépasse les outils de lecture : l’assistant explique la limite et propose directement le relais humain.
 
@@ -30,7 +30,7 @@ Depuis la dernière réponse de relais, choisir « Écrire par email ». Le doss
 
 ## 6. Tester les limites
 
-Essayer un mauvais code, demander un autre dossier sans vérification, chercher une information absente des documents. Consulter « Sources & outils » pour inspecter les éléments de la réponse. Ne saisir aucun véritable code, email client ou donnée de paiement.
+Essayer un mauvais code, demander un autre dossier sans vérification et chercher une information absente des documents. Vérifier que les documents cités restent consultables, mais qu’aucune métrique, page technique ou commande opérateur n’apparaît. Ne saisir aucun véritable code, email client ou donnée de paiement.
 
 ## Pour un rendez-vous entreprise
 

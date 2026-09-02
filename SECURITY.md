@@ -2,7 +2,7 @@
 
 ## Démonstration uniquement
 
-N’utiliser que des données fictives. Le visiteur contrôle les rôles client et opérateur de son espace. Une référence et un code sur le même support ne constituent pas une authentification multifactorielle.
+N’utiliser que des données fictives. La publication expose uniquement le parcours client ; elle ne constitue pas une authentification client réelle. Une référence et un code sur le même support ne constituent pas une authentification multifactorielle.
 
 ## Contrôles implémentés
 
@@ -12,6 +12,7 @@ N’utiliser que des données fictives. Le visiteur contrôle les rôles client 
 - Verrouillage après 5 échecs et quotas atomiques de création de sessions et de conversations.
 - Vérification d’origine, jeton CSRF pour mutations, requêtes SQL paramétrées.
 - Transitions métier explicites, confirmation des devis, version optimiste et identifiant d’opération contre les doublons.
+- Édition client imposée côté hébergement : simulation, progression opérateur et retard forcé refusés par l’API ; journaux et files internes absents du snapshot navigateur.
 - Devis sans montant valide non acceptables ; un montant absent n’est pas interprété comme zéro.
 - Identifiant de message limité à la session, réservation atomique et réponse persistée pour les réessais. Les permissions sont recontrôlées avant restitution ; message, réponse et audit sont enregistrés dans une même transaction. Voir les limites de reprise après crash dans le [contrat HTTP](docs/API.md).
 - Outils du LLM en lecture seule, nom vérifié côté serveur, nombre d’appels limité et timeout.

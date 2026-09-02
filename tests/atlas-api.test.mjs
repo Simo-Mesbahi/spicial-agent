@@ -111,6 +111,42 @@ const action = (row, type = 'advance', extra = {}) => ({
   ...extra,
 });
 
+test('Client edition blocks internal operations and keeps only customer-safe session data', async () => {
+  const db = database();
+  try {
+    const c = await client(db);
+    c.env.APP_EDITION = 'client';
+
+    const snapshot = await c.call('snapshot');
+    assert.equal(snapshot.status, 200);
+    assert.equal(snapshot.body.config.edition, 'client');
+    assert.deepEqual(Object.keys(snapshot.body.config).sort(), ['edition', 'ready']);
+    assert.equal(snapshot.body.space.running, false);
+    assert.deepEqual(snapshot.body.logs, []);
+    assert.deepEqual(snapshot.body.handoffs, []);
+
+    const row = snapshot.body.cases[0];
+    const simulation = await c.call('simulation', { action: 'tick' });
+    assert.equal(simulation.status, 404);
+    assert.match(simulation.body.error, /pas disponible dans l’espace client/i);
+
+    const internalAction = await c.call('case-action', action(row, 'advance'));
+    assert.equal(internalAction.status, 403);
+    assert.match(internalAction.body.error, /équipes autorisées/i);
+
+    const quote = snapshot.body.cases.find((item) => item.status === 'quote_pending');
+    assert.ok(quote);
+    await verify(c, quote);
+    const customerDecision = await c.call(
+      'case-action',
+      action(quote, 'decline_quote', { confirm: true }),
+    );
+    assert.equal(customerDecision.status, 200);
+  } finally {
+    db.sql.close();
+  }
+});
+
 test('Guided repair answers track the persisted case version after a simulation', async () => {
   const db = database();
   try {

@@ -22,22 +22,22 @@ after(async () => {
   await vite.close();
 });
 
-async function readCssTree(directory) {
+async function readTextTree(directory, extension) {
   const entries = await readdir(directory, { withFileTypes: true });
   const contents = await Promise.all(
     entries.map(async (entry) => {
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        return readCssTree(entryPath);
+        return readTextTree(entryPath, extension);
       }
-      return entry.name.endsWith('.css') ? readFile(entryPath, 'utf8') : '';
+      return entry.name.endsWith(extension) ? readFile(entryPath, 'utf8') : '';
     }),
   );
   return contents.join('\n');
 }
 
 test("emits the catalog's animation and scrolling utilities", async () => {
-  const css = await readCssTree(path.join(root, 'dist'));
+  const css = await readTextTree(path.join(root, 'dist'), '.css');
 
   assert.match(css, /--tw-enter-opacity/);
   assert.match(css, /scrollbar-width:\s*thin/);
@@ -47,6 +47,15 @@ test("emits the catalog's animation and scrolling utilities", async () => {
   assert.match(css, /mask-image:/);
   assert.match(css, /tw-shimmer/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+});
+
+test('ships no internal console or project-analysis interface in the client bundle', async () => {
+  const javascript = await readTextTree(path.join(root, 'dist', 'client'), '.js');
+
+  assert.doesNotMatch(
+    javascript,
+    /Espace conseiller|Simulateur d’activité|Dépôt du projet|Tokens signalés|Sources & outils|GitHub/,
+  );
 });
 
 test('forwards progress semantics to the primitive', async () => {

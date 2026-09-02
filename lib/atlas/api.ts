@@ -31,6 +31,7 @@ export interface Database {
 }
 export interface AtlasEnv {
   DB: Database;
+  APP_EDITION?: string;
   LLM_PROVIDER?: string;
   LLM_MODEL?: string;
   LLM_BASE_URL?: string;
@@ -150,11 +151,23 @@ function sessionToken(req: Request) {
   );
 }
 function config(env: AtlasEnv) {
+  const model = publicModelConfig(env);
+  if (clientEdition(env)) {
+    return {
+      ready: model.ready,
+      edition: 'client',
+    };
+  }
   return {
-    ...publicModelConfig(env),
+    ...model,
     retrieval: 'Recherche documentaire lexicale',
     demo: true,
+    edition: 'internal',
   };
+}
+
+function clientEdition(env: AtlasEnv) {
+  return env.APP_EDITION === 'client';
 }
 function json(data: unknown, status = 200, headers: Record<string, string> = {}) {
   return Response.json(data, {
@@ -418,7 +431,8 @@ async function tick(db: Database, s: Space, force = false) {
   await audit(db, s, 'simulation.tick', 'Événement automatique simulé');
 }
 async function snapshot(db: Database, s: Space, req: Request, env: AtlasEnv) {
-  await tick(db, s);
+  const clientOnly = clientEdition(env);
+  if (!clientOnly) await tick(db, s);
   const space = await db.prepare('SELECT * FROM spaces WHERE id=?').bind(s.id).first<Space>();
   const rows = (
     await db
@@ -446,26 +460,30 @@ async function snapshot(db: Database, s: Space, req: Request, env: AtlasEnv) {
       .bind(s.id)
       .all<MessageRow>()
   ).results;
-  const handoffs = (
-    await db
-      .prepare('SELECT * FROM handoffs WHERE space_id=? ORDER BY created_at DESC')
-      .bind(s.id)
-      .all()
-  ).results;
-  const logs = (
-    await db
-      .prepare(
-        'SELECT action,detail,created_at FROM audits WHERE space_id=? ORDER BY created_at DESC LIMIT 40',
-      )
-      .bind(s.id)
-      .all()
-  ).results;
+  const handoffs = clientOnly
+    ? []
+    : (
+        await db
+          .prepare('SELECT * FROM handoffs WHERE space_id=? ORDER BY created_at DESC')
+          .bind(s.id)
+          .all()
+      ).results;
+  const logs = clientOnly
+    ? []
+    : (
+        await db
+          .prepare(
+            'SELECT action,detail,created_at FROM audits WHERE space_id=? ORDER BY created_at DESC LIMIT 40',
+          )
+          .bind(s.id)
+          .all()
+      ).results;
   return {
     space: {
       id: s.id,
       csrf: s.csrf,
       expiresAt: s.expires_at,
-      running: Boolean(space?.running),
+      running: clientOnly ? false : Boolean(space?.running),
       tick: space?.tick ?? 0,
     },
     cases: await Promise.all(
@@ -949,6 +967,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       return json({ case: safeCase(c) });
     }
     if (path === '/api/simulation') {
+      if (clientEdition(env))
+        fail(404, 'Cette fonction n’est pas disponible dans l’espace client.');
       const action = text(b.action, 20);
       if (action === 'toggle') {
         await db
@@ -970,6 +990,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
     if (path === '/api/case-action') {
       const id = text(b.caseId, 80);
       const action = text(b.action, 30);
+      if (clientEdition(env) && ['advance', 'delay'].includes(action))
+        fail(403, 'Cette action est réservée aux équipes autorisées.');
       const requestId = text(b.requestId, 80);
       if (!/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) fail(400, 'Identifiant d’opération invalide.');
       const c = await getCase(db, s, id);
@@ -1054,7 +1076,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         );
       }
       pendingChat = { db, id: requestKey };
-      const modelConfig = config(env);
+      const modelConfig = publicModelConfig(env);
       if (!modelConfig.ready)
         fail(503, modelConfig.blockedReason ?? 'Configuration du modèle invalide.');
       if (s.chat_window + HOUR < Date.now())

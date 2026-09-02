@@ -1,11 +1,12 @@
-# Bilan de livraison — 1er septembre 2026
+# Bilan de livraison — 2 septembre 2026
 
 La révision décrite ici est validée localement. Une mise à jour du dépôt ne prouve pas sa publication : celle-ci et l’activation de Gemini sont contrôlées séparément. Le [rapport de recette du 1er septembre](QA-2026-09-01.md) détaille les résultats et les limites de cette passe ; le [rapport du 31 août](QA-2026-08-31.md) reste disponible pour l’historique.
 
 ## Livré
 
 - Plateforme existante : [SAV SC Assistant AI](https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site).
-- Interface client, dossiers, espace conseiller fictif, laboratoire, documents et présentation du projet.
+- Édition publique exclusivement client : assistant, dossiers et contact. Les vues conseiller, laboratoire, base documentaire globale, présentation du projet, métriques et liens GitHub sont absents du rendu publié.
+- Protection serveur `APP_EDITION=client` : simulation et actions opérateur refusées, progression automatique neutralisée, journaux d’audit et files internes retirés des réponses au navigateur.
 - Accueil éditorial avec trois aperçus interactifs, vérification guidée, comparaison avant/après d’un dossier, suggestions contextuelles et panneau de suivi repliable sur mobile.
 - Base relationnelle, 8 scénarios initiaux et 12 documents fictifs versionnés.
 - Connecteurs LLM OpenAI et compatibles, avec outils de consultation contrôlés.
@@ -19,7 +20,7 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 
 ## Vérifications exécutées
 
-- 48 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles, blocage des fournisseurs payants, masquage des secrets, continuité sans IA et contrats stricts d’appel d’outils simulés. Les nouveaux cas vérifient aussi l’aide avant transfert, la confirmation humaine et l’escalade immédiate d’une opération indisponible.
+- 49 tests API et réponses : sessions, accès aux dossiers, isolation entre visiteurs, codes erronés, quotas, devis, transitions, rejeu, historique, simulation interne, relais conseiller, entrées invalides, expiration, versions des réponses, relances contextuelles, blocage des fournisseurs payants, masquage des secrets, continuité sans IA, contrats stricts d’appel d’outils et verrouillage de l’édition client.
 - 4 tests de lecture JSON bornée : UTF-8 fragmenté, limite exacte, annulation d’un flux trop volumineux ou bloqué et formats invalides.
 - 12 tests d’expérience : cohérence des aperçus, étapes du guide, versions historiques, suggestions, recherche sans accents, champs autorisés des synthèses, fraîcheur, montants manquants et états terminaux.
 - 10 tests de politique de budget, adresses locales, configuration conservée/sauvegardée et diagnostic Ollama simulé.
@@ -27,13 +28,13 @@ La révision décrite ici est validée localement. Une mise à jour du dépôt n
 - 5 tests de rendu serveur des synthèses : données courantes, alerte de changement, accès vérifié, historique compact et absence d’action de devis périmé.
 - 5 tests du contact email : destinataire fixe, Unicode, cohérence des brouillons `mailto:`, Gmail et Outlook, liens d’applications mobiles, neutralisation des retours de ligne et bornes de validation.
 - 5 tests de routage support : aide initiale, confirmation sans boucle, opérations humaines, absence de faux positif et devis sans montant.
-- 6 tests du rendu serveur et des composants du socle, dont le sélecteur contextualisé sans formulaire.
+- 7 tests du rendu serveur, du bundle client et des composants du socle, dont le sélecteur contextualisé sans formulaire et l’absence d’interface interne dans les fichiers publics.
 - Vérification TypeScript, ESLint applicatif et compilation de production : réussies.
 - Audit npm complet après mise à jour contrôlée du runtime et des outils de développement : aucune vulnérabilité connue signalée.
 - Les trois migrations ont été appliquées avec succès sur l’émulateur D1 local. La nouvelle migration ajoute le registre `chat_requests` ; la base applicative comprend 12 tables.
 - Parcours HTTP local de bout en bout : création de session, vérification d’un dossier, première demande de conseiller, réponse d’aide avec choix rapides, confirmation du relais et contrôle de l’entrée Contact dans le rendu serveur. La recette visuelle précédente reste documentée ; les nouveaux contrôles visuels seront rejoués après publication.
 
-Total : **95 tests applicatifs et 6 tests du socle réussis**. La recette couvre le routage progressif, le contact sans formulaire, les brouillons cohérents pour trois familles de messageries, l’encodage sans signe `+`, la copie champ par champ et le retour vers l’assistant. Un parcours utilisateur local a contrôlé l’ouverture de la page, l’aperçu, les trois copies séparées et la poursuite dans l’assistant. Elle reste ciblée, pas exhaustive : Safari/iPhone physique, charge, appel à un modèle réel et audit indépendant restent à valider. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales, les validations GitHub et la publication restent distinctes.
+Total : **96 tests applicatifs et 7 tests du socle réussis**. La recette couvre le routage progressif, le contact sans formulaire, les brouillons cohérents pour trois familles de messageries, l’encodage sans signe `+`, la copie champ par champ, l’absence des vues internes dans le rendu et le bundle publics, ainsi que le refus serveur des commandes d’exploitation. Elle reste ciblée, pas exhaustive : Safari/iPhone physique, charge, appel à un modèle réel et audit indépendant restent à valider. Le workflow GitHub Actions est fourni ; le résultat de chaque exécution est consultable dans [Actions](https://github.com/Simo-Mesbahi/spicial-agent/actions). Les validations locales, GitHub et la publication restent distinctes.
 La satisfaction utilisateur n’est pas encore mesurée : le [protocole d’essai](EXPERIENCE.md) prépare cette évaluation, sans publier de résultat inventé.
 
 ## Blocages et limites
@@ -42,7 +43,7 @@ L’écriture vers `Simo-Mesbahi/spicial-agent` avait initialement été refusé
 
 Aucun serveur Ollama n’est disponible dans l’environnement de livraison. Le diagnostic local a confirmé son absence ; les tests du connecteur simulent le fournisseur. Aucune qualité de génération ni latence réelle de modèle n’a été mesurée. Aucune clé payante n’est demandée pour le parcours local. La recherche documentaire est lexicale. La simulation automatique progresse à la consultation, sans processus permanent en arrière-plan.
 
-Au contrôle de l’hébergement pendant cette recette, `GEMINI_API_KEY` n’était pas enregistrée et les paramètres conservés étaient `LLM_PROVIDER=demo` et `LLM_BUDGET_MODE=zero`. La création de la clé chez Google n’active pas l’application. Suivre le [guide Gemini](GEMINI-FREE.md) sans transmettre de secret dans le dépôt ou la conversation.
+Au contrôle de l’hébergement pendant cette recette, les paramètres étaient `APP_EDITION=client`, `LLM_PROVIDER=demo` et `LLM_BUDGET_MODE=zero` ; aucune clé Gemini n’était enregistrée sur ce site. La création d’une clé chez Google ne l’ajoute pas automatiquement à l’hébergement. Suivre le [guide Gemini](GEMINI-FREE.md) sans transmettre de secret dans le dépôt ou la conversation.
 
 ## Trois prochaines priorités
 

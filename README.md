@@ -2,7 +2,7 @@
 
 **Une plateforme de démonstration SAV et service client, connectée à un système métier simulé.**
 
-SAV SC Assistant AI permet de suivre une réparation, consulter une livraison, examiner un devis et être accompagné jusqu’au bon niveau de résolution. Le chatbot essaie d’abord de traiter la demande avec le client ; il prépare un relais contextualisé lorsqu’une intervention humaine est nécessaire ou confirmée. Le simulateur fait évoluer les dossiers et l’assistant consulte leur état actualisé via une API contrôlée.
+SAV SC Assistant AI permet de suivre une réparation, consulter une livraison, examiner un devis et être accompagné jusqu’au bon niveau de résolution. La publication est une **édition client** : elle expose uniquement l’assistant, les dossiers et le contact. Les vues d’exploitation et d’analyse ne sont ni proposées ni incluses dans l’interface publique ; leurs mutations sont refusées par le serveur.
 
 > **Budget IA : 0 €.** Le mode public par défaut n’utilise **aucun LLM** : règles et recherche documentaire lexicale. Un vrai modèle peut fonctionner **localement avec Ollama, sans clé API**. Les fournisseurs externes sont bloqués par défaut, même si une clé est présente. Maison Atlas et toutes les données sont fictives ; aucune opération réelle n’est exécutée.
 
@@ -13,9 +13,9 @@ SAV SC Assistant AI permet de suivre une réparation, consulter une livraison, e
 1. Explorer l’aperçu interactif de l’accueil : réparation, livraison ou devis.
 2. Choisir **Vivre l’expérience** pour ouvrir son espace isolé sur le scénario choisi.
 3. Cliquer **Utiliser ce code**, puis **Vérifier et consulter le dossier**. La référence et le code sont contrôlés par le serveur avant la première réponse.
-4. Suivre le bandeau guidé : **Simuler l’étape suivante**, puis **Consulter le nouvel état**.
-5. Lire **Le dossier en clair** : état, suite prévue et consigne client. Une alerte signale une réponse devenue historique ; **Actualiser le suivi** consulte à nouveau le dossier. Le texte complet et **Sources & outils** restent disponibles.
-6. Changer de dossier directement dans la conversation, ou explorer **Mes dossiers** pour un devis, un remboursement ou un relais conseiller simulé.
+4. Suivre le bandeau guidé puis poser une question sur l’état ou la prochaine étape.
+5. Lire **Le dossier en clair** : état, suite prévue et consigne client. **Actualiser le suivi** consulte à nouveau le dossier ; les documents utilisés restent accessibles depuis la réponse.
+6. Changer de dossier depuis la conversation, explorer **Mes dossiers** ou préparer un contact contextualisé.
 
 Voir le [guide de démonstration](docs/DEMO.md).
 Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce qui est automatisé de ce qui doit encore être évalué par des testeurs.
@@ -25,11 +25,11 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 | Fonction                                                             | État                                                                     |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                        |
-| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                          |
+| Huit scénarios et génération de nouveaux dossiers                    | Scénarios publics ; génération réservée aux tests internes               |
 | Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                    |
 | Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                                |
 | Aide guidée puis relais conseiller avec contexte                     | Triage progressif ; confirmation respectée et transfert simulé           |
-| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                                   |
+| Simulation manuelle et progression automatique                       | Conservées pour les tests internes ; bloquées dans l’édition client      |
 | 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                                |
 | Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées         |
 | Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement    |
@@ -38,7 +38,7 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 | Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur               |
 | Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable             |
 | Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage                  |
-| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                         |
+| Édition publique limitée au parcours client                          | Assistant, dossiers et contact uniquement                                |
 | Contact email guidé                                                  | Appareil, Gmail ou Outlook ; contexte prérempli et copie champ par champ |
 
 ## Lancer localement
@@ -92,6 +92,7 @@ Le premier vérifie l’installation ; le second demande aussi une courte géné
 
 | Variable          | Utilisation                                                       |
 | ----------------- | ----------------------------------------------------------------- |
+| `APP_EDITION`     | `client` sur le site public ; neutralise les fonctions internes   |
 | `LLM_BUDGET_MODE` | `zero` par défaut : seuls `demo` et `ollama` sont permis          |
 | `LLM_PROVIDER`    | `demo`, `ollama` ; connecteurs externes conservés mais désactivés |
 | `GEMINI_API_KEY`  | Secret serveur requis pour le mode `gemini` gratuit               |
@@ -113,7 +114,7 @@ Créer une clé ne l’ajoute pas à l’hébergement. Le [guide Gemini sur tél
 - [Limites et préparation entreprise](docs/PRODUCTION.md)
 - [Politique de sécurité](SECURITY.md)
 
-La démonstration publique ne représente pas une authentification de salarié. L’opérateur et le client sont des rôles joués par un visiteur dans son **propre espace fictif**. Les codes de démonstration sont donc visibles à ce visiteur. Ne jamais injecter des dossiers clients réels dans ce mode.
+La démonstration publique ne représente pas une authentification de salarié. Le visiteur dispose uniquement du parcours client dans son **propre espace fictif**. Les codes de démonstration sont visibles pour permettre l’essai ; ne jamais injecter de dossiers clients réels dans ce mode.
 
 ## Déploiement
 
@@ -126,7 +127,7 @@ Les sources et les configurations de test sont incluses dans la livraison ; aucu
 - Données synthétiques, scénarios bornés et procédures fictives ; pas de connexion à un SI réel.
 - Recherche lexicale ; embeddings, recherche hybride et reranking restent des évolutions à évaluer.
 - Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. La page Contact prépare localement un email contextualisé vers `mohammed.elmesbahi31@gmail.com`, puis laisse choisir l’application par défaut, Gmail ou Outlook. Le visiteur relit et confirme l’envoi dans sa messagerie ; le destinataire, l’objet et le corps peuvent être copiés séparément si nécessaire.
-- La simulation avance à la consultation et par actions explicites. Une exécution permanente demande un ordonnanceur distinct.
+- Les fonctions de simulation et les vues internes sont désactivées dans la publication client.
 - L’appel réel aux modèles n’a pas été validé sans identifiants de fournisseur.
 - Les tests ne constituent pas un audit de sécurité indépendant ni une certification de production.
 

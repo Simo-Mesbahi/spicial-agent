@@ -5,12 +5,9 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUpRight,
-  BookOpen,
   Check,
-  ChevronRight,
   CircleDot,
   FileCheck2,
-  FlaskConical,
   LockKeyhole,
   Mail,
   Moon,
@@ -38,11 +35,10 @@ type Props = {
   hasSession: boolean;
   error: string;
   theme: string;
-  mode: string;
   onTheme: () => void;
   onStart: (reference?: string) => void;
   onResume: () => void;
-  onExplore: (view: 'knowledge' | 'contact' | 'project') => void;
+  onContact: () => void;
 };
 
 export function Discovery({
@@ -51,11 +47,10 @@ export function Discovery({
   hasSession,
   error,
   theme,
-  mode,
   onTheme,
   onStart,
   onResume,
-  onExplore,
+  onContact,
 }: Props) {
   const [selected, setSelected] = useState('0');
   const [advanced, setAdvanced] = useState(false);
@@ -81,11 +76,8 @@ export function Discovery({
         <nav aria-label="Découvrir SAV SC Assistant AI">
           <a href="#try-atlas">L’expérience</a>
           <a href="#how-atlas">Comment ça marche</a>
-          <button onClick={() => onExplore('contact')}>
+          <button onClick={onContact}>
             Nous contacter <Mail size={13} />
-          </button>
-          <button onClick={() => onExplore('project')}>
-            Le projet <ArrowUpRight size={13} />
           </button>
         </nav>
         <div className="discovery-nav-actions">
@@ -154,7 +146,7 @@ export function Discovery({
                 <Check size={14} /> Dossiers fictifs
               </span>
               <span>
-                <Check size={14} /> Vous avez les commandes
+                <Check size={14} /> Parcours guidé
               </span>
             </div>
             {error && (
@@ -163,14 +155,8 @@ export function Discovery({
               </div>
             )}
             <div className="discovery-mode">
-              <FlaskConical size={14} />
-              {mode === 'demo'
-                ? 'Démo interactive sans modèle génératif. Aucun frais d’IA.'
-                : mode === 'ollama'
-                  ? 'Ollama local · Sans API payante. Toutes les situations restent fictives.'
-                  : mode === 'gemini'
-                    ? 'Gemini gratuit à quota limité. Les scénarios restent fictifs ; aucune donnée réelle.'
-                    : 'Connecteur IA configuré. Toutes les situations restent fictives.'}
+              <ShieldCheck size={14} />
+              Environnement de démonstration. N’utilisez aucune donnée personnelle réelle.
             </div>
           </div>
 
@@ -265,8 +251,7 @@ export function Discovery({
                       <ArrowRight size={15} />
                     </button>
                     <p className="preview-explanation">
-                      Exemple illustratif. L’essai crée votre propre espace, avec une vérification
-                      et un historique réels de simulation.
+                      Exemple illustratif. Votre essai reste isolé de celui des autres visiteurs.
                     </p>
                   </div>
                 </TabsContent>
@@ -343,12 +328,12 @@ export function Discovery({
               <span className="discovery-step-number">
                 03 <RefreshCw size={21} />
               </span>
-              <h3>Faites avancer l’histoire.</h3>
+              <h3>Suivez chaque étape.</h3>
               <p>
-                Posez votre question, simulez une étape, puis interrogez à nouveau l’assistant.
-                Comparez les réponses.
+                Posez votre question, consultez l’état enregistré et découvrez clairement ce qui
+                doit se passer ensuite.
               </p>
-              <span className="discovery-step-note">Vous pilotez la simulation</span>
+              <span className="discovery-step-note">Le dossier reste votre référence</span>
             </article>
           </div>
         </section>
@@ -362,11 +347,11 @@ export function Discovery({
               <span>Clair sur les limites.</span>
             </h2>
             <p>
-              Le but de cette démo : vous laisser vérifier ce qui fonctionne. Pas vous demander de
-              nous croire.
+              Les réponses distinguent les faits enregistrés, les estimations et les prochaines
+              actions. Les limites restent visibles.
             </p>
-            <button onClick={() => onExplore('knowledge')}>
-              Explorer les 12 documents métier <BookOpen size={17} />
+            <button onClick={onContact}>
+              Poser une question <Mail size={17} />
             </button>
           </div>
           <Accordion type="single" collapsible defaultValue="demo" className="discovery-faq">
@@ -379,14 +364,11 @@ export function Discovery({
                 personnelle réelle.
               </AccordionContent>
             </AccordionItem>
-            <AccordionItem value="ai">
-              <AccordionTrigger>Est-ce qu’un modèle IA répond ici ?</AccordionTrigger>
+            <AccordionItem value="privacy">
+              <AccordionTrigger>Puis-je utiliser mes vraies informations ?</AccordionTrigger>
               <AccordionContent>
-                {mode === 'demo'
-                  ? 'Le mode actuel est déterministe : des règles et des documents produisent les réponses, sans LLM. Pour le budget IA de 0 €, le projet propose aussi Ollama sur votre ordinateur. Aucun fournisseur externe n’est activé par défaut.'
-                  : mode === 'ollama'
-                    ? 'Un modèle Ollama local est configuré côté serveur, sans API payante. Les réponses générées peuvent contenir des erreurs : vérifiez les sources et les informations importantes.'
-                    : 'Un connecteur de modèle est configuré côté serveur. Les réponses générées peuvent contenir des erreurs : vérifiez les sources et les informations importantes.'}
+                Non. Cette version présente un parcours avec des données fictives. N’indiquez ni
+                identité réelle, ni code confidentiel, ni donnée bancaire dans la conversation.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="control">
@@ -399,9 +381,8 @@ export function Discovery({
             <AccordionItem value="system">
               <AccordionTrigger>Comment les informations restent-elles à jour ?</AccordionTrigger>
               <AccordionContent>
-                L’assistant consulte l’état du dossier dans la base de démonstration. Vous pouvez
-                faire avancer les étapes ou activer la simulation à la consultation. Aucun processus
-                ne tourne en permanence quand la plateforme n’est pas consultée.
+                L’assistant relit l’état enregistré avant de répondre. Dans cette démonstration,
+                chaque visiteur dispose d’un espace isolé et temporaire.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -416,7 +397,7 @@ export function Discovery({
             </h2>
           </div>
           <div className="discovery-final-actions">
-            <button className="discovery-contact-cta" onClick={() => onExplore('contact')}>
+            <button className="discovery-contact-cta" onClick={onContact}>
               Nous contacter <Mail size={18} />
             </button>
             <button
@@ -430,15 +411,10 @@ export function Discovery({
         </section>
       </main>
       <footer className="discovery-footer discovery-container">
-        <span>
-          SAV SC Assistant AI <span>par Simo Mesbahi</span>
-        </span>
+        <span>SAV SC Assistant AI</span>
         <span>Démonstration · Données fictives</span>
         <div className="discovery-footer-actions">
-          <button onClick={() => onExplore('contact')}>Nous contacter</button>
-          <button onClick={() => onExplore('project')}>
-            Architecture & limites <ChevronRight size={14} />
-          </button>
+          <button onClick={onContact}>Nous contacter</button>
         </div>
       </footer>
     </div>

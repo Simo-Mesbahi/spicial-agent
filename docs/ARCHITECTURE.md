@@ -22,7 +22,7 @@ flowchart TD
 
 `db/schema.ts` et `drizzle/` : schéma et migrations. Le runtime ne crée aucune table. Les données synthétiques sont insérées après création de la session.
 
-`app/page.tsx` : sept espaces de navigation, dont une page de contact ; composants UI accessibles du catalogue Shadcn. Toute décision sensible reste côté serveur.
+`app/page.tsx` : édition publique limitée à trois espaces — assistant, dossiers et contact — avec composants UI accessibles du catalogue Shadcn. Les vues conseiller, laboratoire, connaissances et projet sont exclues du rendu public. Toute décision sensible reste côté serveur.
 
 `lib/atlas/contact.ts` : validation et construction cohérente des brouillons pour l’application email par défaut, Gmail et Outlook. Le navigateur n’envoie ni ne stocke le message : le visiteur le relit et confirme l’envoi dans la messagerie choisie.
 
@@ -33,6 +33,8 @@ flowchart TD
 Clients, produits et achats alimentent les dossiers. Chaque dossier a une version, un état, un historique et une référence unique dans son espace. Les actions métier mettent à jour la version et créent l’événement dans un batch transactionnel. Un identifiant d’opération empêche le rejeu. Un devis bloque la progression automatique tant que le client ne l’a pas accepté.
 
 Les simulations mettent à jour au plus un dossier éligible par cycle ; elles ne génèrent pas un délai de réparation sans donnée explicite. Les estimations affichées sont identifiées comme simulées. La progression automatique est déclenchée par les requêtes, avec une cadence minimale de 20 secondes. Elle n’est ni un flux de transporteur ni un job permanent.
+
+Sur l’hébergement public, `APP_EDITION=client` neutralise cette progression, refuse `/api/simulation` ainsi que les actions opérateur `advance` et `delay`, et retire journaux et demandes de relais du snapshot navigateur. Les décisions client confirmées sur un devis restent disponibles.
 
 ## Modèles et documents
 

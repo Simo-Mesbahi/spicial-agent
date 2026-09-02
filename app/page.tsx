@@ -17,7 +17,6 @@ import {
   ChevronRight,
   CircleHelp,
   Clock3,
-  Code2,
   Database,
   FileCheck2,
   FileText,
@@ -176,28 +175,28 @@ type Snapshot = {
   handoffs: { id: string; case_id: string; summary: string; status: string; created_at: number }[];
   logs: { action: string; detail: string; created_at: number }[];
   config: {
-    provider: string;
-    model: string | null;
+    provider?: string;
+    model?: string | null;
     ready: boolean;
-    retrieval: string;
-    budgetMode: string;
-    externalCallsAllowed: boolean;
-    blockedReason: string | null;
+    retrieval?: string;
+    budgetMode?: string;
+    externalCallsAllowed?: boolean;
+    blockedReason?: string | null;
+    edition?: 'client' | 'internal';
   };
   articles: Article[];
   serverTime: number;
 };
 type View =
   'assistant' | 'dossiers' | 'contact' | 'operations' | 'simulation' | 'knowledge' | 'project';
-const nav = [
+const clientNav = [
   { id: 'assistant', label: 'Assistant', icon: MessageSquareText },
   { id: 'dossiers', label: 'Mes dossiers', icon: FileText },
   { id: 'contact', label: 'Nous contacter', icon: Mail },
-  { id: 'operations', label: 'Espace conseiller', icon: Headphones },
-  { id: 'simulation', label: 'Laboratoire', icon: FlaskConical },
-  { id: 'knowledge', label: 'Connaissances', icon: BookOpen },
-  { id: 'project', label: 'Le projet', icon: Code2 },
 ] as const;
+// The public build is intentionally limited to the customer journey. Internal views remain
+// available in source history for a future authenticated back office, but are not shipped as UI.
+const INTERNAL_CONSOLE_AVAILABLE: boolean = false;
 function Brand({ small = false }: { small?: boolean }) {
   return (
     <div className={'brand ' + (small ? 'small' : '')}>
@@ -292,7 +291,6 @@ export default function Home() {
   const [article, setArticle] = useState<Article | null>(null);
   const [confirm, setConfirm] = useState<{ action: string; case: Case } | null>(null);
   const [reset, setReset] = useState(false);
-  const [trace, setTrace] = useState<Message | null>(null);
   const [contactPrefill, setContactPrefill] = useState<ContactPrefill | null>(null);
   const [lastError, setLastError] = useState('');
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
@@ -692,17 +690,6 @@ export default function Home() {
       setBusy(false);
     }
   }
-  const mode = data?.config.provider ?? 'demo';
-  const modeLabel =
-    data && !data.config.ready
-      ? 'IA non configurée'
-      : mode === 'demo'
-        ? 'Démo sans LLM'
-        : mode === 'ollama'
-          ? 'Ollama local · sans API payante'
-          : mode === 'gemini'
-            ? 'Gemini · offre gratuite limitée'
-            : (data?.config.model ?? 'Modèle à configurer');
   const knowledge = data?.articles ?? initialArticles;
   const filtered =
     data?.cases.filter((c) =>
@@ -760,15 +747,15 @@ export default function Home() {
               ? {
                   step: '03',
                   title: 'Ici, c’est vous qui décidez.',
-                  body: 'La simulation attend votre accord explicite. Aucun paiement réel.',
+                  body: 'Votre décision reste sous votre contrôle. Aucun paiement réel.',
                   cta: 'Examiner le devis',
                 }
               : canAdvance
                 ? {
                     step: '03',
-                    title: 'Faites avancer votre dossier fictif.',
-                    body: 'Simulez l’étape suivante, puis voyez comment la réponse change.',
-                    cta: 'Simuler l’étape suivante',
+                    title: 'Découvrez les autres situations.',
+                    body: 'Consultez un autre dossier pour découvrir un nouveau parcours client.',
+                    cta: 'Voir mes autres dossiers',
                   }
                 : {
                     step: '✓',
@@ -783,7 +770,7 @@ export default function Home() {
     else if (stage === 'done') setView('dossiers');
     else if (current.status === 'quote_pending')
       setConfirm({ action: 'accept_quote', case: current });
-    else if (canAdvance) void action(current, 'advance');
+    else if (canAdvance) setView('dossiers');
     else setView('dossiers');
   }
   const beginButton = (
@@ -811,17 +798,16 @@ export default function Home() {
               : lastError
           }
           theme={theme}
-          mode={mode}
           onTheme={changeTheme}
           onStart={(reference) => void start(reference, true)}
           onResume={() => {
             setShowDiscovery(false);
             setView('assistant');
           }}
-          onExplore={(next) => {
+          onContact={() => {
             setShowDiscovery(false);
-            if (next === 'contact') setContactPrefill(null);
-            setView(next);
+            setContactPrefill(null);
+            setView('contact');
             setSearch('');
           }}
         />
@@ -843,14 +829,15 @@ export default function Home() {
             <Brand />
           </button>
           <span className="workspace-name">
-            <span className="store-mark">M</span>Maison Atlas <span className="tag">FICTIF</span>
+            <span className="store-mark">M</span>Maison Atlas{' '}
+            <span className="tag">DÉMONSTRATION</span>
           </span>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>ESPACE DE TRAVAIL</SidebarGroupLabel>
+            <SidebarGroupLabel>VOTRE ESPACE</SidebarGroupLabel>
             <SidebarMenu>
-              {nav.slice(0, 3).map((n) => (
+              {clientNav.map((n) => (
                 <SidebarMenuItem key={n.id}>
                   <NavigationButton
                     isActive={view === n.id}
@@ -872,27 +859,6 @@ export default function Home() {
               ))}
             </SidebarMenu>
           </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>DÉMONSTRATION</SidebarGroupLabel>
-            <SidebarMenu>
-              {nav.slice(3).map((n) => (
-                <SidebarMenuItem key={n.id}>
-                  <NavigationButton
-                    isActive={view === n.id}
-                    onClick={() => {
-                      setView(n.id);
-                      setSearch('');
-                    }}
-                    className="nav-item"
-                  >
-                    <n.icon />
-                    <span>{n.label}</span>
-                    {n.id === 'simulation' && data?.space.running && <span className="live-dot" />}
-                  </NavigationButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
           <div className="sidebar-note">
@@ -907,8 +873,8 @@ export default function Home() {
           <div className="sidebar-profile">
             <span className="avatar">{data ? 'DM' : 'V'}</span>
             <div>
-              <strong>{data ? 'Mode démonstration' : 'Visiteur'}</strong>
-              <small>{data ? 'Session de 24 heures' : 'Découvrez SAV SC Assistant AI'}</small>
+              <strong>{data ? 'Session personnelle' : 'Espace client'}</strong>
+              <small>{data ? 'Expire après 24 heures' : 'SAV & service client'}</small>
             </div>
             <button
               className="icon-button"
@@ -930,24 +896,15 @@ export default function Home() {
         <header className="topbar">
           <div className="breadcrumb">
             <SidebarTrigger className="mobile-trigger" />
-            <span>Plateforme</span>
+            <span>Espace client</span>
             <ChevronRight size={13} />
-            <strong>{nav.find((n) => n.id === view)?.label}</strong>
+            <strong>{clientNav.find((n) => n.id === view)?.label ?? 'Assistant'}</strong>
           </div>
           <div className="top-actions">
             <span className="demo-pill">
-              <FlaskConical size={13} />
-              Démonstration interactive
+              <ShieldCheck size={13} />
+              Données fictives
             </span>
-            <a
-              href="https://github.com/Simo-Mesbahi/spicial-agent"
-              target="_blank"
-              rel="noreferrer"
-              className="github-link"
-            >
-              GitHub
-              <ArrowUpRight size={15} />
-            </a>
             <button className="icon-button" onClick={changeTheme} aria-label="Changer le thème">
               <Sun size={17} />
             </button>
@@ -964,19 +921,10 @@ export default function Home() {
                   </h1>
                   <p>Vos demandes avancent. Gardez le fil, à chaque étape.</p>
                 </div>
-                <div
-                  className="engine-status"
-                  title={
-                    data?.config.blockedReason ??
-                    'Mode configuré côté serveur. Le mode utilisé figure sous chaque réponse.'
-                  }
-                >
-                  <span className={data?.config.ready ? 'live-dot' : 'status-dot-muted'} />
-                  <span>{modeLabel}</span>
-                  <CircleHelp
-                    size={14}
-                    aria-label="Le mode utilisé est indiqué sous chaque réponse"
-                  />
+                <div className="engine-status" title="Espace isolé et temporaire">
+                  <span className={data ? 'live-dot' : 'status-dot-muted'} />
+                  <span>{data ? 'Espace disponible' : 'Préparation de votre espace'}</span>
+                  <ShieldCheck size={14} aria-label="Espace isolé et temporaire" />
                 </div>
               </div>
               {loading ? (
@@ -1202,7 +1150,7 @@ export default function Home() {
                                             setConfirm({ action: 'handoff', case: current })
                                           }
                                         >
-                                          <Headphones size={15} /> Simuler le relais
+                                          <Headphones size={15} /> Demander un conseiller
                                         </button>
                                         <button
                                           className="button primary reply-action"
@@ -1253,18 +1201,7 @@ export default function Home() {
                                     ))}
                                   </div>
                                   <div className="message-meta">
-                                    <span>
-                                      {m.metadata.fallback
-                                        ? 'Secours sans IA'
-                                        : m.metadata.mode === 'demo'
-                                          ? 'Réponse déterministe'
-                                          : 'Réponse générée'}{' '}
-                                      · {dateTime(m.created_at)}
-                                    </span>
-                                    <button onClick={() => setTrace(m)}>
-                                      <FileCheck2 size={12} />
-                                      Sources & outils
-                                    </button>
+                                    <span>Réponse préparée · {dateTime(m.created_at)}</span>
                                   </div>
                                 </>
                               )}
@@ -1369,11 +1306,8 @@ export default function Home() {
                         </div>
                       </form>
                       <p className="chat-disclaimer">
-                        {mode === 'demo'
-                          ? 'Mode démonstration : règles et documents, sans modèle génératif.'
-                          : mode === 'gemini'
-                            ? 'Mode Gemini gratuit : utilisez uniquement des données fictives ; ne partagez aucun code, paiement ou renseignement personnel.'
-                            : 'Les réponses générées peuvent contenir des erreurs. Vérifiez les informations importantes.'}
+                        Démonstration avec données fictives. Vérifiez les informations importantes
+                        et ne partagez aucun code, paiement ou renseignement personnel.
                       </p>
                     </section>
                     <aside className="context-panel" id="case-context">
@@ -1485,7 +1419,7 @@ export default function Home() {
                                 onClick={() => setConfirm({ action: 'handoff', case: current })}
                               >
                                 <Headphones size={16} />
-                                Simuler le relais conseiller
+                                Demander un conseiller
                               </button>
                               <button className="button primary full" onClick={() => openContact()}>
                                 <Mail size={16} />
@@ -1496,11 +1430,10 @@ export default function Home() {
                         )
                       )}
                       <div className="context-tip">
-                        <Zap size={17} />
+                        <RefreshCw size={17} />
                         <p>
-                          Faites avancer ce dossier dans le{' '}
-                          <button onClick={() => setView('simulation')}>laboratoire</button>, puis
-                          reposez votre question.
+                          Actualisez le dossier pour consulter les dernières informations
+                          enregistrées, puis reposez votre question si nécessaire.
                         </p>
                       </div>
                     </aside>
@@ -1617,7 +1550,7 @@ export default function Home() {
               )}
             </>
           )}
-          {view === 'operations' && (
+          {INTERNAL_CONSOLE_AVAILABLE && view === 'operations' && (
             <>
               <SectionTitle
                 label="ESPACE CONSEILLER · RÔLE SIMULÉ"
@@ -1742,7 +1675,7 @@ export default function Home() {
               )}
             </>
           )}
-          {view === 'simulation' && (
+          {INTERNAL_CONSOLE_AVAILABLE && view === 'simulation' && (
             <>
               <SectionTitle
                 label="LABORATOIRE INTERACTIF"
@@ -1864,7 +1797,7 @@ export default function Home() {
               )}
             </>
           )}
-          {view === 'knowledge' && (
+          {INTERNAL_CONSOLE_AVAILABLE && view === 'knowledge' && (
             <>
               <SectionTitle
                 label="BASE DOCUMENTAIRE"
@@ -1928,7 +1861,7 @@ export default function Home() {
               }}
             />
           )}
-          {view === 'project' && (
+          {INTERNAL_CONSOLE_AVAILABLE && view === 'project' && (
             <>
               <SectionTitle
                 label="SAV SC ASSISTANT AI · PROJET DE DÉMONSTRATION"
@@ -2070,11 +2003,8 @@ export default function Home() {
           )}
         </main>
         <footer className="app-footer">
-          <span>
-            SAV SC Assistant AI <span className="footer-sep">/</span> Une démonstration par Simo
-            Mesbahi
-          </span>
-          <span>Données fictives · v0.1</span>
+          <span>SAV SC Assistant AI</span>
+          <span>Démonstration · Données fictives · Aucun traitement réel</span>
         </footer>
       </div>
       <Dialog
@@ -2183,72 +2113,12 @@ export default function Home() {
           </p>
         </DialogContent>
       </Dialog>
-      <Dialog open={!!trace} onOpenChange={(v) => !v && setTrace(null)}>
-        <DialogContent className="atlas-dialog">
-          <DialogHeader>
-            <DialogTitle>Les éléments de cette réponse</DialogTitle>
-            <DialogDescription>
-              Sources et opérations observables. Aucun raisonnement interne ni secret n’est affiché.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="facts">
-            {trace?.metadata.fallback && (
-              <div>
-                <span>Continuité de service</span>
-                <strong>
-                  {trace.metadata.fallback === 'daily_limit'
-                    ? 'Quota IA atteint : secours sans IA'
-                    : 'Réponse du modèle indisponible ou non validée : secours sans IA'}
-                </strong>
-              </div>
-            )}
-            <div>
-              <span>Moteur</span>
-              <strong>
-                {trace?.metadata.mode === 'demo' ? 'Déterministe, sans LLM' : trace?.metadata.mode}
-              </strong>
-            </div>
-            <div>
-              <span>Temps de traitement</span>
-              <strong>{trace?.metadata.latencyMs} ms</strong>
-            </div>
-            {trace?.metadata.caseVersion != null && (
-              <div>
-                <span>Version du dossier consultée</span>
-                <strong>{trace.metadata.caseVersion}</strong>
-              </div>
-            )}
-            <div>
-              <span>Outils</span>
-              <strong>{trace?.metadata.tools?.join(', ') || 'Aucun'}</strong>
-            </div>
-          </div>
-          {trace?.metadata.sources?.map((s) => (
-            <button
-              className="source-link"
-              key={s.id}
-              onClick={() => {
-                setTrace(null);
-                setArticle(knowledge.find((a) => a.id === s.id) ?? null);
-              }}
-            >
-              <BookOpen size={16} />
-              {s.title}
-              <ArrowUpRight size={14} />
-            </button>
-          ))}
-          <p className="footnote">
-            Les faits de dossier proviennent de votre espace simulé. L’absence de source
-            documentaire n’implique pas une vérification externe.
-          </p>
-        </DialogContent>
-      </Dialog>
       <AlertDialog open={!!confirm} onOpenChange={(v) => !v && setConfirm(null)}>
         <AlertDialogContent className="atlas-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirm?.action === 'handoff'
-                ? 'Transmettre une demande de contact ?'
+                ? 'Créer une demande de contact ?'
                 : confirm?.action === 'decline_quote'
                   ? 'Refuser ce devis ?'
                   : validAmount(confirm?.case.quote_cents)
@@ -2258,7 +2128,7 @@ export default function Home() {
             <AlertDialogDescription>
               {confirm?.case.reference} · {confirm?.case.product}.{' '}
               {confirm?.action === 'handoff'
-                ? 'Le résumé et les derniers échanges seront ajoutés à l’espace conseiller de votre démonstration. Aucun email ni SMS ne sera envoyé.'
+                ? 'Dans cette démonstration, la demande est enregistrée uniquement dans votre session. Aucun conseiller, email ni SMS réel ne sera contacté.'
                 : 'Cette décision modifie le dossier fictif. Aucun paiement réel ne sera effectué. Le serveur vérifiera que le devis n’a pas changé.'}
             </AlertDialogDescription>
           </AlertDialogHeader>

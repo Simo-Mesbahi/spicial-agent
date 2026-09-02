@@ -29,5 +29,8 @@ test('renders SAV SC Assistant AI discovery and production metadata before hydra
   assert.match(html, /Vivre l’expérience/);
   assert.match(html, /APERÇU FICTIF/);
   assert.match(html, /SAV-2026-1042/);
+  assert.match(html, /Environnement de démonstration/);
+  assert.doesNotMatch(html, /Le projet|Architecture & limites|GitHub/);
+  assert.doesNotMatch(html, /Ollama|Gemini|fournisseur externe/i);
   assert.doesNotMatch(html, /name=["']codex-preview["']/);
 });

@@ -12,15 +12,15 @@ Toutes les réponses de données utilisent `Cache-Control: no-store`. Les erreur
 | POST    | `/api/verify`      | Vérifie `reference` et `code`, crée un grant d’une heure                       |
 | POST    | `/api/chat`        | `message`, `caseId` et `requestId` facultatifs ; grant exigé si dossier fourni |
 | POST    | `/api/case-action` | `caseId`, `action`, `version`, `requestId`, `confirm`                          |
-| POST    | `/api/simulation`  | `action`: `toggle` (+ `running`), `tick` ou `generate`                         |
+| POST    | `/api/simulation`  | Tests internes uniquement ; retourne 404 avec `APP_EDITION=client`             |
 
-Actions : `advance`, `delay` (opérateur fictif limité à son espace) ; `accept_quote`, `decline_quote`, `handoff` (grant et confirmation explicite requis). Un état périmé retourne 409. Le rejeu de `requestId` sur le même dossier ne répète pas la transition.
+Actions : `advance`, `delay` (tests internes seulement, refusées avec `APP_EDITION=client`) ; `accept_quote`, `decline_quote`, `handoff` (grant et confirmation explicite requis). Un état périmé retourne 409. Le rejeu de `requestId` sur le même dossier ne répète pas la transition.
 
 L’acceptation d’un devis exige un montant enregistré en centimes, entier sûr et positif ou nul. Un montant manquant, négatif ou invalide retourne 409 ; un montant explicitement égal à zéro reste valide. L’absence de montant ne devient jamais une gratuité implicite.
 
 Codes attendus : 400 données invalides, 401 session manquante/expirée, 403 accès/CSRF/code refusé, 404 ressource inaccessible, 409 état incompatible ou périmé, 413 requête trop grande, 415 format incorrect, 429 quota, 503 dépendance indisponible.
 
-`/api/snapshot` est une API de laboratoire, pas un endpoint client de production : elle expose les identifiants des scénarios fictifs au propriétaire de l’espace pour lui permettre de jouer les deux rôles. Ne pas brancher cet endpoint sur des données clients réelles.
+`/api/snapshot` expose uniquement l’espace fictif appartenant au visiteur. En édition client, les journaux d’audit et demandes de relais sont retirés de la réponse et l’état de simulation est neutralisé. Cet endpoint reste propre à la démonstration et ne doit pas être branché sur des données clients réelles.
 
 La configuration publique inclut `budgetMode`, `externalCallsAllowed` et `blockedReason`. `ready` signifie « configuration valide », pas « génération réelle testée » : `/api/health` n’envoie aucun appel au modèle. En budget `zero`, un fournisseur externe retourne 503 avant appel réseau et consommation du quota de messages. Aucun paramètre HTTP ne peut modifier le budget. Les réponses du modèle conservent `mode` et `caseVersion` dans leurs métadonnées.
 

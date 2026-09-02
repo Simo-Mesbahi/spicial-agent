@@ -8,7 +8,7 @@ Donner envie d’essayer en montrant une situation compréhensible, puis permett
 
 - Accueil utilisable avant la création d’une session : trois aperçus fictifs et interactifs, sans appel à un modèle.
 - Démarrage sur le scénario choisi, code fictif disponible, contrôle serveur et première consultation après validation explicite.
-- Guide en contexte : consultation, simulation d’une évolution, nouvelle consultation. Les étapes reposent sur la version persistée du dossier, pas sur un simple minuteur.
+- Guide en contexte : vérification, consultation, puis orientation vers les autres dossiers ou une décision client autorisée. Aucune commande opérateur n’est proposée dans l’édition publique.
 - Devis : aucune progression automatique sans confirmation ; aucune opération financière réelle.
 - Conversation : suggestions liées au dossier, réponses courtes aux salutations, sources consultables et erreurs explicites.
 - Suivi « Le dossier en clair » : état consulté, explication, prochaine étape prévue, action du client et montant pertinent. L’estimation reste explicitement non garantie ; son absence n’est pas remplacée par une date inventée. Les réponses de statut déterministes privilégient cette synthèse et conservent le texte intégral dépliable.
