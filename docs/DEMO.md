@@ -26,7 +26,7 @@ Essayer ensuite « Je veux modifier mon adresse de livraison ». Cette action d�
 
 ## 5. Contact email contrôlé
 
-Depuis la dernière réponse de relais, choisir « Écrire par email ». Le dossier et le besoin formulé dans le chat sont déjà repris, sans demander un nouveau formulaire. Vérifier l’objet et l’aperçu, puis choisir l’application email du téléphone, Gmail ou Outlook. Sur mobile, un accès web reste proposé pour Gmail et Outlook si l’application n’est pas disponible. Rien n’est envoyé ni stocké par le site : relire puis confirmer dans la messagerie choisie. « Copier les informations de contact » constitue la solution de secours. Le relais conseiller fictif reste un parcours distinct.
+Depuis la dernière réponse de relais, choisir « Écrire par email ». Le dossier et le besoin formulé dans le chat sont déjà repris, sans demander un nouveau formulaire. Vérifier l’objet et l’aperçu, puis choisir l’application email du téléphone, Gmail ou Outlook. Sur mobile, un accès web reste proposé pour Gmail et Outlook si l’application n’est pas disponible. Rien n’est envoyé ni stocké par le site : choisir au besoin le compte d’envoi dans le champ « De », relire puis confirmer dans la messagerie. Si elle ne s’ouvre pas, copier séparément le destinataire, l’objet et le message. Le relais conseiller fictif reste un parcours distinct.
 
 ## 6. Tester les limites
 

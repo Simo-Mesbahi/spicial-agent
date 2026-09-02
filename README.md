@@ -22,24 +22,24 @@ Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce q
 
 ## Fonctionnalités livrées
 
-| Fonction                                                             | État                                                                  |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                     |
-| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                       |
-| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                 |
-| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                             |
-| Aide guidée puis relais conseiller avec contexte                     | Triage progressif ; confirmation respectée et transfert simulé        |
-| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                                |
-| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                             |
-| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées      |
-| Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement |
-| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut                  |
-| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                           |
-| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur            |
-| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable          |
-| Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage               |
-| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                      |
-| Contact email guidé                                                  | Appareil, Gmail ou Outlook ; contexte prérempli et copie de secours   |
+| Fonction                                                             | État                                                                     |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                        |
+| Huit scénarios et génération de nouveaux dossiers                    | Implémentées, plafond de 24 dossiers par espace                          |
+| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                    |
+| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                                |
+| Aide guidée puis relais conseiller avec contexte                     | Triage progressif ; confirmation respectée et transfert simulé           |
+| Simulation manuelle et progression automatique à la consultation     | Implémentées ; pas de daemon permanent                                   |
+| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                                |
+| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées         |
+| Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement    |
+| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut                     |
+| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                              |
+| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur               |
+| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable             |
+| Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage                  |
+| Traçabilité et compteurs de session                                  | Mesures observées, sans score de qualité inventé                         |
+| Contact email guidé                                                  | Appareil, Gmail ou Outlook ; contexte prérempli et copie champ par champ |
 
 ## Lancer localement
 
@@ -125,7 +125,7 @@ Les sources et les configurations de test sont incluses dans la livraison ; aucu
 
 - Données synthétiques, scénarios bornés et procédures fictives ; pas de connexion à un SI réel.
 - Recherche lexicale ; embeddings, recherche hybride et reranking restent des évolutions à évaluer.
-- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. La page Contact prépare localement un email contextualisé vers `mohammed.elmesbahi31@gmail.com`, puis laisse choisir l’application par défaut, Gmail ou Outlook. Le visiteur relit et confirme l’envoi dans sa messagerie ; une copie complète reste disponible en secours.
+- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. La page Contact prépare localement un email contextualisé vers `mohammed.elmesbahi31@gmail.com`, puis laisse choisir l’application par défaut, Gmail ou Outlook. Le visiteur relit et confirme l’envoi dans sa messagerie ; le destinataire, l’objet et le corps peuvent être copiés séparément si nécessaire.
 - La simulation avance à la consultation et par actions explicites. Une exécution permanente demande un ordonnanceur distinct.
 - L’appel réel aux modèles n’a pas été validé sans identifiants de fournisseur.
 - Les tests ne constituent pas un audit de sécurité indépendant ni une certification de production.

@@ -37,6 +37,9 @@ test('Contact link preserves readable Unicode content', () => {
   assert.equal(url.searchParams.get('subject'), '[SAV SC Assistant AI] Produit défectueux');
   assert.match(url.searchParams.get('body'), /^Première ligne\./m);
   assert.match(url.searchParams.get('body'), /Deuxième ligne avec un café\./);
+  assert.doesNotMatch(link, /\+/);
+  assert.match(link, /%20/);
+  assert.doesNotMatch(url.searchParams.get('body'), /Adresse de réponse/);
 });
 
 test('Every client receives the same prepared recipient, subject and body', () => {
@@ -60,6 +63,9 @@ test('Every client receives the same prepared recipient, subject and body', () =
   assert.equal(outlook.searchParams.get('body'), email.body);
   assert.match(links.gmailApp, /^googlegmail:\/\/co\?/);
   assert.match(links.outlookApp, /^ms-outlook:\/\/compose\?/);
+  for (const link of Object.values(links)) {
+    assert.doesNotMatch(link, /\+/, `Spaces must never be encoded as + in ${link}`);
+  }
 });
 
 test('Contact subject cannot inject mail headers', () => {

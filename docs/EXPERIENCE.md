@@ -16,7 +16,7 @@ Donner envie d’essayer en montrant une situation compréhensible, puis permett
 - Changement de dossier directement dans la conversation avec contrôle d’accès inchangé. Suggestions spécifiques aux réclamations, échanges et retraits ; le suivi d’une réclamation ne déclenche plus à tort une proposition de relais.
 - Résolution avant transfert : à la première demande de contact, l’assistant propose son aide et trois prochaines étapes pertinentes. Si le client confirme son choix, le relais apparaît immédiatement. Une modification de commande, de compte ou de paiement, une contestation, un devis sans montant ou une situation de sécurité déclenche directement l’orientation humaine. Le transfert métier reste simulé.
 - Mobile : conversation prioritaire, panneau du dossier repliable, saisie en 16 px. Thèmes clair, sombre et système ; navigation clavier et préférence de réduction des animations prises en compte dans le code.
-- Contact : page dédiée accessible depuis l’accueil, la navigation et les réponses de relais. Depuis le chat, le dossier et le dernier besoin sont préremplis pour éviter la répétition. Les champs sont validés, le destinataire est visible, une copie complète est disponible et aucun message ne part avant confirmation dans l’application mail du visiteur.
+- Contact : page dédiée accessible depuis l’accueil, la navigation et les réponses de relais. Depuis le chat, le dossier et le dernier besoin sont préremplis pour éviter la répétition. Le destinataire et l’aperçu sont visibles, le visiteur choisit sa messagerie et son compte d’envoi, et aucun message ne part avant confirmation. En secours, destinataire, objet et corps se copient séparément dans les bons champs.
 
 ## Essai utilisateur à organiser
 

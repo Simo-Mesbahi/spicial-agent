@@ -58,7 +58,9 @@ export function buildContactEmail(draft: ContactDraft): ContactEmail {
 }
 
 function query(values: Record<string, string>) {
-  return new URLSearchParams(values).toString();
+  return Object.entries(values)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
 }
 
 export function buildContactClientLinks(draft: ContactDraft): ContactClientLinks {

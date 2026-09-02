@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  AtSign,
   Check,
   CheckCircle2,
   ChevronDown,
   Clipboard,
   FileCheck2,
   Globe2,
+  LifeBuoy,
   Mail,
   MessageSquareText,
   MonitorSmartphone,
@@ -37,8 +39,7 @@ type ContactPageProps = {
 
 export function ContactPage({ initialDraft, onContinue }: ContactPageProps) {
   const [isMobile, setIsMobile] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [messageCopied, setMessageCopied] = useState(false);
+  const [copiedField, setCopiedField] = useState<'recipient' | 'subject' | 'body' | null>(null);
   const [openedClient, setOpenedClient] = useState('');
   const [error, setError] = useState('');
 
@@ -75,24 +76,13 @@ export function ContactPage({ initialDraft, onContinue }: ContactPageProps) {
     }
   }
 
-  async function copyAddress() {
+  async function copyField(field: 'recipient' | 'subject' | 'body', value: string) {
     setError('');
-    if (await copyText(CONTACT_RECIPIENT)) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2500);
-    } else {
-      setError(`Copiez cette adresse : ${CONTACT_RECIPIENT}`);
-    }
-  }
-
-  async function copyPreparedMessage() {
-    setError('');
-    const value = `À : ${email.recipient}\nObjet : ${email.subject}\n\n${email.body}`;
     if (await copyText(value)) {
-      setMessageCopied(true);
-      window.setTimeout(() => setMessageCopied(false), 2500);
+      setCopiedField(field);
+      window.setTimeout(() => setCopiedField(null), 2500);
     } else {
-      setError('La copie automatique est indisponible sur ce navigateur.');
+      setError(`La copie automatique de ce champ est indisponible sur ce navigateur.`);
     }
   }
 
@@ -146,9 +136,13 @@ export function ContactPage({ initialDraft, onContinue }: ContactPageProps) {
               <small>Destinataire vérifié</small>
               <strong>{CONTACT_RECIPIENT}</strong>
             </div>
-            <button type="button" onClick={() => void copyAddress()}>
-              {copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}
-              {copied ? 'Copiée' : 'Copier'}
+            <button
+              type="button"
+              aria-label="Copier le destinataire"
+              onClick={() => void copyField('recipient', CONTACT_RECIPIENT)}
+            >
+              {copiedField === 'recipient' ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}
+              {copiedField === 'recipient' ? 'Copié' : 'Copier'}
             </button>
           </div>
         </section>
@@ -274,6 +268,17 @@ export function ContactPage({ initialDraft, onContinue }: ContactPageProps) {
             </div>
           </div>
 
+          <div className="contact-sender-note">
+            <AtSign size={18} />
+            <div>
+              <strong>Votre adresse d’envoi reste votre choix</strong>
+              <span>
+                Votre messagerie utilise le compte sélectionné dans le champ « De ». Si plusieurs
+                comptes sont enregistrés, choisissez simplement celui que vous souhaitez utiliser.
+              </span>
+            </div>
+          </div>
+
           {openedClient && (
             <p className="contact-success" role="status">
               <CheckCircle2 size={17} /> {openedClient} va s’ouvrir avec votre message. Vérifiez-le
@@ -286,14 +291,66 @@ export function ContactPage({ initialDraft, onContinue }: ContactPageProps) {
             </p>
           )}
 
-          <button
-            className="button secondary contact-copy-message"
-            type="button"
-            onClick={() => void copyPreparedMessage()}
-          >
-            {messageCopied ? <CheckCircle2 size={17} /> : <Clipboard size={17} />}
-            {messageCopied ? 'Message copié' : 'Copier les informations de contact'}
-          </button>
+          <details className="contact-manual-fallback">
+            <summary>
+              <span>
+                <LifeBuoy size={17} />
+                <span>
+                  <strong>Votre messagerie ne s’ouvre pas ?</strong>
+                  Copiez chaque information dans le bon champ.
+                </span>
+              </span>
+              <ChevronDown size={17} />
+            </summary>
+            <div className="contact-manual-fields">
+              <div>
+                <span>
+                  <small>DESTINATAIRE</small>
+                  <strong>{email.recipient}</strong>
+                </span>
+                <button
+                  type="button"
+                  aria-label="Copier le destinataire"
+                  onClick={() => void copyField('recipient', email.recipient)}
+                >
+                  {copiedField === 'recipient' ? (
+                    <CheckCircle2 size={15} />
+                  ) : (
+                    <Clipboard size={15} />
+                  )}
+                  {copiedField === 'recipient' ? 'Copié' : 'Copier'}
+                </button>
+              </div>
+              <div>
+                <span>
+                  <small>OBJET</small>
+                  <strong>{email.subject}</strong>
+                </span>
+                <button
+                  type="button"
+                  aria-label="Copier l’objet"
+                  onClick={() => void copyField('subject', email.subject)}
+                >
+                  {copiedField === 'subject' ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
+                  {copiedField === 'subject' ? 'Copié' : 'Copier'}
+                </button>
+              </div>
+              <div className="contact-manual-message">
+                <span>
+                  <small>MESSAGE</small>
+                  <strong>{email.body}</strong>
+                </span>
+                <button
+                  type="button"
+                  aria-label="Copier le message"
+                  onClick={() => void copyField('body', email.body)}
+                >
+                  {copiedField === 'body' ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
+                  {copiedField === 'body' ? 'Copié' : 'Copier'}
+                </button>
+              </div>
+            </div>
+          </details>
 
           {onContinue && (
             <button className="contact-assistant-link" type="button" onClick={onContinue}>

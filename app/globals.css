@@ -1840,7 +1840,7 @@ svg {
   background: var(--surface);
   border: 1px solid var(--border);
   padding: 9px 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 .contact-availability i {
@@ -1902,7 +1902,7 @@ svg {
 }
 .contact-promise > p {
   max-width: 490px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.85;
   color: #bfd0c6;
 }
@@ -1915,7 +1915,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .contact-benefits svg {
   color: #d9ec9d;
@@ -1941,11 +1941,11 @@ svg {
 }
 .contact-address-card small {
   color: #abc8b7;
-  font-size: 9px;
+  font-size: 11px;
   margin-bottom: 3px;
 }
 .contact-address-card strong {
-  font-size: 11px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .contact-address-card button {
@@ -1956,7 +1956,7 @@ svg {
   border: 1px solid #ffffff2d;
   padding: 8px 10px;
   color: #eff5f0;
-  font-size: 10px;
+  font-size: 11px;
 }
 .contact-clients-card {
   background: var(--surface);
@@ -1985,7 +1985,7 @@ svg {
 }
 .contact-form-title p {
   color: var(--quiet);
-  font-size: 11px;
+  font-size: 13px;
 }
 .contact-context-ready {
   display: flex;
@@ -2007,12 +2007,12 @@ svg {
   display: block;
 }
 .contact-context-ready strong {
-  font-size: 11px;
+  font-size: 13px;
   margin-bottom: 3px;
 }
 .contact-context-ready span {
   color: var(--quiet);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .contact-email-preview {
@@ -2055,7 +2055,7 @@ svg {
 .contact-preview-heading strong {
   overflow: hidden;
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2071,7 +2071,7 @@ svg {
   padding: 11px 14px;
   color: var(--quiet);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   list-style: none;
 }
@@ -2089,7 +2089,7 @@ svg {
   padding: 14px;
   border-top: 1px solid var(--border);
   color: var(--quiet);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
 }
@@ -2179,13 +2179,13 @@ svg {
   display: block;
 }
 .contact-client-copy strong {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.4;
 }
 .contact-client-copy small {
   margin-top: 3px;
   color: var(--quiet);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
 }
 .contact-recommended-label {
@@ -2200,7 +2200,7 @@ svg {
   align-items: center;
   gap: 5px;
   color: var(--primary);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2213,7 +2213,7 @@ svg {
   border-top: 1px solid var(--border);
   color: var(--primary);
   background: var(--soft);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   text-decoration: none;
 }
@@ -2224,7 +2224,7 @@ svg {
   gap: 8px;
   border: 1px solid;
   padding: 11px 12px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
 }
 .contact-error {
@@ -2237,13 +2237,140 @@ svg {
   background: color-mix(in srgb, var(--primary) 9%, var(--surface));
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
-.contact-copy-message {
+.contact-sender-note {
   display: flex;
+  align-items: flex-start;
+  gap: 10px;
   margin-top: 12px;
-  min-height: 48px;
-  justify-content: center;
-  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+}
+.contact-sender-note > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--primary);
+}
+.contact-sender-note strong,
+.contact-sender-note span {
+  display: block;
+}
+.contact-sender-note strong {
+  margin-bottom: 3px;
+  color: var(--foreground);
+  font-size: 13px;
+}
+.contact-sender-note span {
+  color: var(--quiet);
   font-size: 12px;
+  line-height: 1.55;
+}
+.contact-manual-fallback {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.contact-manual-fallback > summary {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.contact-manual-fallback > summary::-webkit-details-marker {
+  display: none;
+}
+.contact-manual-fallback > summary > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.contact-manual-fallback > summary svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.contact-manual-fallback > summary strong,
+.contact-manual-fallback > summary span span {
+  display: block;
+}
+.contact-manual-fallback > summary strong {
+  margin-bottom: 2px;
+  color: var(--foreground);
+  font-size: 13px;
+}
+.contact-manual-fallback > summary span span {
+  color: var(--quiet);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.contact-manual-fallback > summary > svg {
+  transition: transform 160ms ease;
+}
+.contact-manual-fallback[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.contact-manual-fields {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+.contact-manual-fields > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 13px;
+}
+.contact-manual-fields > div + div {
+  border-top: 1px solid var(--border);
+}
+.contact-manual-fields small,
+.contact-manual-fields strong {
+  display: block;
+}
+.contact-manual-fields small {
+  margin-bottom: 3px;
+  color: var(--quiet);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.contact-manual-fields strong {
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.contact-manual-fields button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--primary);
+  background: var(--soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+.contact-manual-fields button:hover {
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--border));
+}
+.contact-manual-message {
+  align-items: start !important;
+}
+.contact-manual-message strong {
+  max-height: 88px;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 .contact-assistant-link {
   width: 100%;
@@ -2276,13 +2403,13 @@ svg {
 }
 .contact-assistant-link span {
   color: var(--quiet);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .contact-assistant-link strong {
   margin-bottom: 2px;
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 13px;
 }
 .contact-privacy {
   display: flex;
@@ -2290,7 +2417,7 @@ svg {
   gap: 7px;
   margin-top: 14px;
   color: var(--quiet);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.65;
 }
 .contact-privacy svg {
