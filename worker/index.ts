@@ -1,4 +1,9 @@
 import { handleApi, type AtlasEnv } from '../lib/atlas/api';
+import {
+  handleProductionApi,
+  recordProductionPerformance,
+  type ProductionEnv,
+} from '../lib/atlas/production-api';
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import {
   handleImageOptimization,
@@ -7,7 +12,7 @@ import {
 } from 'vinext/server/image-optimization';
 import handler from 'vinext/server/app-router-entry';
 
-interface Env extends AtlasEnv {
+interface Env extends AtlasEnv, ProductionEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
   IMAGES: {
     input(stream: ReadableStream): {
@@ -23,6 +28,28 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+function hardenDocumentResponse(request: Request, response: Response) {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('text/html')) return response;
+  const headers = new Headers(response.headers);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('X-Frame-Options', 'DENY');
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  headers.set('Content-Security-Policy', "base-uri 'self'; object-src 'none'; frame-ancestors 'none'");
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  if (new URL(request.url).protocol === 'https:')
+    headers.set('Strict-Transport-Security', 'max-age=31536000');
+  const path = new URL(request.url).pathname;
+  if (path === '/admin' || path.startsWith('/admin/') || path === '/suivi')
+    headers.set('Cache-Control', 'no-store, max-age=0');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -33,6 +60,14 @@ const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname.startsWith('/api/production/')) {
+      const startedAt = Date.now();
+      const response = await handleProductionApi(request, env);
+      ctx.waitUntil(
+        recordProductionPerformance(env, url.pathname, response.status, Date.now() - startedAt),
+      );
+      return response;
+    }
     if (url.pathname.startsWith('/api/')) return handleApi(request, env);
 
     if (url.pathname === '/_vinext/image') {
@@ -52,7 +87,7 @@ const worker = {
       );
     }
 
-    return handler.fetch(request, env, ctx);
+    return hardenDocumentResponse(request, await handler.fetch(request, env, ctx));
   },
 };
 
