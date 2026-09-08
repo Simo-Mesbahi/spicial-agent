@@ -32,7 +32,7 @@ type CaseDetail = {
   currency: string; product: string | null; store: string | null; customer: string | null;
   events: { id: string; label: string; detail: string | null; customer_visible: boolean; occurred_at: string; source: string }[];
 };
-type Audit = { items: { id: string; action: string; outcome: string; entity_type: string; entity_id: string | null; actor_user_id: string | null; created_at: string }[]; total: number };
+type Audit = { items: { id: string; action: string; outcome: string; entity_type: string | null; entity_id: string | null; actor_user_id: string | null; created_at: string }[]; total: number };
 
 class RequestError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); }
@@ -170,12 +170,13 @@ export default function AdminOperationsPage() {
     event.preventDefault(); if (!selectedCase || note.trim().length < 3) return;
     setBusy(true); setError(''); setSuccess('');
     try {
+      const caseId = selectedCase.id;
       await request('/api/production/admin/operations/case/note', { method: 'POST', body: JSON.stringify({
-        organizationId, caseId: selectedCase.id, version: selectedCase.version, note: note.trim(), visible: noteVisible, requestId: crypto.randomUUID(),
+        organizationId, caseId, version: selectedCase.version, note: note.trim(), visible: noteVisible, requestId: crypto.randomUUID(),
       }) });
       setNote(''); setSuccess(noteVisible ? 'Message client enregistré et audité.' : 'Note interne enregistrée et auditée.');
-      await loadCase(selectedCase.id, organizationId);
       await loadAll(organizationId, membership?.role);
+      await loadCase(caseId, organizationId);
     } catch (cause) { if (!handleAuthError(cause)) setError(cause instanceof Error ? cause.message : 'Enregistrement impossible.'); }
     finally { setBusy(false); }
   }
@@ -255,7 +256,7 @@ export default function AdminOperationsPage() {
 
       <section className="admin-ops-grid admin-ops-bottom-grid">
         <article className="admin-ops-panel"><header><div><p>PERFORMANCE</p><h2>Routes les plus sollicitées</h2></div><Activity size={18} /></header><div className="admin-ops-routes">{(overview?.routes ?? []).map((route) => <div key={route.route}><code>{route.route}</code><span><strong>{route.requests}</strong> req · {route.errors} err · {formatMetric(route.avg_ms, ' ms')}</span></div>)}{!overview?.routes.length && <div className="admin-ops-empty compact"><Activity /><strong>Pas encore de trafic</strong><span>Les mesures apparaîtront après les premières requêtes.</span></div>}</div></article>
-        <article className="admin-ops-panel"><header><div><p>AUDIT</p><h2>Actions sensibles récentes</h2></div><History size={18} /></header>{canAudit ? <div className="admin-ops-audit">{(audit?.items ?? []).map((item) => <div key={item.id}><span><strong>{item.action}</strong><small>{item.entity_type}{item.entity_id ? ` · ${item.entity_id.slice(0, 8)}…` : ''}</small></span><span><b>{item.outcome}</b><small>{formatDate(item.created_at)}</small></span></div>)}{!audit?.items.length && <div className="admin-ops-empty compact"><History /><strong>Aucun événement d’audit</strong><span>Les actions sensibles apparaîtront ici.</span></div>}{audit && <p>{audit.total} événement{audit.total > 1 ? 's' : ''} au total</p>}</div> : <div className="admin-ops-empty"><ShieldCheck /><strong>Accès restreint</strong><span>Le journal détaillé est réservé aux super-administrateurs et analystes.</span></div>}</article>
+        <article className="admin-ops-panel"><header><div><p>AUDIT</p><h2>Actions sensibles récentes</h2></div><History size={18} /></header>{canAudit ? <div className="admin-ops-audit">{(audit?.items ?? []).map((item) => <div key={item.id}><span><strong>{item.action}</strong><small>{item.entity_type ?? 'événement'}{item.entity_id ? ` · ${item.entity_id.slice(0, 8)}…` : ''}</small></span><span><b>{item.outcome}</b><small>{formatDate(item.created_at)}</small></span></div>)}{!audit?.items.length && <div className="admin-ops-empty compact"><History /><strong>Aucun événement d’audit</strong><span>Les actions sensibles apparaîtront ici.</span></div>}{audit && <p>{audit.total} événement{audit.total > 1 ? 's' : ''} au total</p>}</div> : <div className="admin-ops-empty"><ShieldCheck /><strong>Accès restreint</strong><span>Le journal détaillé est réservé aux super-administrateurs et analystes.</span></div>}</article>
       </section>
 
       <footer className="admin-ops-footer"><span>SAV SC Assistant AI · Centre opérationnel</span><span><MessageSquareText size={14} /> Actions métier contrôlées et auditées</span></footer>
