@@ -106,7 +106,7 @@ function caseSession() {
 
 test('Supabase migration enables RLS on every application table and keeps customer RPCs server-only', () => {
   const migration = readFileSync(
-    'supabase/migrations/202609030001_production_foundation.sql',
+    'supabase/migrations/20260907051405_production_foundation.sql',
     'utf8',
   );
   const tables = [...migration.matchAll(/create table if not exists public\.([a-z_]+)/g)].map(
