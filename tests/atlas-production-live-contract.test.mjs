@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { build } from 'esbuild';
@@ -63,6 +64,10 @@ function request(path, body) {
   });
 }
 
+function sqlContractHash(sql) {
+  return createHash('sha256').update(sql.replace(/\s+/g, '')).digest('hex');
+}
+
 test('neutral Supabase credential denial is returned as a customer-safe 403, not a 502', async () => {
   const db = database();
   const env = environment(db);
@@ -89,7 +94,7 @@ test('neutral Supabase credential denial is returned as a customer-safe 403, not
   }
 });
 
-test('recovered production migrations preserve pre-MFA identity, server sessions and retention', () => {
+test('recovered production migrations match the live Supabase SQL contract', () => {
   const adminMigration = readFileSync(
     'supabase/migrations/20260908103327_admin_operations_and_session_security.sql',
     'utf8',
@@ -97,6 +102,17 @@ test('recovered production migrations preserve pre-MFA identity, server sessions
   const lifecycleMigration = readFileSync(
     'supabase/migrations/20260908104855_client_session_lifecycle_and_retention.sql',
     'utf8',
+  );
+
+  // These fingerprints were calculated from supabase_migrations.schema_migrations
+  // on the linked production project after removing whitespace only.
+  assert.equal(
+    sqlContractHash(adminMigration),
+    '4dc4d5f84197760e31736457507f012932e5a3d70b2e92f38e1c4aa263c270f6',
+  );
+  assert.equal(
+    sqlContractHash(lifecycleMigration),
+    'fb8eaa45f0e81f5c82e70f491049ba44ee08151a33b566caba1ac1889fba8694',
   );
 
   assert.match(adminMigration, /create or replace function app_private\.admin_identity\(\)/);
