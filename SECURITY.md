@@ -29,3 +29,11 @@ N’utiliser que des données fictives. La publication expose uniquement le parc
 Remplacer les rôles fictifs par un SSO/OIDC vérifié et des autorisations magasin/enseigne, revoir les codes d’accès et la récupération, mettre en place la gestion des clés, les politiques de rétention, les sauvegardes restaurables, la détection d’abus et un audit indépendant. Tester la sécurité de l’API indépendamment du prompt du modèle. Configurer un budget fournisseur ; un quota applicatif n’est pas un plafond financier garanti.
 
 Pour signaler un défaut, ne publier aucun secret ni donnée client dans une issue. Utiliser un canal privé convenu avec le propriétaire du dépôt. Aucun canal privé de signalement automatique n’est configuré dans ce prototype.
+
+## Socle Supabase de préproduction
+
+Les routes `/suivi` et `/admin` ajoutent un second plan de données destiné à la production. Il n’est activé qu’avec quatre variables serveur valides. Les codes sont hachés avec bcrypt, les jetons de dossier avec SHA-256 et les cookies sont `HttpOnly`, `SameSite=Strict`, temporaires et `Secure` en HTTPS. Chaque table a RLS activée ; les RPC de vérification client sont réservées au rôle serveur. Les clés étrangères composites empêchent les liens entre deux organisations.
+
+L’administrateur utilise Supabase Auth, un rôle propre à son organisation et un second facteur TOTP obligatoire. Le compte est invité ; son mot de passe n’est ni choisi ni conservé par le développeur. Les événements renvoyés au client sont reconstruits depuis une liste blanche afin de ne jamais exposer leurs métadonnées internes.
+
+La clé `SUPABASE_SECRET_KEY` contourne volontairement RLS pour les seules opérations serveur prévues. Sa fuite compromettrait le projet : elle ne doit exister que dans le coffre de secrets de l’hébergement, doit être rotative et ne doit jamais apparaître dans Git, un navigateur ou un journal. Voir [le guide Supabase](docs/SUPABASE-PRODUCTION.md).
