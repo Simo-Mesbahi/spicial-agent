@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { build } from 'esbuild';
 
@@ -92,6 +92,20 @@ test('neutral Supabase credential denial is returned as a customer-safe 403, not
     globalThis.fetch = previousFetch;
     db.sql.close();
   }
+});
+
+test('local Supabase migration versions stay aligned with the linked project history', () => {
+  const migrations = readdirSync('supabase/migrations')
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+
+  assert.deepEqual(migrations, [
+    '20260907051405_production_foundation.sql',
+    '20260907051641_harden_and_optimize_foundation.sql',
+    '20260908103327_admin_operations_and_session_security.sql',
+    '20260908104855_client_session_lifecycle_and_retention.sql',
+  ]);
+  assert.ok(!migrations.includes('202609030001_production_foundation.sql'));
 });
 
 test('recovered production migrations match the live Supabase SQL contract', () => {
