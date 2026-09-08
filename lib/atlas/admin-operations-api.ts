@@ -178,7 +178,7 @@ const auditSchema = z
           id: z.string().uuid(),
           action: z.string().max(160),
           outcome: z.string().max(80),
-          entity_type: z.string().max(120),
+          entity_type: z.string().max(120).nullable(),
           entity_id: z.string().uuid().nullable(),
           actor_user_id: z.string().uuid().nullable(),
           created_at: z.string(),
