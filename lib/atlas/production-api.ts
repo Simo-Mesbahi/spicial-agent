@@ -397,6 +397,13 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
         fail(403, 'Référence ou code incorrect.', 'invalid_case_credentials');
       throw error;
     }
+    if (
+      result &&
+      typeof result === 'object' &&
+      !Array.isArray(result) &&
+      (result as Record<string, unknown>).error === 'invalid_case_credentials'
+    )
+      fail(403, 'Référence ou code incorrect.', 'invalid_case_credentials');
     const session = caseSessionSchema.safeParse(result);
     if (!session.success) fail(502, 'Réponse du dossier invalide.', 'invalid_case_response');
     const expiresAt = Date.parse(session.data.expires_at);
