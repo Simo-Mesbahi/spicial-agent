@@ -1,4 +1,5 @@
 import { handleApi, type AtlasEnv } from '../lib/atlas/api';
+import { handleAdminOperationsApi } from '../lib/atlas/admin-operations-api';
 import {
   handleProductionApi,
   recordProductionPerformance,
@@ -62,7 +63,9 @@ const worker = {
 
     if (url.pathname.startsWith('/api/production/')) {
       const startedAt = Date.now();
-      const response = await handleProductionApi(request, env);
+      const response = url.pathname.startsWith('/api/production/admin/operations')
+        ? await handleAdminOperationsApi(request, env)
+        : await handleProductionApi(request, env);
       ctx.waitUntil(
         recordProductionPerformance(env, url.pathname, response.status, Date.now() - startedAt),
       );
