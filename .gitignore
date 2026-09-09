@@ -44,3 +44,4 @@ next-env.d.ts
 *.tsbuildinfo
 .dev.vars*
 !.env.example
+/supabase/.temp/

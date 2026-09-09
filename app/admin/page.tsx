@@ -1,5 +1,7 @@
 'use client';
 
+import { productionRequest as request, ProductionRequestError as RequestError } from '@/lib/atlas/production-client';
+
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
@@ -69,42 +71,6 @@ type LoginResult =
       factors: { id: string; friendlyName: string }[];
       enrollmentRequired: boolean;
     };
-
-class RequestError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code: string,
-  ) {
-    super(message);
-  }
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/production${path}`, {
-    credentials: 'same-origin',
-    ...init,
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
-  });
-  let body: unknown = null;
-  try {
-    body = await response.json();
-  } catch {
-    // A non-JSON response is always treated as unavailable.
-  }
-  if (!response.ok) {
-    const error = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-    throw new RequestError(
-      typeof error.error === 'string' ? error.error : 'Le service est temporairement indisponible.',
-      response.status,
-      typeof error.code === 'string' ? error.code : 'request_failed',
-    );
-  }
-  return body as T;
-}
 
 const roleLabels: Record<Membership['role'], string> = {
   super_admin: 'Super-administrateur',

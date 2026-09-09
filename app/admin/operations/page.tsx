@@ -1,5 +1,8 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { productionRequest, ProductionRequestError as RequestError } from '@/lib/atlas/production-client';
+
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity, AlertTriangle, ArrowLeft, BarChart3, CheckCircle2, Clock3, FileSearch,
@@ -34,26 +37,8 @@ type CaseDetail = {
 };
 type Audit = { items: { id: string; action: string; outcome: string; entity_type: string | null; entity_id: string | null; actor_user_id: string | null; created_at: string }[]; total: number };
 
-class RequestError extends Error {
-  constructor(message: string, public status: number, public code: string) { super(message); }
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'same-origin', ...init,
-    headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
-  });
-  let body: unknown = null;
-  try { body = await response.json(); } catch { /* normalized below */ }
-  if (!response.ok) {
-    const record = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-    throw new RequestError(
-      typeof record.error === 'string' ? record.error : 'Le service est temporairement indisponible.',
-      response.status,
-      typeof record.code === 'string' ? record.code : 'request_failed',
-    );
-  }
-  return body as T;
+function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return productionRequest<T>(path.replace(/^\/api\/production/, ''), init);
 }
 
 const roleLabels: Record<Role, string> = {
@@ -78,6 +63,7 @@ function Metric({ label, value, detail, icon }: { label: string; value: string; 
 }
 
 export default function AdminOperationsPage() {
+  const router = useRouter();
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [organizationId, setOrganizationId] = useState('');
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -99,12 +85,13 @@ export default function AdminOperationsPage() {
   const canOverrideHandoff = membership?.role === 'super_admin' || membership?.role === 'sav_manager' || membership?.role === 'sc_manager';
 
   const handleAuthError = useCallback((cause: unknown) => {
-    if (cause instanceof RequestError && [401, 403].includes(cause.status) && ['admin_session_expired', 'mfa_required'].includes(cause.code)) {
-      window.location.assign('/admin');
+    if (cause instanceof RequestError && (cause.status === 401 || (cause.status === 403 && cause.code === 'mfa_required'))) {
+      setAdmin(null); setOverview(null); setSelectedCase(null); setCases([]); setAudit(null);
+      router.replace('/admin');
       return true;
     }
     return false;
-  }, []);
+  }, [router]);
 
   const loadCase = useCallback(async (caseId: string, orgId: string) => {
     if (!caseId || !orgId) return;
@@ -192,6 +179,16 @@ export default function AdminOperationsPage() {
   }
 
   if (loading) return <main className="admin-ops-loading"><LoaderCircle className="spin" /><span>Ouverture du centre opérationnel…</span></main>;
+
+  if (!admin || !overview) return <main className="admin-ops-page">
+    <header className="admin-ops-topbar"><a href="/admin"><ArrowLeft size={17} /> Connexion administrateur</a></header>
+    <div className="admin-ops-content">
+      <h1>Centre opérationnel indisponible</h1>
+      <div className="admin-ops-alert error" role="alert"><AlertTriangle size={18} /><span>{error || 'Connectez-vous pour accéder à votre organisation.'}</span></div>
+      <p>Aucun indicateur ne peut être affiché tant que la connexion et le chargement ne sont pas validés.</p>
+      {admin && <button disabled={busy} onClick={() => void loadAll(organizationId, membership?.role)}>Réessayer</button>}
+    </div>
+  </main>;
 
   return <main className="admin-ops-page">
     <header className="admin-ops-topbar">

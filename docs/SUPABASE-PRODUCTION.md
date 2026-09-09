@@ -77,26 +77,19 @@ immédiatement puis redéployer.
 
 ## 5. Provisionner un administrateur
 
-Le développeur ne choisit pas le mot de passe permanent d’un administrateur.
-Le parcours sûr est :
+Pour un compte Auth déjà créé et muni d’un mot de passe, le développeur lance
+`npm run admin:grant`, saisit l’email exact et confirme le rôle. Aucun mot de passe
+n’est modifié et aucun email n’est envoyé. Le compte se connecte sur `/admin`,
+puis configure la double authentification TOTP avant tout accès métier.
 
-1. dans **Authentication → URL Configuration**, autoriser l’URL HTTPS du site
-   et la route `/admin` ;
-2. dans **Authentication → Users**, envoyer une invitation à l’adresse voulue ;
-3. l’administrateur ouvre le lien reçu et définit lui-même son mot de passe ;
-4. une fois l’utilisateur créé, le développeur exécute côté serveur :
+Pour un premier compte de test encore inexistant : `npm run admin:create`.
+La saisie du mot de passe est masquée. Ne recréez pas un compte invité existant.
 
-```sql
-select public.bootstrap_admin(
-  '<UUID_ORGANISATION>'::uuid,
-  'admin@entreprise.example',
-  'super_admin',
-  'Responsable SAV & SC'
-);
-```
-
-5. à la première connexion sur `/admin`, l’application impose l’enrôlement
-   TOTP (application d’authentification) avant de donner accès aux données.
+**Limite actuelle :** cette version ne possède pas de page de traitement des
+invitations ou de définition de mot de passe depuis un lien email. L’ancienne
+instruction « inviter puis ouvrir le lien pour définir le mot de passe » était
+incomplète. Ne l’utilisez pas comme parcours d’installation de cette version.
+Voir [le guide local](TESTER-LA-VERSION.md) pour les commandes et les redirections.
 
 Rôles disponibles : `super_admin`, `sav_manager`, `sc_manager`, `adviser` et
 `analyst`. Appliquer le moindre privilège ; réserver `super_admin` à un nombre
