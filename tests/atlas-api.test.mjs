@@ -790,7 +790,7 @@ test('Ollama executes the same authorized dossier tools without a key or paid fa
     });
     globalThis.fetch = async (url, init) => {
       assert.equal(url, 'http://127.0.0.1:11435/v1/chat/completions');
-      assert.equal(init.redirect, 'error');
+      assert.equal(init.redirect, 'manual');
       assert.equal(init.headers.Authorization, undefined);
       const body = JSON.parse(init.body);
       captured.push(body);

@@ -19,7 +19,11 @@
     "typecheck": "tsc --noEmit",
     "lint:app": "eslint app components/atlas lib/atlas db/schema.ts worker scripts/local-ai.mjs tests/atlas-*.test.mjs",
     "db:migrate:local": "wrangler d1 migrations apply site-creator-d1 --local --config wrangler.local.jsonc",
-    "format": "prettier --write app lib/atlas db/schema.ts worker tests/atlas-api.test.mjs docs README.md SECURITY.md"
+    "format": "prettier --write app lib/atlas db/schema.ts worker tests/atlas-api.test.mjs docs README.md SECURITY.md",
+    "backend:setup": "node scripts/backend.mjs setup",
+    "backend:doctor": "node scripts/backend.mjs doctor",
+    "admin:create": "node scripts/backend.mjs admin-create",
+    "admin:grant": "node scripts/backend.mjs admin-grant"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -66,7 +70,8 @@
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.8",
     "vite": "8.2.2",
-    "wrangler": "4.127.1"
+    "wrangler": "4.127.1",
+    "miniflare": "5.20260828.0-alpha"
   },
   "type": "module",
   "displayName": "SAV SC Assistant AI",

@@ -448,7 +448,7 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
         'customer_close_case_session',
         { p_access_token: accessToken },
         { kind: 'privileged' },
-      ).catch(() => undefined);
+      );
     return json({ ok: true }, 200, [clearCookie(req, CASE_COOKIE)]);
   }
   return null;

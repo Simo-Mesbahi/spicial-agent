@@ -8,9 +8,7 @@ export interface SupabaseRuntimeEnv {
 }
 
 export type SupabaseMode =
-  | { kind: 'publishable' }
-  | { kind: 'privileged' }
-  | { kind: 'user'; accessToken: string };
+  { kind: 'publishable' } | { kind: 'privileged' } | { kind: 'user'; accessToken: string };
 
 export class SupabaseConfigError extends Error {}
 
@@ -123,35 +121,50 @@ export async function supabaseRequest<T>(
   Object.entries(options.headers ?? {}).forEach(([name, value]) => headers.set(name, value));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
-  let response: Response;
   try {
-    response = await fetch(settings.url + path, {
+    const response = await fetch(settings.url + path, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      redirect: 'error',
+      // Workerd accepts only "manual" or "follow". Never follow a redirect:
+      // it could forward an API key or a user's session to another origin.
+      redirect: 'manual',
       signal: controller.signal,
     });
+    if (response.status >= 300 && response.status < 400) {
+      void response.body?.cancel().catch(() => {});
+      throw new SupabaseRequestError(502, 'upstream_redirect_blocked');
+    }
+    let payload: unknown = null;
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (response.status !== 204 && contentType.includes('json')) {
+      try {
+        payload = await boundedJson(response, 512 * 1024, controller.signal);
+      } catch {
+        throw new SupabaseRequestError(
+          502,
+          controller.signal.aborted ? 'upstream_timeout' : 'invalid_upstream_response',
+        );
+      }
+    }
+    if (!response.ok)
+      throw new SupabaseRequestError(
+        response.status,
+        errorCode(payload),
+        'Supabase rejected request',
+      );
+    return payload as T;
   } catch (error) {
+    if (error instanceof SupabaseRequestError) throw error;
     throw new SupabaseRequestError(
       503,
-      error instanceof DOMException && error.name === 'AbortError' ? 'upstream_timeout' : 'upstream_unreachable',
+      error instanceof DOMException && error.name === 'AbortError'
+        ? 'upstream_timeout'
+        : 'upstream_unreachable',
     );
   } finally {
     clearTimeout(timeout);
   }
-  let payload: unknown = null;
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-  if (response.status !== 204 && contentType.includes('json')) {
-    try {
-      payload = await boundedJson(response, 512 * 1024);
-    } catch {
-      throw new SupabaseRequestError(502, 'invalid_upstream_response');
-    }
-  }
-  if (!response.ok)
-    throw new SupabaseRequestError(response.status, errorCode(payload), 'Supabase rejected request');
-  return payload as T;
 }
 
 export function jwtClaims(accessToken: string): Record<string, unknown> | null {

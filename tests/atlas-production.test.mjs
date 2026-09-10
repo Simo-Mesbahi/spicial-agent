@@ -17,6 +17,19 @@ const { handleProductionApi } = await import(
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 
+test('A failed server-side dossier revocation never reports a successful logout', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ code: 'unavailable' }, { status: 503 });
+  try {
+    const response = await handleProductionApi(productionRequest('/cases/current', {
+      method: 'DELETE', body: {}, cookie: 'savsc_case_access=' + 'a'.repeat(64),
+    }), environment());
+    assert.ok(response.status >= 500);
+    assert.equal((await response.json()).ok, undefined);
+    assert.equal(response.headers.get('set-cookie'), null);
+  } finally { globalThis.fetch = previous; }
+});
+
 function database() {
   const sql = new DatabaseSync(':memory:');
   sql.exec(`create table rate_buckets (
