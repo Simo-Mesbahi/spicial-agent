@@ -767,7 +767,9 @@ async function generate(
             : {}),
         }),
         signal: deadline,
-        redirect: 'error',
+        // Cloudflare does not implement redirect: "error". Inspect the first
+        // response instead; credentials must never follow a redirect.
+        redirect: 'manual',
       });
     } catch {
       throw new ApiError(
@@ -776,6 +778,10 @@ async function generate(
           ? 'Le modèle local ne répond pas. Vérifiez qu’Ollama tourne sur cet ordinateur. Vos dossiers restent accessibles.'
           : 'Le modèle est temporairement indisponible. Vos dossiers restent accessibles.',
       );
+    }
+    if (res.status >= 300 && res.status < 400) {
+      void res.body?.cancel().catch(() => {});
+      throw new ApiError(503, 'Le fournisseur IA a renvoyé une redirection non autorisée.');
     }
     if (!res.ok)
       throw new ApiError(

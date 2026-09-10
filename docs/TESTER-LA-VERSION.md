@@ -1,14 +1,14 @@
-# Tester le suivi et l’administration — 9 septembre 2026
+# Tester le suivi et l’administration — 10 septembre 2026
 
 ## 1. Mettre à jour le code
 
 Dans le terminal du projet, arrêter le serveur avec Ctrl+C. Après récupération
-de cette correction sur la branche `fix/local-supabase-access` :
+de cette correction dans `main` :
 
 ```bash
 git fetch origin
-git switch fix/local-supabase-access
-git pull --ff-only
+git switch main
+git pull --ff-only origin main
 npm ci
 npm run backend:doctor
 ```
@@ -32,18 +32,37 @@ ci-dessus désigne seulement l’organisation fictive déjà installée en prép
 Les clés seules ne suffisent pas. Modifier `.env.example` ne configure pas le serveur.
 Ne transmettez jamais `.dev.vars` à GitHub ou dans une capture.
 
+### Auth et REST répondent 200, mais `/health` échoue
+
+Le correctif du 10 septembre supprime `redirect: "error"` des appels Supabase et
+LLM. Le moteur Cloudflare installé refuse cette option avant tout appel réseau.
+Les tests Node ne détectaient pas cette incompatibilité. Les requêtes utilisent
+maintenant `manual` et refusent les réponses 3xx, sans transmettre de clés à une
+nouvelle destination. Six tests exécutés sous workerd vérifient ce comportement.
+
+Si vos appels directs Auth/REST répondent déjà 200, ne recréez pas les clés.
+Récupérez le code corrigé, redémarrez Vite puis testez, dans un second terminal
+(pour votre port 5173) :
+
+```bash
+curl -sS http://localhost:5173/api/production/health
+```
+
+Résultat attendu : `{"status":"ok","database":"reachable"}`.
+Une URL de test ne contient pas les crochets et parenthèses Markdown.
+
 ## 2. Relancer et tester le suivi
 
 ```bash
 npm run db:migrate:local
-npm run dev -- --host 0.0.0.0 --port 8000
+npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
 La première commande prépare la base locale utilisée pour la limitation des
 tentatives. Elle ne modifie pas la base Supabase distante.
 
-Dans Codespaces, ouvrir le port 8000 depuis **Ports → Ouvrir dans le navigateur**.
-Sur ordinateur local, ouvrir `http://localhost:8000/suivi`. Sur téléphone,
+Dans Codespaces, ouvrir le port 5173 depuis **Ports → Ouvrir dans le navigateur**.
+Sur ordinateur local, ouvrir `http://localhost:5173/suivi`. Sur téléphone,
 utiliser l’adresse HTTPS du port Codespaces ; `localhost` désigne le téléphone.
 
 Dans ce même navigateur, `/api/production/config` doit afficher

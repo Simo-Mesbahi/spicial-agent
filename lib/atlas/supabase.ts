@@ -126,9 +126,15 @@ export async function supabaseRequest<T>(
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      redirect: 'error',
+      // Workerd accepts only "manual" or "follow". Never follow a redirect:
+      // it could forward an API key or a user's session to another origin.
+      redirect: 'manual',
       signal: controller.signal,
     });
+    if (response.status >= 300 && response.status < 400) {
+      void response.body?.cancel().catch(() => {});
+      throw new SupabaseRequestError(502, 'upstream_redirect_blocked');
+    }
     let payload: unknown = null;
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
     if (response.status !== 204 && contentType.includes('json')) {
