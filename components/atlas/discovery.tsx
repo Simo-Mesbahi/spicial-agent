@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
-  Check,
   CircleDot,
   FileCheck2,
   LockKeyhole,
@@ -74,7 +73,7 @@ export function Discovery({
           </span>
         </a>
         <nav aria-label="Découvrir SAV SC Assistant AI">
-          <a href="#try-atlas">L’expérience</a>
+          <Link href="/file">Suivre mon dossier</Link>
           <a href="#how-atlas">Comment ça marche</a>
           <button onClick={onContact}>
             Nous contacter <Mail size={13} />
@@ -94,14 +93,9 @@ export function Discovery({
               <CircleDot size={18} />
             )}
           </button>
-          <button
-            className="discovery-nav-cta"
-            disabled={unavailable}
-            onClick={() => (hasSession ? onResume() : onStart(choice.reference))}
-          >
-            {hasSession ? 'Reprendre' : 'Essayer'}
-            <ArrowUpRight size={15} />
-          </button>
+          <Link className="discovery-nav-cta" href="/file">
+            Mon suivi <ArrowUpRight size={15} />
+          </Link>
         </div>
       </header>
 
@@ -112,42 +106,25 @@ export function Discovery({
               <span /> LE SERVICE CLIENT, PLUS CLAIR.
             </div>
             <h1 id="discovery-title">
-              Moins de flou.
-              <br />
-              Plus de <span>réponses.</span>
+              Votre service client.<br /><span>Tout simplement.</span>
             </h1>
             <p className="discovery-lead">
-              Un produit en réparation. Une livraison qui tarde. Une question qui mérite mieux qu’un
-              « patientez ».
-            </p>
-            <p className="discovery-sublead">
-              Où en est votre dossier ? Quelle est la suite ? Que devez-vous faire ? Trois réponses
-              réunies dans un suivi clair, que vous pouvez faire évoluer pendant l’essai.
+              Une réparation, un échange, une livraison : retrouvez votre dossier et la suite de votre demande.
             </p>
             <div className="discovery-hero-actions">
-              <button
-                className="discovery-primary"
-                disabled={unavailable}
-                onClick={() => onStart(choice.reference)}
-              >
-                {busy ? <RefreshCw size={18} className="spin" /> : <Play size={17} />}
-                {busy ? 'Votre démo se prépare…' : 'Vivre l’expérience'}
-                <ArrowRight size={18} />
-              </button>
-              <a href="#try-atlas" className="discovery-text-link">
-                Voir un exemple <ArrowDown size={15} />
-              </a>
+              <Link className="discovery-primary" href="/file">
+                <FileCheck2 size={20} /> Suivre mon dossier <ArrowRight size={18} />
+              </Link>
             </div>
-            <div className="discovery-assurances">
-              <span>
-                <Check size={14} /> Sans inscription
-              </span>
-              <span>
-                <Check size={14} /> Dossiers fictifs
-              </span>
-              <span>
-                <Check size={14} /> Parcours guidé
-              </span>
+            <p className="customer-access-note"><LockKeyhole size={16} /> Votre référence et votre code suffisent. Sans compte.</p>
+            <div className="customer-services" aria-label="Autres services">
+              <Link href="/contact">
+                <Mail size={21} /><span><strong>Contacter un conseiller</strong><small>Préparer un email dans votre messagerie</small></span><ArrowUpRight size={17} />
+              </Link>
+              <button disabled={unavailable} onClick={() => hasSession ? onResume() : onStart(choice.reference)}>
+                {busy ? <RefreshCw size={21} className="spin" /> : <Play size={21} />}
+                <span><strong>{busy ? 'Préparation…' : hasSession ? 'Reprendre ma démonstration' : 'Découvrir l’assistant'}</strong><small>Essayer avec un dossier fictif</small></span><ArrowRight size={17} />
+              </button>
             </div>
             {error && (
               <div className="inline-error" role="alert">
@@ -156,7 +133,7 @@ export function Discovery({
             )}
             <div className="discovery-mode">
               <ShieldCheck size={14} />
-              Environnement de démonstration. N’utilisez aucune donnée personnelle réelle.
+              Les exemples ci-contre sont fictifs. Pour votre dossier, utilisez « Suivre mon dossier ».
             </div>
           </div>
 

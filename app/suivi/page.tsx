@@ -18,6 +18,8 @@ import {
   ChevronRight,
   Clock3,
   FileText,
+  Eye,
+  EyeOff,
   LoaderCircle,
   LockKeyhole,
   Package,
@@ -92,6 +94,7 @@ export default function TrackingPage() {
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [reference, setReference] = useState('');
   const [code, setCode] = useState('');
+  const [showCode, setShowCode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -235,21 +238,13 @@ export default function TrackingPage() {
     }
   }
 
-  if (configured === null)
-    return (
-      <main className="tracking-loading">
-        <LoaderCircle className="spin" />
-        <span>Ouverture du service sécurisé…</span>
-      </main>
-    );
-
   return (
     <main className="tracking-page">
       <a className="skip-link" href="#tracking-content">
         Aller au suivi
       </a>
       <header className="tracking-nav">
-        <Brand />
+        <Link href="/" aria-label="SAV SC Assistant AI, accueil"><Brand /></Link>
         <div>
           <span>
             <ShieldCheck size={14} /> Accès confidentiel
@@ -315,6 +310,9 @@ export default function TrackingPage() {
                       .slice(0, 64),
                   )
                 }
+                aria-label="Référence du dossier"
+                autoCapitalize="characters"
+                spellCheck={false}
                 autoComplete="off"
                 placeholder="Ex. SAV-2026-1042"
                 minLength={6}
@@ -324,11 +322,13 @@ export default function TrackingPage() {
             </label>
             <label>
               Code confidentiel
+              <span className="tracking-code-control">
               <input
+                aria-label="Code confidentiel"
                 className="tracking-code-input"
                 value={code}
                 onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                type="password"
+                type={showCode ? "text" : "password"}
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 placeholder="••••••"
@@ -337,6 +337,10 @@ export default function TrackingPage() {
                 maxLength={12}
                 required
               />
+              <button type="button" aria-label={showCode ? 'Masquer le code' : 'Afficher le code'} aria-pressed={showCode} onClick={() => setShowCode(value => !value)}>
+                {showCode ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+              </span>
             </label>
             {error && (
               <div className="tracking-error" role="alert">
@@ -344,7 +348,7 @@ export default function TrackingPage() {
                 {error}
               </div>
             )}
-            {!configured && (
+            {configured === false && (
               <div className="tracking-config-note">
                 <Wrench size={17} />
                 <span>
@@ -357,9 +361,15 @@ export default function TrackingPage() {
               className="tracking-primary"
               disabled={busy || !configured || reference.length < 6 || code.length < 6}
             >
-              {busy ? <LoaderCircle className="spin" /> : <LockKeyhole />}Vérifier et consulter
+              {busy || configured === null ? <LoaderCircle className="spin" /> : <LockKeyhole />}{configured === null ? "Connexion au suivi…" : busy ? "Vérification…" : "Consulter mon dossier"}
               <ArrowRight />
             </button>
+            <details className="tracking-access-help">
+              <summary>Où trouver ma référence et mon code ?</summary>
+              <p>Consultez le document remis par votre magasin lors de la prise en charge. La référence identifie votre dossier ; le code confidentiel en protège l’accès.</p>
+              <p>Vous ne les retrouvez pas ? Demandez-les à votre magasin. Ne communiquez jamais votre code par email.</p>
+              <Link href="/contact">Contacter un conseiller <ArrowRight size={15} /></Link>
+            </details>
             <small className="tracking-form-foot">
               <ShieldCheck size={13} /> Votre code reste confidentiel. Aucun compte à créer.
             </small>
