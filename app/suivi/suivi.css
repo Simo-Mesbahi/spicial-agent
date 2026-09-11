@@ -780,3 +780,24 @@
     padding: 4px 14px 18px;
   }
 }
+
+/* Keep the access task ahead of explanatory content on small screens. */
+.tracking-code-control { display:flex; position:relative; align-items:center; }
+.tracking-code-control input { width:100%; padding-right:56px; }
+.tracking-code-control button { position:absolute; right:5px; display:grid; place-items:center; width:44px; height:44px; border-radius:8px; color:var(--tracking-green); }
+.tracking-code-control button:hover { background:#176b5510; }
+.tracking-access-help { margin-top:22px; padding-top:18px; border-top:1px solid var(--tracking-line); font-size:14px; line-height:1.65; }
+.tracking-access-help summary { cursor:pointer; font-weight:650; padding-block:6px; }
+.tracking-access-help p { margin-top:12px; }
+.tracking-access-help a { display:inline-flex; gap:8px; align-items:center; min-height:44px; color:var(--tracking-green); font-weight:700; }
+.tracking-form-card input { font-size:16px; }
+.tracking-page button:focus-visible, .tracking-page a:focus-visible, .tracking-page summary:focus-visible { outline:3px solid var(--tracking-green); outline-offset:4px; }
+.tracking-nav > a { color:inherit; }
+@media (max-width:920px) {
+  .tracking-entry { padding-top:26px; gap:32px; align-items:start; }
+  .tracking-form-card { order:-1; margin-inline:auto; }
+  .tracking-intro { max-width:600px; margin-inline:auto; }
+  .tracking-intro h1 { font-size:clamp(32px,6vw,48px); line-height:1.12; }
+  .tracking-intro > p { font-size:16px; }
+  .tracking-trust { display:none; }
+}

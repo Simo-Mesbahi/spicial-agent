@@ -1463,3 +1463,32 @@
     transform: none;
   }
 }
+
+/* Customer services: a direct route to the dossier, independent of the demo. */
+.customer-access-note { display:flex; gap:8px; align-items:center; margin:16px 0 28px; color:var(--quiet); font-size:14px; line-height:1.6; }
+.customer-access-note svg { flex-shrink:0; }
+.customer-services { display:grid; gap:12px; }
+.customer-services > a, .customer-services > button { display:flex; align-items:center; text-align:left; gap:16px; width:100%; padding:20px; border:1px solid var(--border); border-radius:16px; background:var(--surface); color:var(--foreground); transition:border-color .15s, background .15s; }
+.customer-services > a:hover, .customer-services > button:hover { border-color:var(--primary); background:var(--muted); }
+.customer-services > button:disabled { opacity:.6; cursor:wait; }
+.customer-services span { flex:1; min-width:0; }
+.customer-services strong, .customer-services small { display:block; }
+.customer-services strong { font-size:16px; font-weight:650; }
+.customer-services small { margin-top:5px; font-size:14px; color:var(--quiet); line-height:1.5; }
+.customer-services svg { flex-shrink:0; }
+.discovery-nav-cta { min-height:44px; font-size:14px; }
+.customer-contact-route { min-height:100svh; background:var(--background); color:var(--foreground); }
+.customer-contact-nav { width:min(1200px, calc(100% - 40px)); margin:auto; padding:22px 0; display:flex; align-items:center; justify-content:space-between; gap:20px; border-bottom:1px solid var(--border); font-size:16px; }
+.customer-contact-nav > a { font-weight:700; }
+.customer-contact-nav nav { display:flex; gap:20px; }
+.customer-contact-nav a { padding-block:10px; }
+.customer-contact-route main { width:min(1200px, calc(100% - 40px)); margin:32px auto; }
+.customer-services :focus-visible, .customer-contact-nav a:focus-visible { outline:3px solid var(--primary); outline-offset:4px; }
+@media (max-width:580px) {
+  .discovery-hero { padding-top:28px; gap:32px; }
+  .discovery-intro h1 { font-size:clamp(34px, 9vw, 48px); line-height:1.12; letter-spacing:-.035em; }
+  .discovery-lead { font-size:16px; }
+  .customer-services > a, .customer-services > button { padding:16px; gap:12px; }
+  .customer-contact-nav { align-items:flex-start; flex-wrap:wrap; gap:4px; }
+  .customer-contact-nav nav { font-size:14px; }
+}
