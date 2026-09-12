@@ -397,25 +397,50 @@ const stop = new Set([
   'aux',
   'cette',
 ]);
+// Token-based retrieval: no substring matches (e.g. "prix" inside another word).
+// The small approved demo corpus is indexed once, not rescanned for every call.
+const aliases: Record<string, string> = {
+  rembourser: 'remboursement', remboursements: 'remboursement',
+  reparer: 'reparation', reparations: 'reparation',
+  retourner: 'retour', rendre: 'retour', retours: 'retour',
+  livrer: 'livraison', livraisons: 'livraison',
+  garanties: 'garantie', factures: 'facture', tickets: 'ticket',
+  colis: 'colis', delais: 'delai', horaires: 'horaire',
+};
+const noise = new Set([...stop, 'quel', 'quelle', 'quels', 'quelles', 'peux', 'pouvez',
+  'avoir', 'faire', 'merci', 'etre', 'tout', 'tous', 'cela', 'cest']);
+function terms(text: string) {
+  return [...new Set(normalized(text).split(/[^a-z0-9]+/)
+    .filter(word => word.length > 2 && !noise.has(word))
+    .map(word => aliases[word] ?? word))];
+}
+const knowledgeIndex = articles.map(article => ({ article,
+  title: new Set(terms(article.title)), tags: new Set(terms(article.tags)),
+  body: new Set(terms(article.body)),
+}));
+const documentFrequency = new Map<string, number>();
+for (const entry of knowledgeIndex) {
+  for (const word of new Set([...entry.title, ...entry.tags, ...entry.body]))
+    documentFrequency.set(word, (documentFrequency.get(word) ?? 0) + 1);
+}
 export function retrieve(query: string, limit = 3): Article[] {
-  const words = [
-    ...new Set(
-      normalized(query)
-        .split(/\W+/)
-        .filter((w) => w.length > 2 && !stop.has(w)),
-    ),
-  ];
-  return articles
-    .map((a) => {
-      const text = normalized(a.title + ' ' + a.tags + ' ' + a.body);
-      const tags = normalized(a.tags);
-      return {
-        a,
-        score: words.reduce((s, w) => s + (tags.includes(w) ? 3 : text.includes(w) ? 1 : 0), 0),
-      };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((x) => x.a);
+  if (!Number.isFinite(limit) || limit <= 0) return [];
+  const words = terms(query.slice(0, 2000));
+  if (!words.length) return [];
+  return knowledgeIndex.map(entry => {
+    let anchors = 0;
+    const score = words.reduce((total, word) => {
+      const inTitle = entry.title.has(word), inTags = entry.tags.has(word);
+      if (inTitle || inTags) anchors++;
+      const frequency = (documentFrequency.get(word) ?? 0);
+      const weight = Math.log(1 + articles.length / (1 + frequency));
+      return total + weight * (inTitle ? 5 : inTags ? 4 : entry.body.has(word) ? 1 : 0);
+    }, 0);
+    return { article: entry.article, score, anchors };
+  })
+    // A body-only overlap is not sufficient evidence of a relevant procedure.
+    .filter(entry => entry.anchors > 0 && entry.article.effective <= new Date().toISOString().slice(0, 10))
+    .sort((a, b) => b.score - a.score || a.article.id.localeCompare(b.article.id))
+    .slice(0, Math.min(Math.floor(limit), 3))
+    .map(entry => entry.article);
 }
