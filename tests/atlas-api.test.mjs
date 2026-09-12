@@ -1290,3 +1290,56 @@ test('Conversation context is selected per dossier before truncating model histo
     db.sql.close();
   }
 });
+
+test('Model inventions after a valid case tool never enter the reply or stored history', async () => {
+  const db = database(), original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find(item => item.reference === 'SAV-2026-1042');
+    await verify(c, row);
+    c.env.LLM_PROVIDER = 'ollama';
+    let calls = 0;
+    globalThis.fetch = async () => Response.json({ choices: [{ message: ++calls === 1
+      ? { role: 'assistant', content: null, tool_calls: [{ id: 'evidence', function: { name: 'get_case', arguments: '{}' } }] }
+      : { role: 'assistant', content: 'INVENTED_PROMISE : réparé, livré demain, remboursement de 9999 euros effectué et devis accepté.' }
+    }] });
+    const response = await c.call('chat', { caseId: row.id, message: 'Où en est mon dossier ?' });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.metadata.mode, 'ollama');
+    assert.equal(response.body.metadata.responsePolicy, 'verified_content');
+    assert.equal(response.body.metadata.presentation, 'case_brief');
+    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_PROMISE|9999/);
+    const snapshot = await c.call('snapshot');
+    assert.doesNotMatch(JSON.stringify(snapshot.body.messages), /INVENTED_PROMISE|9999/);
+  } finally { globalThis.fetch = original; db.sql.close(); }
+});
+
+test('Retrieved procedures are quoted faithfully, with only the actually used source', async () => {
+  const db = database(), original = globalThis.fetch;
+  try {
+    const c = await client(db); c.env.LLM_PROVIDER = 'ollama'; let calls = 0;
+    globalThis.fetch = async () => Response.json({ choices: [{ message: ++calls === 1
+      ? { role: 'assistant', content: null, tool_calls: [{ id: 'policy', function: { name: 'search_knowledge', arguments: '{"query":"garantie"}' } }] }
+      : { role: 'assistant', content: 'INVENTED_POLICY : tout est garanti sans limite pendant 999 ans.' }
+    }] });
+    const response = await c.call('chat', { message: 'Comment fonctionne la garantie ?' });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.metadata.mode, 'ollama');
+    assert.equal(response.body.metadata.sources.length, 1);
+    assert.equal(response.body.metadata.sources[0].id, 'sav-garantie');
+    assert.equal(response.body.metadata.sources[0].effective, '2026-08-01');
+    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_POLICY|999 ans/);
+  } finally { globalThis.fetch = original; db.sql.close(); }
+});
+
+test('An unsupported answer without evidence is replaced with a clarification', async () => {
+  const db = database(), original = globalThis.fetch;
+  try {
+    const c = await client(db); c.env.LLM_PROVIDER = 'ollama';
+    globalThis.fetch = async () => Response.json({ choices: [{ message: { role: 'assistant', content: 'INVENTED_ANSWER: votre vol spatial part demain.' } }] });
+    const response = await c.call('chat', { message: 'Astronomie quantique intergalactique' });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.metadata.sources.length, 0);
+    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_ANSWER/);
+  } finally { globalThis.fetch = original; db.sql.close(); }
+});
