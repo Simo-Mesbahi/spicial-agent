@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { retrieve } from './domain';
+import { publicModelConfig } from './model-policy';
+import { applyConfig, availableProviders, defaults, environmentLabel, readSettings, runtimeConfigSchema, saveSettings, scopeKey, validateConfig, type Revision } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import type { ProductionEnv } from './production-api';
 import { SupabaseRequestError, supabaseRequest } from './supabase';
@@ -390,6 +393,53 @@ export async function handleAdminOperationsApi(
       return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404);
 
     const session = await requireAdmin(req, env);
+
+    if (path === `${BASE_PATH}/deployment` && req.method === 'GET') {
+      const membership = session.me.memberships.find(item => item.organization_id === env.SUPABASE_ORGANIZATION_ID);
+      if (!membership) fail(403, 'Ce compte n’a pas accès à l’organisation de ce déploiement.', 'deployment_organization_only');
+      return json({ organizationId: membership.organization_id, environment: environmentLabel(env, req.url) }, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/settings` || path === `${BASE_PATH}/settings/preview`) {
+      const organization = organizationId(url, session.me);
+      if (organization !== env.SUPABASE_ORGANIZATION_ID)
+        fail(403, 'Les réglages concernent uniquement l’organisation de ce déploiement.', 'deployment_organization_only');
+      const environment = environmentLabel(env, req.url);
+      const scope = scopeKey(env, req.url);
+      const canEdit = session.me.memberships.some(item => item.organization_id === organization && item.role === 'super_admin');
+      if (req.method === 'GET' && path.endsWith('/settings')) {
+        const saved = await readSettings(env.DB, scope);
+        const history = await env.DB.prepare('SELECT revision,config,actor,created_at FROM runtime_settings WHERE scope=? ORDER BY revision DESC LIMIT 10').bind(scope).all<Revision>();
+        const config = saved ? runtimeConfigSchema.parse(JSON.parse(saved.config)) : defaults(env);
+        const state = publicModelConfig(applyConfig(env, config));
+        try { validateConfig(env, config); }
+        catch (cause) { state.ready = false; state.blockedReason = cause instanceof Error ? cause.message : 'Fournisseur désactivé côté serveur.'; }
+        return json({ environment, canEdit, revision: saved?.revision ?? 0,
+          config, effectiveProvider: state.ready ? state.provider : 'demo', providerWarning: state.blockedReason,
+          providers: availableProviders(env), budget: env.LLM_BUDGET_MODE ?? 'zero',
+          scope: 'Chat de démonstration · dossiers D1 et 12 documents fictifs',
+          history: history.results.map(item => ({ revision: item.revision, actor: item.actor, createdAt: item.created_at, config: runtimeConfigSchema.parse(JSON.parse(item.config)) })) }, 200, session.cookies);
+      }
+      if (req.method === 'POST') {
+        guardMutation(req);
+        if (!canEdit) fail(403, 'Seul le super-administrateur peut modifier les réglages.', 'settings_role_denied');
+        if (path.endsWith('/preview')) {
+          const input = z.object({ query: z.string().trim().min(3).max(1000), ragResults: z.number().int().min(1).max(3), ragMinAnchors: z.number().int().min(1).max(3) }).strict().safeParse(await requestBody(req));
+          if (!input.success) fail(400, 'Paramètres de recherche invalides.', 'invalid_preview');
+          return json({ documents: retrieve(input.data.query, input.data.ragResults, input.data.ragMinAnchors) }, 200, session.cookies);
+        }
+        const input = z.object({ revision: z.number().int().min(0), config: runtimeConfigSchema, confirmEnvironment: z.string() }).strict().safeParse(await requestBody(req));
+        if (!input.success) fail(400, 'Réglages invalides.', 'invalid_settings');
+        if (environment === 'NON CONFIGURÉ' || input.data.confirmEnvironment !== environment)
+          fail(400, 'Confirmez l’environnement avant d’enregistrer.', 'environment_confirmation_required');
+        try { validateConfig(env, input.data.config); }
+        catch (error) { fail(400, error instanceof Error ? error.message : 'Fournisseur non autorisé.', 'provider_not_allowed'); }
+        const saved = await saveSettings(env.DB, scope, input.data.revision, input.data.config, session.me.user_id);
+        if (!saved) fail(409, 'Une autre modification a été enregistrée. Actualisez avant de réessayer.', 'version_conflict');
+        return json({ ok: true, revision: input.data.revision + 1 }, 200, session.cookies);
+      }
+      return json({ error: 'Méthode non autorisée.', code: 'method_not_allowed' }, 405, session.cookies);
+    }
 
     if (path === `${BASE_PATH}/overview` && req.method === 'GET') {
       const organization = organizationId(url, session.me);
