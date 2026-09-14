@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { environmentLabel, type RuntimeEnv } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import type { Database } from './api';
 import {
@@ -11,7 +12,7 @@ import {
   type SupabaseRuntimeEnv,
 } from './supabase';
 
-export interface ProductionEnv extends SupabaseRuntimeEnv {
+export interface ProductionEnv extends SupabaseRuntimeEnv, RuntimeEnv {
   DB: Database;
 }
 
@@ -630,7 +631,7 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
   try {
     const path = new URL(req.url).pathname;
     if (path === '/api/production/config' && req.method === 'GET')
-      return json({ backend: 'supabase', ...publicSupabaseState(env) });
+      return json({ backend: 'supabase', environment: environmentLabel(env, req.url), ...publicSupabaseState(env) });
 
     if (path === '/api/production/health' && req.method === 'GET') {
       supabaseSettings(env);

@@ -166,3 +166,13 @@ export const chatRequests = sqliteTable(
   },
   (t) => [index('chat_requests_space').on(t.spaceId)],
 );
+
+// Append-only revisions: one atomic insert both saves settings and records its author.
+export const runtimeSettings = sqliteTable('runtime_settings', {
+  id: text('id').primaryKey(),
+  scope: text('scope').notNull(),
+  revision: integer('revision').notNull(),
+  config: text('config').notNull(),
+  actor: text('actor').notNull(),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [uniqueIndex('runtime_settings_revision').on(table.scope, table.revision)]);

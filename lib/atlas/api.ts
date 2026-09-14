@@ -13,6 +13,7 @@ import {
   dateTime,
   type CaseKind,
 } from './domain';
+import { effectiveEnvironment } from './runtime-settings';
 import { modelSettings, publicModelConfig } from './model-policy';
 import { caseBrief } from './case-brief';
 import { boundedJson, JsonLimitError } from './bounded-json';
@@ -31,6 +32,10 @@ export interface Database {
 }
 export interface AtlasEnv {
   DB: Database;
+  APP_ENVIRONMENT?: string;
+  SUPABASE_ORGANIZATION_ID?: string;
+  RAG_RESULTS?: number;
+  RAG_MIN_ANCHORS?: number;
   APP_EDITION?: string;
   LLM_PROVIDER?: string;
   LLM_MODEL?: string;
@@ -526,9 +531,10 @@ export function demoAnswer(
   message: string,
   c: CaseRow | null,
   history: MessageRow[] = [],
+  rag: { RAG_RESULTS?: number; RAG_MIN_ANCHORS?: number } = {},
 ): AssistantAnswer {
   const q = normalized(message);
-  const sources = retrieve(message);
+  const sources = retrieve(message, rag.RAG_RESULTS, rag.RAG_MIN_ANCHORS);
   if (
     /ignore.{0,30}(instruction|regle)|system prompt|mot de passe|cle api|tous les clients|autre client/.test(
       q,
@@ -698,7 +704,7 @@ async function generate(
     throw new ApiError(503, e instanceof Error ? e.message : 'Configuration du modèle invalide.');
   }
   const mode = settings.provider;
-  const expected = demoAnswer(message, c, history);
+  const expected = demoAnswer(message, c, history, env);
   if (mode === 'demo' || localGuard(expected))
     return { ...expected, mode: 'demo', inputTokens: 0, outputTokens: 0 };
   const { base, key } = settings;
@@ -854,7 +860,7 @@ async function generate(
           .strict()
           .safeParse(args);
         if (!a.success) throw new ApiError(503, 'Arguments d’outil invalides.');
-        const found = retrieve(a.data.query);
+        const found = retrieve(a.data.query, env.RAG_RESULTS, env.RAG_MIN_ANCHORS);
         found.forEach((x) => sources.set(x.id, x));
         result = found;
       }
@@ -869,6 +875,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
   try {
     const path = new URL(req.url).pathname;
     const db = env.DB;
+    if (db) env = await effectiveEnvironment(env, req.url);
     if (path === '/api/health') {
       if (!db) fail(503, 'Stockage indisponible.');
       await db.prepare('SELECT id FROM spaces LIMIT 1').first();
@@ -1109,7 +1116,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           .all<MessageRow>()
       ).results.reverse();
       await reserveQuota(db, 'chat:' + (await networkBucket(req)), 120, HOUR);
-      const deterministic = demoAnswer(message, c, history);
+      const deterministic = demoAnswer(message, c, history, env);
       const guarded =
         (env.LLM_PROVIDER ?? 'demo') !== 'demo' && localGuard(deterministic)
           ? { ...deterministic, mode: 'demo' as const, inputTokens: 0, outputTokens: 0 }
@@ -1142,7 +1149,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         }
       }
       const answer = generated ?? {
-        ...demoAnswer(message, c, history),
+        ...demoAnswer(message, c, history, env),
         mode: 'demo',
         inputTokens: null,
         outputTokens: null,

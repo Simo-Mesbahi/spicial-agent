@@ -423,7 +423,7 @@ for (const entry of knowledgeIndex) {
   for (const word of new Set([...entry.title, ...entry.tags, ...entry.body]))
     documentFrequency.set(word, (documentFrequency.get(word) ?? 0) + 1);
 }
-export function retrieve(query: string, limit = 3): Article[] {
+export function retrieve(query: string, limit = 3, minAnchors = 1): Article[] {
   if (!Number.isFinite(limit) || limit <= 0) return [];
   const words = terms(query.slice(0, 2000));
   if (!words.length) return [];
@@ -439,7 +439,7 @@ export function retrieve(query: string, limit = 3): Article[] {
     return { article: entry.article, score, anchors };
   })
     // A body-only overlap is not sufficient evidence of a relevant procedure.
-    .filter(entry => entry.anchors > 0 && entry.article.effective <= new Date().toISOString().slice(0, 10))
+    .filter(entry => entry.anchors >= Math.max(1, Math.min(3, minAnchors)) && entry.article.effective <= new Date().toISOString().slice(0, 10))
     .sort((a, b) => b.score - a.score || a.article.id.localeCompare(b.article.id))
     .slice(0, Math.min(Math.floor(limit), 3))
     .map(entry => entry.article);

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { Activity } from 'lucide-react';
+import AdminNavigation from './admin-navigation';
+import './admin-control.css';
 import './admin.css';
 import './admin-operations.css';
 
@@ -12,10 +13,9 @@ export const metadata: Metadata = {
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <>
+      <AdminNavigation />
       {children}
-      <a className="admin-operations-launcher" href="/admin/operations" aria-label="Ouvrir le centre opérationnel">
-        <Activity size={16} /> Centre opérationnel
-      </a>
+
     </>
   );
 }

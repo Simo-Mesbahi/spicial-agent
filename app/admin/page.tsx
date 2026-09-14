@@ -437,9 +437,9 @@ export default function AdminPage() {
           <div><strong>{membership?.organizationName}</strong><small>{membership ? roleLabels[membership.role] : 'Administration'}</small></div>
         </div>
         <nav aria-label="Navigation de l’administration">
-          <a className="active" href="#overview"><LayoutDashboard size={18} />Vue d’ensemble</a>
+          <a href="#overview"><LayoutDashboard size={18} />Vue d’ensemble</a>
           <a href="#cases"><FileText size={18} />Dossiers <span>{totalCases}</span></a>
-          <a href="#quality"><BarChart3 size={18} />Qualité de service</a>
+          <a href="/admin/performance"><BarChart3 size={18} />Performance et réglages</a>
         </nav>
         <div className="admin-sidebar-foot">
           <div><ShieldCheck size={17} /><span><strong>Session protégée</strong><small>MFA · Niveau AAL2</small></span></div>
