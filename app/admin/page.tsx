@@ -2,7 +2,7 @@
 
 import { productionRequest as request, ProductionRequestError as RequestError } from '@/lib/atlas/production-client';
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -134,6 +134,33 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
     totp: { qr_code: string; secret: string; uri: string };
   } | null>(null);
 
+  const enrollmentBusy = useRef(false);
+  const [resuming, setResuming] = useState(true);
+  useEffect(() => {
+    let active = true;
+    void request<Extract<LoginResult, { status: 'mfa_required' }> & { enrollment: typeof enrollment }>('/admin/mfa/state')
+      .then(result => { if (!active) return; setMfa(result); setEnrollment(result.enrollment); setFactorId(result.enrollment?.factorId ?? result.factors[0]?.id ?? ''); })
+      .catch(cause => { if (active && cause instanceof RequestError && cause.status !== 401) setError(cause.message); })
+      .finally(() => { if (active) setResuming(false); });
+    return () => { active = false; };
+  }, []);
+
+  function mfaFailure(cause: unknown, fallback: string) {
+    setError(cause instanceof Error ? cause.message : fallback);
+    if (cause instanceof RequestError && ['preauth_expired', 'preauth_required', 'mfa_ip_address_mismatch'].includes(cause.code ?? '')) {
+      setMfa(null); setEnrollment(null); setFactorId(''); setCode('');
+    }
+  }
+  async function resumeMfa() {
+    if (enrollmentBusy.current) return;
+    enrollmentBusy.current = true; setBusy(true); setError('');
+    try {
+      const result = await request<Extract<LoginResult, { status: 'mfa_required' }> & { enrollment: typeof enrollment }>('/admin/mfa/state');
+      setMfa(result); setEnrollment(result.enrollment); setFactorId(result.enrollment?.factorId ?? result.factors[0]?.id ?? ''); setCode('');
+    } catch (cause) { mfaFailure(cause, 'Reprise impossible.'); }
+    finally { enrollmentBusy.current = false; setBusy(false); }
+  }
+
   async function login(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -158,7 +185,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
   }
 
   async function enroll() {
-    if (busy) return;
+    if (busy || enrollmentBusy.current) return;
+    enrollmentBusy.current = true;
     setBusy(true);
     setError('');
     try {
@@ -169,8 +197,9 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
       setEnrollment(result);
       setFactorId(result.factorId);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Configuration impossible.');
+      mfaFailure(cause, 'Configuration impossible.');
     } finally {
+      enrollmentBusy.current = false;
       setBusy(false);
     }
   }
@@ -186,9 +215,10 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
         body: JSON.stringify({ factorId, code }),
       });
       setCode('');
+      setEnrollment(null);
       onAuthenticated(result.admin);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Vérification impossible.');
+      mfaFailure(cause, 'Vérification impossible.');
     } finally {
       setBusy(false);
     }
@@ -250,8 +280,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
                   />
                 </label>
                 {error && <div className="admin-error" role="alert"><AlertTriangle size={16} />{error}</div>}
-                <button className="admin-primary" disabled={busy}>
-                  {busy ? <LoaderCircle className="spin" size={18} /> : <KeyRound size={18} />}
+                <button className="admin-primary" disabled={busy || resuming}>
+                  {busy || resuming ? <LoaderCircle className="spin" size={18} /> : <KeyRound size={18} />}
                   Se connecter
                   <ArrowRight size={18} />
                 </button>
@@ -262,6 +292,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
               <p className="admin-eyebrow">VÉRIFICATION DE SÉCURITÉ</p>
               <h2 id="admin-login-title">Confirmez votre identité</h2>
               <p className="admin-muted">La consultation des données nécessite un second facteur.</p>
+              {error && <div className="admin-error" role="alert"><AlertTriangle size={16} />{error}</div>}
+              {error && <button type="button" disabled={busy} onClick={() => void resumeMfa()}>Reprendre la vérification</button>}
               {mfa.enrollmentRequired && !enrollment ? (
                 <button className="admin-primary" disabled={busy} onClick={() => void enroll()}>
                   {busy ? <LoaderCircle className="spin" size={18} /> : <ShieldCheck size={18} />}
@@ -305,7 +337,6 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
                       required
                     />
                   </label>
-                  {error && <div className="admin-error" role="alert"><AlertTriangle size={16} />{error}</div>}
                   <button className="admin-primary" disabled={busy || code.length !== 6 || !factorId}>
                     {busy ? <LoaderCircle className="spin" size={18} /> : <ShieldCheck size={18} />}
                     Vérifier et ouvrir

@@ -1,3 +1,4 @@
+import { MfaError, mfaError, mfaUser, mfaScope, cachedEnrollment, enrollMfa, withMfaLock } from './mfa-enrollment';
 import { z } from 'zod';
 import { environmentLabel, type RuntimeEnv } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
@@ -102,22 +103,28 @@ const adminMeSchema = z.object({
 
 const authSessionSchema = z.object({
   access_token: z.string().min(20).max(8000),
-  refresh_token: z.string().min(20).max(8000),
+  // Supabase refresh tokens are opaque implementation details. Do not reject
+  // an otherwise valid Supabase session because of an arbitrary minimum length.
+  refresh_token: z.string().min(1).max(8000),
   expires_in: z.number().int().positive().max(86400).optional(),
   user: z
     .object({
       id: z.string().uuid(),
       email: z.string().email().nullable().optional(),
+      // Depending on the Auth response and MFA state, factors can be omitted,
+      // null, or an array.
       factors: z
         .array(
-          z.object({
-            id: z.string().uuid(),
-            factor_type: z.string(),
-            status: z.string(),
-            friendly_name: z.string().nullable().optional(),
-          }),
+          z
+            .object({
+              id: z.string().uuid(),
+              factor_type: z.string(),
+              status: z.string(),
+              friendly_name: z.string().nullable().optional(),
+            })
+            .passthrough(),
         )
-        .optional(),
+        .nullish(),
     })
     .passthrough(),
 });
@@ -297,8 +304,22 @@ async function passwordLogin(env: ProductionEnv, email: string, password: string
     method: 'POST',
     body: { email, password },
   });
+
   const parsed = authSessionSchema.safeParse(result);
-  if (!parsed.success) fail(502, 'Réponse de connexion invalide.', 'invalid_auth_response');
+  if (!parsed.success) {
+    // Never log tokens or credentials. Only log Zod paths/codes so an upstream
+    // response-shape change can be diagnosed safely.
+    console.error(
+      'invalid_auth_response_schema',
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        code: issue.code,
+        message: issue.message,
+      })),
+    );
+    fail(502, 'Réponse de connexion invalide.', 'invalid_auth_response');
+  }
+
   return parsed.data;
 }
 
@@ -491,30 +512,26 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
     );
   }
 
+  if (path === '/api/production/admin/mfa/state' && req.method === 'GET') {
+    const accessToken = cookie(req, PREAUTH_ACCESS_COOKIE);
+    const refreshToken = cookie(req, PREAUTH_REFRESH_COOKIE);
+    if (!accessToken || !refreshToken) fail(401, 'Reconnectez-vous pour continuer.', 'preauth_expired');
+    const me = await adminMe(env, accessToken);
+    const user = await mfaUser(env, accessToken);
+    if (me.user_id !== user.id) fail(401, 'Session MFA invalide.', 'preauth_expired');
+    const factors = user.factors.filter(f => f.factor_type === 'totp' && f.status === 'verified').map(f => ({ id: f.id, friendlyName: f.friendly_name || 'Authentificateur' }));
+    const enrollment = factors.length ? null : await cachedEnrollment(env.DB, env, await mfaScope(env, user.id), refreshToken, user.factors);
+    return json({ status: 'mfa_required', admin: publicAdmin(me), factors, enrollmentRequired: !factors.length, enrollment });
+  }
+
   if (path === '/api/production/admin/mfa/enroll' && req.method === 'POST') {
     guardMutation(req);
     await requestBody(req);
     const accessToken = cookie(req, PREAUTH_ACCESS_COOKIE);
-    if (!accessToken) fail(401, 'Reconnectez-vous pour configurer la sécurité.', 'preauth_required');
-    const result = await supabaseRequest<unknown>(env, '/auth/v1/factors', {
-      mode: { kind: 'user', accessToken },
-      method: 'POST',
-      body: { factor_type: 'totp', friendly_name: 'SAV SC Administration' },
-    });
-    const parsed = z
-      .object({
-        id: z.string().uuid(),
-        type: z.string().optional(),
-        totp: z.object({
-          qr_code: z.string().max(200000),
-          secret: z.string().min(8).max(512),
-          uri: z.string().max(4000),
-        }),
-      })
-      .passthrough()
-      .safeParse(result);
-    if (!parsed.success) fail(502, 'Configuration MFA invalide.', 'invalid_mfa_enrollment');
-    return json({ factorId: parsed.data.id, totp: parsed.data.totp });
+    const refreshToken = cookie(req, PREAUTH_REFRESH_COOKIE);
+    if (!accessToken || !refreshToken) fail(401, 'Reconnectez-vous pour configurer la sécurité.', 'preauth_expired');
+    const me = await adminMe(env, accessToken);
+    return json(await enrollMfa(env.DB, env, accessToken, refreshToken, me.user_id));
   }
 
   if (path === '/api/production/admin/mfa/verify' && req.method === 'POST') {
@@ -529,7 +546,10 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
       .safeParse(await requestBody(req));
     if (!parsed.success) fail(400, 'Code de sécurité invalide.', 'invalid_mfa_code');
     const accessToken = cookie(req, PREAUTH_ACCESS_COOKIE);
-    if (!accessToken) fail(401, 'Reconnectez-vous pour continuer.', 'preauth_required');
+    if (!accessToken) fail(401, 'Reconnectez-vous pour continuer.', 'preauth_expired');
+    const identity = await adminMe(env, accessToken);
+    const scope = await mfaScope(env, identity.user_id);
+    return withMfaLock(env.DB, scope, async () => {
     try {
       const challenge = await supabaseRequest<unknown>(
         env,
@@ -552,16 +572,16 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
       const me = await adminMe(env, session.data.access_token);
       if (me.aal !== 'aal2' && jwtClaims(session.data.access_token)?.aal !== 'aal2')
         fail(403, 'La double authentification n’a pas été validée.', 'mfa_required');
+      await env.DB.prepare("UPDATE mfa_enrollments SET payload='',owner='',expires_at=0 WHERE scope=?").bind(scope).run();
       return json(
         { status: 'authenticated', admin: publicAdmin({ ...me, aal: 'aal2' }) },
         200,
         adminCookies(req, session.data),
       );
     } catch (error) {
-      if (error instanceof SupabaseRequestError && error.status < 500)
-        fail(401, 'Le code est incorrect ou expiré.', 'invalid_mfa_code');
-      throw error;
+      mfaError(error);
     }
+    });
   }
 
   if (path === '/api/production/admin/logout' && req.method === 'POST') {
@@ -651,6 +671,10 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
     if (adminResponse) return adminResponse;
     return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404);
   } catch (error) {
+    if (new URL(req.url).pathname.startsWith('/api/production/admin/mfa/')) {
+      if (error instanceof SupabaseRequestError) { try { mfaError(error); } catch (mapped) { error = mapped; } }
+      if (error instanceof MfaError) return json({error: error.message, code: error.code}, error.status);
+    }
     if (error instanceof ProductionApiError)
       return json({ error: error.message, code: error.code }, error.status);
     if (error instanceof SupabaseConfigError)
