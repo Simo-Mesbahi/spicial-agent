@@ -176,3 +176,13 @@ export const runtimeSettings = sqliteTable('runtime_settings', {
   actor: text('actor').notNull(),
   createdAt: integer('created_at').notNull(),
 }, (table) => [uniqueIndex('runtime_settings_revision').on(table.scope, table.revision)]);
+
+// Short-lived encrypted enrollment response and a cross-worker per-user lease.
+export const mfaEnrollments = sqliteTable('mfa_enrollments', {
+  scope: text('scope').primaryKey(),
+  owner: text('owner').notNull(),
+  payload: text('payload').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  lockId: text('lock_id').notNull(),
+  lockUntil: integer('lock_until').notNull(),
+});
