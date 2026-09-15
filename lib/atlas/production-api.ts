@@ -672,6 +672,18 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
     return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404);
   } catch (error) {
     if (new URL(req.url).pathname.startsWith('/api/production/admin/mfa/')) {
+      // D1 can wrap SQLite errors in Error.cause. Diagnose the absent local
+      // migration without returning database messages or sensitive payloads.
+      let cause: unknown = error;
+      for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
+        if (/no such table:\s*mfa_enrollments\b/i.test(cause.message)) {
+          return json({
+            error: 'Le stockage MFA n’est pas initialisé. Le responsable doit appliquer les migrations dans cet environnement avant de reprendre la configuration.',
+            code: 'mfa_storage_not_ready',
+          }, 503);
+        }
+        cause = cause.cause;
+      }
       if (error instanceof SupabaseRequestError) { try { mfaError(error); } catch (mapped) { error = mapped; } }
       if (error instanceof MfaError) return json({error: error.message, code: error.code}, error.status);
     }

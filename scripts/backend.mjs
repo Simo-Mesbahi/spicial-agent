@@ -162,6 +162,8 @@ async function setup() {
   );
   const values = {
     APP_EDITION: 'client',
+    // This command configures .dev.vars only, including a forwarded Codespace.
+    APP_ENVIRONMENT: 'LOCAL',
     SUPABASE_URL: await question(
       'URL Supabase',
       previous.SUPABASE_URL || 'https://exbhajwuniufgedbkipg.supabase.co',

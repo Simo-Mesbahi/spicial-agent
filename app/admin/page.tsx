@@ -121,6 +121,13 @@ function Brand() {
   );
 }
 
+function authErrorMessage(error: Error) {
+  if (error instanceof RequestError && error.code === 'supabase_not_configured') {
+    return 'Configuration du serveur incomplète. Le responsable doit vérifier les paramètres Supabase de cet environnement, puis recharger cette page. Les réglages locaux et ceux du site publié sont distincts.';
+  }
+  return error.message;
+}
+
 function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -140,13 +147,13 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
     let active = true;
     void request<Extract<LoginResult, { status: 'mfa_required' }> & { enrollment: typeof enrollment }>('/admin/mfa/state')
       .then(result => { if (!active) return; setMfa(result); setEnrollment(result.enrollment); setFactorId(result.enrollment?.factorId ?? result.factors[0]?.id ?? ''); })
-      .catch(cause => { if (active && cause instanceof RequestError && cause.status !== 401) setError(cause.message); })
+      .catch(cause => { if (active && cause instanceof RequestError && cause.status !== 401) setError(authErrorMessage(cause)); })
       .finally(() => { if (active) setResuming(false); });
     return () => { active = false; };
   }, []);
 
   function mfaFailure(cause: unknown, fallback: string) {
-    setError(cause instanceof Error ? cause.message : fallback);
+    setError(cause instanceof Error ? authErrorMessage(cause) : fallback);
     if (cause instanceof RequestError && ['preauth_expired', 'preauth_required', 'mfa_ip_address_mismatch'].includes(cause.code ?? '')) {
       setMfa(null); setEnrollment(null); setFactorId(''); setCode('');
     }
@@ -178,7 +185,7 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
         setFactorId(result.factors[0]?.id ?? '');
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Connexion impossible.');
+      setError(cause instanceof Error ? authErrorMessage(cause) : 'Connexion impossible.');
     } finally {
       setBusy(false);
     }
@@ -190,10 +197,12 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
     setBusy(true);
     setError('');
     try {
+      // Enrollment can require several sequential Auth calls, each bounded at
+      // 10 seconds. Do not abandon it at the standard 20-second read deadline.
       const result = await request<{
         factorId: string;
         totp: { qr_code: string; secret: string; uri: string };
-      }>('/admin/mfa/enroll', { method: 'POST', body: '{}' });
+      }>('/admin/mfa/enroll', { method: 'POST', body: '{}' }, 60_000);
       setEnrollment(result);
       setFactorId(result.factorId);
     } catch (cause) {
@@ -295,10 +304,13 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
               {error && <div className="admin-error" role="alert"><AlertTriangle size={16} />{error}</div>}
               {error && <button type="button" disabled={busy} onClick={() => void resumeMfa()}>Reprendre la vérification</button>}
               {mfa.enrollmentRequired && !enrollment ? (
-                <button className="admin-primary" disabled={busy} onClick={() => void enroll()}>
-                  {busy ? <LoaderCircle className="spin" size={18} /> : <ShieldCheck size={18} />}
-                  Configurer mon authentificateur
-                </button>
+                <div aria-busy={busy}>
+                  <button type="button" className="admin-primary" disabled={busy} onClick={() => void enroll()}>
+                    {busy ? <LoaderCircle className="spin" size={18} /> : <ShieldCheck size={18} />}
+                    {busy ? 'Préparation du QR code…' : 'Configurer mon authentificateur'}
+                  </button>
+                  {busy && <p className="admin-muted" role="status">La préparation peut prendre quelques instants. Gardez cette page ouverte.</p>}
+                </div>
               ) : (
                 <form onSubmit={verify} className="admin-form admin-mfa-form">
                   {qrSource && (
