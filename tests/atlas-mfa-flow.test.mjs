@@ -153,6 +153,26 @@ function setup(t) {
     );
   return { state, call, env };
 }
+test('missing MFA migration fails explicitly before creating or deleting an Auth factor', async (t) => {
+  const { state, call, env } = setup(t);
+  env.DB.sql.exec('DROP TABLE mfa_enrollments');
+  for (const [path, body] of [['mfa/enroll', {}], ['mfa/state', undefined]]) {
+    const response = await call(path, body);
+    assert.equal(response.status, 503);
+    const result = await response.json();
+    assert.equal(result.code, 'mfa_storage_not_ready');
+    assert.doesNotMatch(JSON.stringify(result), /server-secret|preauth-access|short-refresh|SELECT|INSERT/);
+  }
+  t.mock.method(env.DB, 'prepare', () => {
+    throw new Error('D1 query failed', { cause: new Error('no such table: mfa_enrollments') });
+  });
+  const wrapped = await call('mfa/enroll', {});
+  assert.equal(wrapped.status, 503);
+  assert.equal((await wrapped.json()).code, 'mfa_storage_not_ready');
+  assert.equal(state.posts, 0);
+  assert.equal(state.deletes, 0);
+});
+
 test('complete mocked login/enrollment/refresh/challenge/verify yields AAL2 and HttpOnly cookies', async (t) => {
   const { state, call, env } = setup(t);
   const login = await call('login', { email: 'admin@example.test', password: 'test-password' });
