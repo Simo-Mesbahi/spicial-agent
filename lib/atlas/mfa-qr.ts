@@ -52,16 +52,21 @@ function geometry(payload: string) {
  * exact enrollment secret. If Auth returns an unusable URI, build a canonical TOTP
  * URI from the validated secret instead of degrading immediately to manual setup.
  */
-export function mfaQrGeometry(
+export function mfaQrResult(
   uri?: string | null,
   secret?: string | null,
-): { size: number; path: string } | null {
+): ({ ok: true; size: number; path: string } | { ok: false; code: 'invalid_secret' | 'generation_failed' }) {
   const normalizedSecret = normalizeSecret(secret);
-  if (!normalizedSecret) return null;
+  if (!normalizedSecret) return { ok: false, code: 'invalid_secret' };
   try {
-    return geometry(trustedTotpUri(uri, normalizedSecret) ?? canonicalTotpUri(normalizedSecret));
+    return { ok: true, ...geometry(trustedTotpUri(uri, normalizedSecret) ?? canonicalTotpUri(normalizedSecret)) };
   } catch {
     // Never include an enrollment URI or secret in errors or logs.
-    return null;
+    return { ok: false, code: 'generation_failed' };
   }
+}
+
+export function mfaQrGeometry(uri?: string | null, secret?: string | null): {size: number; path: string} | null {
+  const result = mfaQrResult(uri, secret);
+  return result.ok ? {size: result.size, path: result.path} : null;
 }

@@ -77,3 +77,15 @@ test('MFA QR normalizes safe Base32 formatting but still fails closed without a 
   for (const invalid of [undefined, '', 'NOT-BASE32-01', '***', 'A'.repeat(513)])
     assert.equal(mfaQrGeometry(null, invalid), null);
 });
+
+test('Browser bundle generates a decodable QR and reports only safe diagnostic codes', async () => {
+  const browserBuild = await build({ entryPoints: ['lib/atlas/mfa-qr.ts'], bundle: true, platform: 'browser', format: 'esm', minify: true, write: false });
+  const { mfaQrResult } = await import('data:text/javascript;base64,' + Buffer.from(browserBuild.outputFiles[0].text).toString('base64'));
+  const uri = `otpauth://totp/SAV:qa@example.invalid?algorithm=SHA1&digits=6&issuer=SAV&period=30&secret=${secret}`;
+  const qr = mfaQrResult(uri, secret);
+  assert.equal(qr.ok, true);
+  assert.equal(decodeGeometry(qr), uri);
+  for (const [input, key, code] of [[uri, undefined, 'invalid_secret'], [uri, 'INVALID!', 'invalid_secret']]) {
+    assert.deepEqual(mfaQrResult(input, key), {ok:false,code});
+  }
+});
