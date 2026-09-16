@@ -1,6 +1,7 @@
 'use client';
 
 import { productionRequest as request, ProductionRequestError as RequestError } from '@/lib/atlas/production-client';
+import { mfaQrSource } from '@/lib/atlas/mfa-qr';
 
 import { useCallback, useEffect, useMemo, useState, useRef, type FormEvent, type ReactNode } from 'react';
 import {
@@ -136,6 +137,7 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
   const [mfa, setMfa] = useState<Extract<LoginResult, { status: 'mfa_required' }> | null>(null);
   const [factorId, setFactorId] = useState('');
   const [code, setCode] = useState('');
+  const [failedQrFactor, setFailedQrFactor] = useState('');
   const [enrollment, setEnrollment] = useState<{
     factorId: string;
     totp: { qr_code: string; secret: string; uri: string };
@@ -233,12 +235,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
     }
   }
 
-  const qrCode = enrollment?.totp.qr_code;
-  const qrSource = qrCode?.startsWith('data:image/svg+xml')
-    ? qrCode
-    : qrCode?.trim().startsWith('<svg')
-      ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrCode)}`
-      : null;
+  const qrSource = mfaQrSource(enrollment?.totp.qr_code);
+  const qrUnavailable = !qrSource || failedQrFactor === enrollment?.factorId;
 
   return (
     <main className="admin-auth-page">
@@ -301,6 +299,7 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
               <p className="admin-eyebrow">VÉRIFICATION DE SÉCURITÉ</p>
               <h2 id="admin-login-title">Confirmez votre identité</h2>
               <p className="admin-muted">La consultation des données nécessite un second facteur.</p>
+              <p className="admin-muted">Compte protégé : <strong>{mfa.admin.email}</strong></p>
               {error && <div className="admin-error" role="alert"><AlertTriangle size={16} />{error}</div>}
               {error && <button type="button" disabled={busy} onClick={() => void resumeMfa()}>Reprendre la vérification</button>}
               {mfa.enrollmentRequired && !enrollment ? (
@@ -313,18 +312,26 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
                 </div>
               ) : (
                 <form onSubmit={verify} className="admin-form admin-mfa-form">
-                  {qrSource && (
+                  {enrollment && <ol className="admin-muted">
+                    <li>Ouvrez Google Authenticator ou Microsoft Authenticator sur votre téléphone.</li>
+                    <li>Ajoutez un compte en scannant ce QR code, ou utilisez la saisie manuelle ci-dessous.</li>
+                    <li>Recopiez ici le code à 6 chiffres affiché par cette application.</li>
+                  </ol>}
+                  {!qrUnavailable && qrSource && (
                     <div className="admin-qr-wrap">
                       {/* The QR payload is issued directly by Supabase Auth. */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={qrSource} alt="QR code à scanner avec votre application d’authentification" />
+                      <img key={enrollment?.factorId} src={qrSource} alt="QR code à scanner avec votre application d’authentification" onError={() => setFailedQrFactor(enrollment?.factorId ?? '')} />
                       <p>Scannez ce code avec votre application d’authentification.</p>
                     </div>
                   )}
                   {enrollment && (
-                    <details className="admin-secret-fallback">
-                      <summary>Saisie manuelle</summary>
+                    <details className="admin-secret-fallback" open={qrUnavailable || undefined}>
+                      <summary>Configurer sans QR code</summary>
+                      {qrUnavailable && <p role="status">Le QR code n’a pas pu être affiché. Vous pouvez configurer votre application avec cette clé.</p>}
+                      <p>Ajoutez une clé de configuration dans votre application. Nom : SAV SC — {mfa.admin.email}. Type : basé sur le temps (TOTP).</p>
                       <code>{enrollment.totp.secret}</code>
+                      <p>Cette clé est confidentielle. Ne la partagez pas. Le code à 6 chiffres est ensuite généré par votre application ; il n’est pas envoyé par email.</p>
                     </details>
                   )}
                   {!enrollment && mfa.factors.length > 1 && (
