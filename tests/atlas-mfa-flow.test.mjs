@@ -13,6 +13,8 @@ const output = await build({
 const { handleProductionApi } = await import(
   'data:text/javascript;base64,' + Buffer.from(output.outputFiles[0].text).toString('base64')
 );
+const qrOutput = await build({ entryPoints: ['lib/atlas/mfa-qr.ts'], bundle: true, platform: 'browser', format: 'esm', write: false });
+const { mfaQrGeometry } = await import('data:text/javascript;base64,' + Buffer.from(qrOutput.outputFiles[0].text).toString('base64'));
 function database() {
   const sql = new DatabaseSync(':memory:');
   sql.exec('PRAGMA foreign_keys=ON');
@@ -68,7 +70,7 @@ function setup(t) {
   t.after(() => {
     globalThis.fetch = previous;
   });
-  const state = { factors: [], posts: 0, deletes: 0, error: null, gate: null, aal: 'aal1' };
+  const state = { factors: [], posts: 0, deletes: 0, error: null, gate: null, aal: 'aal1', enrollmentOverride: null };
   const identity = () => ({
     user_id: uid,
     email: 'admin@example.test',
@@ -105,7 +107,7 @@ function setup(t) {
           friendly_name: 'SAV SC Administration',
         },
       ];
-      return Response.json({
+      return Response.json(state.enrollmentOverride ?? {
         id: fid,
         type: 'totp',
         totp: {
@@ -265,3 +267,40 @@ test('MFA upstream failures retain safe distinct codes', async (t) => {
     assert.ok(!JSON.stringify(result).includes('server-secret'));
   }
 });
+
+for (const [name, presentation] of [
+  ['absent', {}],
+  ['null', {qr_code: null, uri: null}],
+  ['empty', {qr_code: '', uri: ''}],
+  ['oversized image', {qr_code: 'x'.repeat(200001)}],
+]) {
+  test(`MFA enrollment tolerates ${name} presentation without creating duplicate factors`, async (t) => {
+    const {state, call} = setup(t);
+    state.enrollmentOverride = {id: fid, totp: {secret: 'JBSWY3DPEHPK3PXP', ...presentation}};
+    const response = await call('mfa/enroll', {});
+    assert.equal(response.status, 200);
+    const enrollment = await response.json();
+    assert.equal(enrollment.factorId, fid);
+    assert.equal(enrollment.totp.qr_code, '');
+    assert.equal(enrollment.totp.uri, '');
+    assert.ok(mfaQrGeometry(enrollment.totp.uri, enrollment.totp.secret), 'accepted enrollment must generate a local QR');
+    assert.deepEqual((await (await call('mfa/state')).json()).enrollment, enrollment);
+    assert.deepEqual(await (await call('mfa/enroll', {})).json(), enrollment);
+    assert.equal(state.posts, 1);
+  });
+}
+for (const [name, responseBody] of [
+  ['missing secret', {id: fid, totp: {}}],
+  ['invalid secret', {id: fid, totp: {secret: 'not-a-valid-secret'}}],
+  ['invalid factor', {id: 'invalid', totp: {secret: 'JBSWY3DPEHPK3PXP'}}],
+]) {
+  test(`MFA enrollment rejects ${name} without leaking response data`, async (t) => {
+    const {state, call} = setup(t);
+    state.enrollmentOverride = responseBody;
+    const response = await call('mfa/enroll', {});
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.equal(body.code, 'invalid_mfa_enrollment');
+    assert.ok(!JSON.stringify(body).includes('JBSWY3DPEHPK3PXP'));
+  });
+}

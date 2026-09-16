@@ -109,12 +109,18 @@ export function mfaError(error: unknown): never {
     'invalid_mfa_enrollment',
   );
 }
+// Presentation fields are optional: the browser can generate a QR from the
+// validated TOTP secret. Never reject a valid factor for an unusable image.
+const presentationText = (max: number) => z.preprocess(
+  (value) => typeof value === 'string' && value.length <= max ? value : '',
+  z.string().max(max),
+);
 export const enrollmentSchema = z.object({
   factorId: z.string().uuid(),
   totp: z.object({
-    qr_code: z.string().min(1).max(200000),
-    secret: z.string().min(8).max(512),
-    uri: z.string().min(1).max(4000),
+    qr_code: presentationText(200000),
+    secret: z.string().min(16).max(512).regex(/^[A-Z2-7]+=*$/i),
+    uri: presentationText(4000),
   }),
 });
 const factorSchema = z.object({
@@ -294,7 +300,9 @@ export async function enrollMfa(
     if (!parsed.success)
       throw new MfaError(
         502,
-        'La configuration MFA reçue est invalide. Réessayez pour reprendre proprement.',
+        parsed.error.issues.some(issue => issue.path[0] === 'id')
+          ? 'La configuration MFA reçue contient un identifiant de facteur invalide.'
+          : 'La configuration MFA reçue ne contient pas de clé TOTP valide.',
         'invalid_mfa_enrollment',
       );
     const value = { factorId: parsed.data.id, totp: parsed.data.totp };
