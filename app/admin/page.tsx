@@ -1,7 +1,7 @@
 'use client';
 
 import { productionRequest as request, ProductionRequestError as RequestError } from '@/lib/atlas/production-client';
-import { mfaQrSource } from '@/lib/atlas/mfa-qr';
+import { mfaQrGeometry } from '@/lib/atlas/mfa-qr';
 
 import { useCallback, useEffect, useMemo, useState, useRef, type FormEvent, type ReactNode } from 'react';
 import {
@@ -137,7 +137,6 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
   const [mfa, setMfa] = useState<Extract<LoginResult, { status: 'mfa_required' }> | null>(null);
   const [factorId, setFactorId] = useState('');
   const [code, setCode] = useState('');
-  const [failedQrFactor, setFailedQrFactor] = useState('');
   const [enrollment, setEnrollment] = useState<{
     factorId: string;
     totp: { qr_code: string; secret: string; uri: string };
@@ -235,8 +234,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
     }
   }
 
-  const qrSource = mfaQrSource(enrollment?.totp.qr_code);
-  const qrUnavailable = !qrSource || failedQrFactor === enrollment?.factorId;
+  const qr = useMemo(() => mfaQrGeometry(enrollment?.totp.uri, enrollment?.totp.secret), [enrollment]);
+  const qrUnavailable = !qr;
 
   return (
     <main className="admin-auth-page">
@@ -317,11 +316,12 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
                     <li>Ajoutez un compte en scannant ce QR code, ou utilisez la saisie manuelle ci-dessous.</li>
                     <li>Recopiez ici le code à 6 chiffres affiché par cette application.</li>
                   </ol>}
-                  {!qrUnavailable && qrSource && (
+                  {qr && (
                     <div className="admin-qr-wrap">
-                      {/* The QR payload is issued directly by Supabase Auth. */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img key={enrollment?.factorId} src={qrSource} alt="QR code à scanner avec votre application d’authentification" onError={() => setFailedQrFactor(enrollment?.factorId ?? '')} />
+                      <svg role="img" aria-label="QR code à scanner avec votre application d’authentification" viewBox={`0 0 ${qr.size} ${qr.size}`} width="280" height="280" shapeRendering="crispEdges">
+                        <rect width={qr.size} height={qr.size} fill="#fff" />
+                        <path d={qr.path} fill="#000" />
+                      </svg>
                       <p>Scannez ce code avec votre application d’authentification.</p>
                     </div>
                   )}

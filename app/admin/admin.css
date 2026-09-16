@@ -284,9 +284,9 @@
   border-radius: 14px;
 }
 
-.admin-qr-wrap img {
-  width: 180px;
-  height: 180px;
+.admin-qr-wrap svg {
+  width: min(280px, 100%);
+  height: auto;
   padding: 7px;
   background: #fff;
   border-radius: 9px;
