@@ -35,3 +35,15 @@ test('MFA QR refuses external URLs, mismatched or duplicate secrets and excessiv
   }
   assert.equal(mfaQrGeometry(`otpauth://totp/test?secret=${secret}`, undefined), null);
 });
+
+test('Browser bundle generates a decodable QR and reports only safe diagnostic codes', async () => {
+  const browserBuild = await build({ entryPoints: ['lib/atlas/mfa-qr.ts'], bundle: true, platform: 'browser', format: 'esm', minify: true, write: false });
+  const { mfaQrResult } = await import('data:text/javascript;base64,' + Buffer.from(browserBuild.outputFiles[0].text).toString('base64'));
+  const uri = `otpauth://totp/SAV:qa@example.invalid?algorithm=SHA1&digits=6&issuer=SAV&period=30&secret=${secret}`;
+  const qr = mfaQrResult(uri, secret);
+  assert.equal(qr.ok, true);
+  assert.equal(decodeGeometry(qr), uri);
+  for (const [input, key, code] of [[undefined, secret, 'missing_data'], ['not-a-url', secret, 'invalid_uri'], [uri, 'INVALID!', 'invalid_secret'], [uri, 'AAAAAAAAAAAAAAAA', 'secret_mismatch']]) {
+    assert.deepEqual(mfaQrResult(input, key), {ok:false,code});
+  }
+});

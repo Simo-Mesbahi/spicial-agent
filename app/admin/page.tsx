@@ -1,7 +1,7 @@
 'use client';
 
 import { productionRequest as request, ProductionRequestError as RequestError } from '@/lib/atlas/production-client';
-import { mfaQrGeometry } from '@/lib/atlas/mfa-qr';
+import { mfaQrResult } from '@/lib/atlas/mfa-qr';
 
 import { useCallback, useEffect, useMemo, useState, useRef, type FormEvent, type ReactNode } from 'react';
 import {
@@ -234,7 +234,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
     }
   }
 
-  const qr = useMemo(() => mfaQrGeometry(enrollment?.totp.uri, enrollment?.totp.secret), [enrollment]);
+  const qrResult = useMemo(() => mfaQrResult(enrollment?.totp.uri, enrollment?.totp.secret), [enrollment]);
+  const qr = qrResult.ok ? qrResult : null;
   const qrUnavailable = !qr;
 
   return (
@@ -311,6 +312,7 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
                 </div>
               ) : (
                 <form onSubmit={verify} className="admin-form admin-mfa-form">
+                  {enrollment && <p className="admin-muted">Configuration de l’authentificateur · QR local v3</p>}
                   {enrollment && <ol className="admin-muted">
                     <li>Ouvrez Google Authenticator ou Microsoft Authenticator sur votre téléphone.</li>
                     <li>Ajoutez un compte en scannant ce QR code, ou utilisez la saisie manuelle ci-dessous.</li>
@@ -328,7 +330,8 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
                   {enrollment && (
                     <details className="admin-secret-fallback" open={qrUnavailable || undefined}>
                       <summary>Configurer sans QR code</summary>
-                      {qrUnavailable && <p role="status">Le QR code n’a pas pu être affiché. Vous pouvez configurer votre application avec cette clé.</p>}
+                      {qrUnavailable && <p role="status">Le QR code ne peut pas être préparé. Utilisez la saisie manuelle ci-dessous.</p>}
+                      {!qrResult.ok && <p className="admin-muted">Diagnostic QR v3 : {qrResult.code}. Ce diagnostic ne contient aucune clé.</p>}
                       <p>Ajoutez une clé de configuration dans votre application. Nom : SAV SC — {mfa.admin.email}. Type : basé sur le temps (TOTP).</p>
                       <code>{enrollment.totp.secret}</code>
                       <p>Cette clé est confidentielle. Ne la partagez pas. Le code à 6 chiffres est ensuite généré par votre application ; il n’est pas envoyé par email.</p>
