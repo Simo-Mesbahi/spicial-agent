@@ -1,25 +1,65 @@
 import qrcode from 'qrcode-generator';
 
-/** Generate locally: enrollment credentials never leave the application for a QR service. */
-export function mfaQrGeometry(uri?: string | null, secret?: string | null): { size: number; path: string } | null {
-  if (!uri || uri.length > 4000 || !secret) return null;
+const ISSUER = 'SAV SC Administration';
+const BASE32 = /^[A-Z2-7]+=*$/i;
+
+function normalizeSecret(secret?: string | null) {
+  const value = secret?.replace(/\s+/g, '').toUpperCase() ?? '';
+  return value && value.length <= 512 && BASE32.test(value) ? value : null;
+}
+
+function canonicalTotpUri(secret: string) {
+  const label = encodeURIComponent(ISSUER);
+  const issuer = encodeURIComponent(ISSUER);
+  return `otpauth://totp/${label}?secret=${encodeURIComponent(secret)}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+}
+
+function trustedTotpUri(uri: string | null | undefined, secret: string) {
+  if (!uri || uri.length > 4000) return null;
   try {
     const parsed = new URL(uri);
-    if (parsed.protocol !== 'otpauth:' || parsed.hostname !== 'totp' ||
-        parsed.searchParams.getAll('secret').length !== 1 ||
-        parsed.searchParams.get('secret') !== secret || !/^[A-Z2-7]+=*$/i.test(secret)) return null;
-    // URL serialisation percent-encodes Unicode account labels before byte encoding.
-    const qr = qrcode(0, 'M');
-    qr.addData(parsed.href);
-    qr.make();
-    const count = qr.getModuleCount();
-    const modules: string[] = [];
-    for (let row = 0; row < count; row++) {
-      for (let col = 0; col < count; col++) {
-        if (qr.isDark(row, col)) modules.push(`M${col + 4} ${row + 4}h1v1h-1z`);
-      }
+    const uriSecret = normalizeSecret(parsed.searchParams.get('secret'));
+    if (
+      parsed.protocol !== 'otpauth:' ||
+      parsed.hostname !== 'totp' ||
+      parsed.searchParams.getAll('secret').length !== 1 ||
+      uriSecret !== secret
+    )
+      return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
+function geometry(payload: string) {
+  const qr = qrcode(0, 'M');
+  qr.addData(payload);
+  qr.make();
+  const count = qr.getModuleCount();
+  const modules: string[] = [];
+  for (let row = 0; row < count; row++) {
+    for (let col = 0; col < count; col++) {
+      if (qr.isDark(row, col)) modules.push(`M${col + 4} ${row + 4}h1v1h-1z`);
     }
-    return { size: count + 8, path: modules.join('') };
+  }
+  return { size: count + 8, path: modules.join('') };
+}
+
+/**
+ * Generate the enrollment QR locally so the TOTP credential never leaves the app.
+ * Prefer the Auth-issued otpauth URI when it is structurally valid and bound to the
+ * exact enrollment secret. If Auth returns an unusable URI, build a canonical TOTP
+ * URI from the validated secret instead of degrading immediately to manual setup.
+ */
+export function mfaQrGeometry(
+  uri?: string | null,
+  secret?: string | null,
+): { size: number; path: string } | null {
+  const normalizedSecret = normalizeSecret(secret);
+  if (!normalizedSecret) return null;
+  try {
+    return geometry(trustedTotpUri(uri, normalizedSecret) ?? canonicalTotpUri(normalizedSecret));
   } catch {
     // Never include an enrollment URI or secret in errors or logs.
     return null;
