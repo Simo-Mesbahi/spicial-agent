@@ -22,6 +22,8 @@ type LockReason = 'idle' | 'manual' | 'expired' | 'network' | null;
 const PROBE_WHEN_SIGNED_OUT_MS = 10_000;
 const SESSION_HEALTHCHECK_MS = 60_000;
 const ACTIVITY_WRITE_THROTTLE_MS = 1_000;
+const SERVER_ACTIVITY_THROTTLE_MS = 30_000;
+const SERVER_ACTIVITY_HEADER = 'X-SAVSC-Admin-Activity';
 
 function emitSessionState(active: boolean) {
   window.dispatchEvent(new CustomEvent(ADMIN_SESSION_STATE_EVENT, { detail: { active } }));
@@ -38,6 +40,7 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
   const logoutInFlight = useRef(false);
   const lastWrite = useRef(0);
   const lastProbe = useRef(0);
+  const lastServerActivity = useRef(0);
 
   const readLastActivity = useCallback(() => {
     try {
@@ -47,6 +50,25 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       return 0;
     }
   }, []);
+
+  const expireLocally = useCallback((reason: Exclude<LockReason, null>, broadcast = true) => {
+    setAuthenticated(false);
+    setWarning(false);
+    setLockReason(reason);
+    emitSessionState(false);
+    try {
+      localStorage.removeItem(ADMIN_LAST_ACTIVITY_KEY);
+      if (broadcast) localStorage.setItem(ADMIN_FORCE_LOCK_KEY, `${Date.now()}:${reason}`);
+    } catch {}
+  }, []);
+
+  const handleServerAuthFailure = useCallback((cause: unknown) => {
+    if (!(cause instanceof ProductionRequestError) || (cause.status !== 401 && cause.status !== 403))
+      return false;
+    expireLocally('expired');
+    router.replace('/admin?reason=expired');
+    return true;
+  }, [expireLocally, router]);
 
   const recordActivity = useCallback(() => {
     if (!authenticated || lockReason) return;
@@ -60,7 +82,19 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
     }
     setRemainingMs(ADMIN_IDLE_TIMEOUT_MS);
     setWarning(false);
-  }, [authenticated, lockReason]);
+
+    if (now - lastServerActivity.current < SERVER_ACTIVITY_THROTTLE_MS) return;
+    lastServerActivity.current = now;
+    void productionRequest(
+      '/admin/session',
+      { headers: { [SERVER_ACTIVITY_HEADER]: '1' } },
+      12_000,
+    ).catch((cause) => {
+      lastServerActivity.current = 0;
+      if (!handleServerAuthFailure(cause))
+        setMessage('Votre activité locale est conservée, mais la vérification serveur est momentanément indisponible.');
+    });
+  }, [authenticated, handleServerAuthFailure, lockReason]);
 
   const probeSession = useCallback(async (force = false) => {
     const now = Date.now();
@@ -92,23 +126,12 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
     }
   }, [authenticated, readLastActivity]);
 
-  const finishLocalLock = useCallback((reason: Exclude<LockReason, null>, broadcast = true) => {
-    setAuthenticated(false);
-    setWarning(false);
-    setLockReason(reason);
-    emitSessionState(false);
-    try {
-      localStorage.removeItem(ADMIN_LAST_ACTIVITY_KEY);
-      if (broadcast) localStorage.setItem(ADMIN_FORCE_LOCK_KEY, `${Date.now()}:${reason}`);
-    } catch {}
-  }, []);
-
   const logout = useCallback(async (reason: 'idle' | 'manual' | 'expired') => {
     if (logoutInFlight.current) return;
     logoutInFlight.current = true;
     setWorking(true);
     setMessage('');
-    finishLocalLock(reason);
+    expireLocally(reason);
     try {
       await productionRequest('/admin/logout', { method: 'POST', body: '{}', keepalive: true }, 12_000);
       router.replace(`/admin?reason=${encodeURIComponent(reason)}`);
@@ -119,30 +142,36 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       logoutInFlight.current = false;
       setWorking(false);
     }
-  }, [finishLocalLock, router]);
+  }, [expireLocally, router]);
 
   const continueSession = useCallback(async () => {
     if (working) return;
     setWorking(true);
     setMessage('');
     try {
-      const active = await probeSession(true);
-      if (!active) {
-        finishLocalLock('expired');
-        router.replace('/admin?reason=expired');
-        return;
-      }
+      await productionRequest(
+        '/admin/session',
+        { headers: { [SERVER_ACTIVITY_HEADER]: '1' } },
+        12_000,
+      );
       const now = Date.now();
+      lastServerActivity.current = now;
+      if (!authenticated) {
+        setAuthenticated(true);
+        emitSessionState(true);
+      }
       try { localStorage.setItem(ADMIN_LAST_ACTIVITY_KEY, String(now)); } catch {}
       lastWrite.current = now;
       setRemainingMs(ADMIN_IDLE_TIMEOUT_MS);
       setWarning(false);
-    } catch {
-      setMessage('Impossible de prolonger la session. Vérifiez votre connexion ou déconnectez-vous.');
+      setLockReason(null);
+    } catch (cause) {
+      if (!handleServerAuthFailure(cause))
+        setMessage('Impossible de prolonger la session. Vérifiez votre connexion ou déconnectez-vous.');
     } finally {
       setWorking(false);
     }
-  }, [finishLocalLock, probeSession, router, working]);
+  }, [authenticated, handleServerAuthFailure, working]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void probeSession(true), 0);
@@ -197,7 +226,7 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
         setWarning(snapshot.status === 'warning');
       }
       if (event.key === ADMIN_FORCE_LOCK_KEY && event.newValue) {
-        finishLocalLock('manual', false);
+        expireLocally('manual', false);
         window.setTimeout(() => router.replace('/admin?reason=logout'), 400);
       }
     };
@@ -208,19 +237,28 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(ADMIN_LOGOUT_EVENT, onLogoutRequest);
     };
-  }, [authenticated, finishLocalLock, logout, router]);
+  }, [authenticated, expireLocally, logout, router]);
 
-  if (lockReason === 'network') {
+  if (lockReason) {
+    const networkFailure = lockReason === 'network';
     return (
       <div className="admin-session-lock" role="alert" aria-live="assertive">
         <div className="admin-session-dialog">
           <span className="admin-session-icon"><LockKeyhole size={24} /></span>
           <p className="admin-eyebrow">SESSION VERROUILLÉE</p>
           <h2>Les données administratives sont masquées.</h2>
-          <p>{message}</p>
-          <button type="button" className="admin-session-primary" disabled={working} onClick={() => void logout('manual')}>
-            <LogOut size={17} /> {working ? 'Fermeture…' : 'Réessayer la déconnexion'}
-          </button>
+          <p>{message || (lockReason === 'idle'
+            ? 'La session a été fermée après 15 minutes sans activité.'
+            : 'L’accès administrateur est fermé sur cet appareil.')}</p>
+          {networkFailure ? (
+            <button type="button" className="admin-session-primary" disabled={working} onClick={() => void logout('manual')}>
+              <LogOut size={17} /> {working ? 'Fermeture…' : 'Réessayer la déconnexion'}
+            </button>
+          ) : (
+            <button type="button" className="admin-session-primary" onClick={() => router.replace('/admin')}>
+              <ShieldCheck size={17} /> Revenir à la connexion
+            </button>
+          )}
         </div>
       </div>
     );
@@ -229,13 +267,13 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
   return (
     <>
       {children}
-      {authenticated && warning && !lockReason && (
+      {authenticated && warning && (
         <div className="admin-session-lock" role="dialog" aria-modal="true" aria-labelledby="admin-idle-title">
           <div className="admin-session-dialog">
             <span className="admin-session-icon"><ShieldCheck size={24} /></span>
             <p className="admin-eyebrow">SÉCURITÉ DE SESSION</p>
             <h2 id="admin-idle-title">Votre session va être verrouillée.</h2>
-            <p>Après 15 minutes sans activité, l’accès administrateur est fermé automatiquement sur cet appareil.</p>
+            <p>Après 15 minutes sans activité, l’accès administrateur est fermé automatiquement sur cet appareil, y compris côté serveur.</p>
             <div className="admin-session-countdown"><Clock3 size={18} /><strong>{formatAdminIdleCountdown(remainingMs)}</strong><span>avant déconnexion</span></div>
             {message && <p className="admin-session-error">{message}</p>}
             <div className="admin-session-actions">

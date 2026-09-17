@@ -1,6 +1,21 @@
 import { handleApi, type AtlasEnv } from '../lib/atlas/api';
 import { handleAdminOperationsApi } from '../lib/atlas/admin-operations-api';
 import {
+  adminRefreshToken,
+  adminRefreshTokenFromResponse,
+  adminSessionExpiredResponse,
+  inspectAdminServerSession,
+  isAdminActivityRequest,
+  isAdminAuthenticationCompletion,
+  isProtectedAdminApi,
+  registerAdminServerSession,
+  revokeAdminServerSession,
+  rotateAdminServerSession,
+  touchAdminServerSession,
+  withClearedAdminCookies,
+  type AdminServerSessionState,
+} from '../lib/atlas/admin-session-server';
+import {
   handleProductionApi,
   recordProductionPerformance,
   type ProductionEnv,
@@ -51,6 +66,59 @@ function hardenDocumentResponse(request: Request, response: Response) {
   });
 }
 
+async function productionResponse(request: Request, env: Env, pathname: string) {
+  return pathname.startsWith('/api/production/admin/operations')
+    ? handleAdminOperationsApi(request, env)
+    : handleProductionApi(request, env);
+}
+
+async function protectedAdminResponse(request: Request, env: Env, pathname: string) {
+  const refreshToken = adminRefreshToken(request);
+  let serverSession: AdminServerSessionState | null = null;
+
+  if (isProtectedAdminApi(pathname)) {
+    if (!refreshToken) return adminSessionExpiredResponse(request);
+    serverSession = await inspectAdminServerSession(env.DB, refreshToken);
+    if (serverSession.state === 'expired') return adminSessionExpiredResponse(request);
+    if (serverSession.state === 'active' && isAdminActivityRequest(request)) {
+      const touched = await touchAdminServerSession(env.DB, refreshToken);
+      if (!touched) return adminSessionExpiredResponse(request);
+    }
+  }
+
+  let response = await productionResponse(request, env, pathname);
+
+  if (pathname === '/api/production/admin/logout') {
+    if (refreshToken) await revokeAdminServerSession(env.DB, refreshToken);
+    return response;
+  }
+
+  if (isAdminAuthenticationCompletion(pathname) && response.ok) {
+    const issuedRefreshToken = adminRefreshTokenFromResponse(response);
+    if (issuedRefreshToken) await registerAdminServerSession(env.DB, issuedRefreshToken);
+    return response;
+  }
+
+  if (!isProtectedAdminApi(pathname) || !refreshToken || !serverSession) return response;
+
+  if (response.status === 401) {
+    await revokeAdminServerSession(env.DB, refreshToken);
+    response = withClearedAdminCookies(request, response);
+    return response;
+  }
+
+  if (response.ok) {
+    const rotatedRefreshToken = adminRefreshTokenFromResponse(response);
+    if (serverSession.state === 'missing') {
+      await registerAdminServerSession(env.DB, rotatedRefreshToken || refreshToken);
+    } else if (rotatedRefreshToken && rotatedRefreshToken !== refreshToken) {
+      await rotateAdminServerSession(env.DB, refreshToken, rotatedRefreshToken);
+    }
+  }
+
+  return response;
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -63,9 +131,9 @@ const worker = {
 
     if (url.pathname.startsWith('/api/production/')) {
       const startedAt = Date.now();
-      const response = url.pathname.startsWith('/api/production/admin/operations')
-        ? await handleAdminOperationsApi(request, env)
-        : await handleProductionApi(request, env);
+      const response = url.pathname.startsWith('/api/production/admin/')
+        ? await protectedAdminResponse(request, env, url.pathname)
+        : await productionResponse(request, env, url.pathname);
       ctx.waitUntil(
         recordProductionPerformance(env, url.pathname, response.status, Date.now() - startedAt),
       );
