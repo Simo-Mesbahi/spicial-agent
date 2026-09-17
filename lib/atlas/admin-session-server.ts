@@ -109,7 +109,9 @@ export async function inspectAdminServerSession(
     deadline <= now ||
     createdAt + ADMIN_SERVER_ABSOLUTE_MS <= now;
   if (invalid) {
-    await db.prepare('DELETE FROM rate_buckets WHERE id=?').bind(key).run();
+    // Keep the row as a tombstone. Deleting it would make a previously expired
+    // refresh token look like a legacy/missing marker and could let it bootstrap
+    // a new app session after the browser cookies were cleared.
     return { state: 'expired', key, createdAt, deadline };
   }
   return { state: 'active', key, createdAt, deadline };
@@ -122,6 +124,9 @@ export async function registerAdminServerSession(
 ) {
   const key = await adminServerSessionKey(refreshToken);
   const deadline = Math.min(now + ADMIN_SERVER_IDLE_MS, now + ADMIN_SERVER_ABSOLUTE_MS);
+  // INSERT OR IGNORE deliberately preserves an expired/revoked tombstone for
+  // the same token. Supabase refresh tokens are opaque credentials and must not
+  // be resurrected by a later bootstrap path.
   await db
     .prepare('INSERT OR IGNORE INTO rate_buckets (id,count,expires_at) VALUES (?,?,?)')
     .bind(key, now, deadline)
@@ -145,24 +150,34 @@ export async function touchAdminServerSession(
   if (
     !Number.isFinite(createdAt) ||
     !Number.isFinite(deadline) ||
+    createdAt <= 0 ||
     deadline <= now ||
     createdAt + ADMIN_SERVER_ABSOLUTE_MS <= now
   ) {
-    await db.prepare('DELETE FROM rate_buckets WHERE id=?').bind(key).run();
     return false;
   }
   const nextDeadline = Math.min(now + ADMIN_SERVER_IDLE_MS, createdAt + ADMIN_SERVER_ABSOLUTE_MS);
   const result = await db
-    .prepare('UPDATE rate_buckets SET expires_at=? WHERE id=? AND expires_at>?')
+    .prepare('UPDATE rate_buckets SET expires_at=? WHERE id=? AND expires_at>? AND count>0')
     .bind(nextDeadline, key, now)
     .run();
   return Number(result.meta.changes) === 1;
 }
 
-export async function revokeAdminServerSession(db: Database, refreshToken: string) {
+export async function revokeAdminServerSession(
+  db: Database,
+  refreshToken: string,
+  now = Date.now(),
+) {
   if (!refreshToken) return;
   const key = await adminServerSessionKey(refreshToken);
-  await db.prepare('DELETE FROM rate_buckets WHERE id=?').bind(key).run();
+  // Tombstone rather than delete. The upstream Supabase logout is best-effort;
+  // this app-level revocation therefore remains effective even if Auth is
+  // temporarily unavailable during logout.
+  await db
+    .prepare('INSERT OR REPLACE INTO rate_buckets (id,count,expires_at) VALUES (?,?,?)')
+    .bind(key, -Math.max(1, now), now - 1)
+    .run();
 }
 
 export async function rotateAdminServerSession(
@@ -177,10 +192,12 @@ export async function rotateAdminServerSession(
     return;
   const nextKey = await adminServerSessionKey(nextRefreshToken);
   await db
-    .prepare('INSERT OR REPLACE INTO rate_buckets (id,count,expires_at) VALUES (?,?,?)')
+    .prepare('INSERT OR IGNORE INTO rate_buckets (id,count,expires_at) VALUES (?,?,?)')
     .bind(nextKey, previous.createdAt, previous.deadline)
     .run();
-  await db.prepare('DELETE FROM rate_buckets WHERE id=?').bind(previous.key).run();
+  // The previous refresh token remains permanently rejected at the app boundary
+  // after rotation, even during an upstream token reuse/grace window.
+  await revokeAdminServerSession(db, previousRefreshToken, now);
 }
 
 export function withClearedAdminCookies(request: Request, response: Response) {
