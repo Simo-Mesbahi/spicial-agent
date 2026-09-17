@@ -125,7 +125,6 @@ test('idle expiry fails closed permanently for the same refresh credential', asy
   assert.equal(await session.touchAdminServerSession(db, refresh, expiredAt), false);
   assert.equal((await session.inspectAdminServerSession(db, refresh, expiredAt + 60_000)).state, 'expired');
 
-  // A legacy/bootstrap registration must never resurrect an expired token.
   await session.registerAdminServerSession(db, refresh, expiredAt + 60_000);
   assert.equal((await session.inspectAdminServerSession(db, refresh, expiredAt + 60_001)).state, 'expired');
 });
@@ -177,6 +176,14 @@ test('expired response is private, neutral and clears every admin/preauth cookie
     assert.match(cookies, new RegExp(`${name}=`));
   }
   assert.match(cookies, /Max-Age=0/);
+});
+
+test('worker rejects missing and expired admin markers before privileged handlers and never bootstraps them', () => {
+  const source = readFileSync('worker/index.ts', 'utf8');
+  assert.match(source, /serverSession = await inspectAdminServerSession\(env\.DB, refreshToken\)/);
+  assert.match(source, /if \(serverSession\.state !== 'active'\) return adminSessionExpiredResponse\(request\)/);
+  assert.doesNotMatch(source, /serverSession\.state === 'missing'[\s\S]{0,180}registerAdminServerSession/);
+  assert.match(source, /isAdminAuthenticationCompletion\(pathname\)[\s\S]*registerAdminServerSession/);
 });
 
 test('admin UI sends server activity only from real interaction path and keeps background probe passive', () => {
