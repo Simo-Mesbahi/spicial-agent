@@ -112,23 +112,25 @@ test('server session starts at 15 minutes, only explicit activity extends it, an
     key,
   );
   assert.equal((await session.inspectAdminServerSession(db, refresh, baseNow)).state, 'expired');
-  assert.equal(sql.prepare('SELECT id FROM rate_buckets WHERE id=?').get(key), undefined);
+  assert.ok(sql.prepare('SELECT id FROM rate_buckets WHERE id=?').get(key), 'expired marker must remain as a tombstone');
+  assert.equal((await session.inspectAdminServerSession(db, refresh, baseNow + 1)).state, 'expired');
 });
 
-test('idle expiry fails closed and removes its server-side marker', async (t) => {
+test('idle expiry fails closed permanently for the same refresh credential', async (t) => {
   const { sql, db } = database();
   t.after(() => sql.close());
   await session.registerAdminServerSession(db, refresh, baseNow);
-  const result = await session.inspectAdminServerSession(
-    db,
-    refresh,
-    baseNow + session.ADMIN_SERVER_IDLE_MS,
-  );
-  assert.equal(result.state, 'expired');
-  assert.equal(await session.touchAdminServerSession(db, refresh, baseNow + session.ADMIN_SERVER_IDLE_MS), false);
+  const expiredAt = baseNow + session.ADMIN_SERVER_IDLE_MS;
+  assert.equal((await session.inspectAdminServerSession(db, refresh, expiredAt)).state, 'expired');
+  assert.equal(await session.touchAdminServerSession(db, refresh, expiredAt), false);
+  assert.equal((await session.inspectAdminServerSession(db, refresh, expiredAt + 60_000)).state, 'expired');
+
+  // A legacy/bootstrap registration must never resurrect an expired token.
+  await session.registerAdminServerSession(db, refresh, expiredAt + 60_000);
+  assert.equal((await session.inspectAdminServerSession(db, refresh, expiredAt + 60_001)).state, 'expired');
 });
 
-test('refresh-token rotation preserves original creation time and inactivity deadline', async (t) => {
+test('refresh-token rotation preserves active timestamps and tombstones the previous credential', async (t) => {
   const { sql, db } = database();
   t.after(() => sql.close());
   await session.registerAdminServerSession(db, refresh, baseNow);
@@ -136,14 +138,30 @@ test('refresh-token rotation preserves original creation time and inactivity dea
   const before = await session.inspectAdminServerSession(db, refresh, baseNow + 2 * 60_000 + 1);
 
   await session.rotateAdminServerSession(db, refresh, rotated, baseNow + 2 * 60_000 + 2);
-  assert.equal((await session.inspectAdminServerSession(db, refresh, baseNow + 2 * 60_000 + 3)).state, 'missing');
+  assert.equal((await session.inspectAdminServerSession(db, refresh, baseNow + 2 * 60_000 + 3)).state, 'expired');
   const after = await session.inspectAdminServerSession(db, rotated, baseNow + 2 * 60_000 + 3);
   assert.equal(after.state, 'active');
   assert.equal(after.createdAt, before.createdAt);
   assert.equal(after.deadline, before.deadline);
 
-  await session.revokeAdminServerSession(db, rotated);
-  assert.equal((await session.inspectAdminServerSession(db, rotated, baseNow + 2 * 60_000 + 4)).state, 'missing');
+  await session.revokeAdminServerSession(db, rotated, baseNow + 2 * 60_000 + 4);
+  assert.equal((await session.inspectAdminServerSession(db, rotated, baseNow + 2 * 60_000 + 5)).state, 'expired');
+  await session.registerAdminServerSession(db, rotated, baseNow + 3 * 60_000);
+  assert.equal((await session.inspectAdminServerSession(db, rotated, baseNow + 3 * 60_000 + 1)).state, 'expired');
+});
+
+test('explicit logout revocation remains fail-closed even if upstream logout cannot invalidate the refresh token', async (t) => {
+  const { sql, db } = database();
+  t.after(() => sql.close());
+  await session.registerAdminServerSession(db, refresh, baseNow);
+  await session.revokeAdminServerSession(db, refresh, baseNow + 1_000);
+  const key = await session.adminServerSessionKey(refresh);
+  const tombstone = sql.prepare('SELECT count, expires_at FROM rate_buckets WHERE id=?').get(key);
+  assert.ok(tombstone);
+  assert.ok(Number(tombstone.count) < 0);
+  assert.ok(Number(tombstone.expires_at) < baseNow + 1_000);
+  assert.equal((await session.inspectAdminServerSession(db, refresh, baseNow + 2_000)).state, 'expired');
+  assert.equal(await session.touchAdminServerSession(db, refresh, baseNow + 2_000), false);
 });
 
 test('expired response is private, neutral and clears every admin/preauth cookie', async () => {
