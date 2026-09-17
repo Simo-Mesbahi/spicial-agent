@@ -79,8 +79,11 @@ async function protectedAdminResponse(request: Request, env: Env, pathname: stri
   if (isProtectedAdminApi(pathname)) {
     if (!refreshToken) return adminSessionExpiredResponse(request);
     serverSession = await inspectAdminServerSession(env.DB, refreshToken);
-    if (serverSession.state === 'expired') return adminSessionExpiredResponse(request);
-    if (serverSession.state === 'active' && isAdminActivityRequest(request)) {
+    // Missing is deliberately rejected, not bootstrapped. A missing D1 marker can
+    // mean a fresh deployment, storage loss, or a copied credential; every case
+    // is safer when it requires a new MFA-authenticated admin session.
+    if (serverSession.state !== 'active') return adminSessionExpiredResponse(request);
+    if (isAdminActivityRequest(request)) {
       const touched = await touchAdminServerSession(env.DB, refreshToken);
       if (!touched) return adminSessionExpiredResponse(request);
     }
@@ -109,11 +112,8 @@ async function protectedAdminResponse(request: Request, env: Env, pathname: stri
 
   if (response.ok) {
     const rotatedRefreshToken = adminRefreshTokenFromResponse(response);
-    if (serverSession.state === 'missing') {
-      await registerAdminServerSession(env.DB, rotatedRefreshToken || refreshToken);
-    } else if (rotatedRefreshToken && rotatedRefreshToken !== refreshToken) {
+    if (rotatedRefreshToken && rotatedRefreshToken !== refreshToken)
       await rotateAdminServerSession(env.DB, refreshToken, rotatedRefreshToken);
-    }
   }
 
   return response;
