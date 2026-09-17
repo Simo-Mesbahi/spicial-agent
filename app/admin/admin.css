@@ -960,3 +960,25 @@
   .admin-top-actions select { max-width: 180px; }
   .admin-footer { display: grid; }
 }
+
+/* Secondary recovery actions must remain visible without relying on global button colors. */
+.admin-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  color: #173f32;
+  background: #f4f8f6;
+  border: 1px solid #9eafa6;
+  border-radius: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.admin-secondary:hover:not(:disabled) { background: #e5eee9; }
+.admin-secondary:focus-visible { outline: 3px solid #176b55; outline-offset: 3px; }
+.admin-secondary:disabled { opacity: .6; cursor: wait; }
+.admin-mfa-form > ol { padding-left: 22px; }
+.admin-mfa-form > ol li + li { margin-top: 8px; }
+.admin-form label, .admin-secret-fallback, .admin-qr-wrap p { font-size: 14px; }
