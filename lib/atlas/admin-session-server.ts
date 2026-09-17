@@ -225,12 +225,12 @@ export function adminSessionExpiredResponse(request: Request) {
     Pragma: 'no-cache',
     'X-Content-Type-Options': 'nosniff',
   });
-  for (const name of [
-    ADMIN_ACCESS_COOKIE,
-    ADMIN_REFRESH_COOKIE,
-    PREAUTH_ACCESS_COOKIE,
-    PREAUTH_REFRESH_COOKIE,
-  ]) {
+  // This response can be produced by a background /admin/session probe while
+  // the user is legitimately in the password -> MFA pre-authentication flow.
+  // Only clear privileged admin credentials here. Clearing pre-auth cookies
+  // would race the TOTP form and make a valid six-digit code fail with
+  // preauth_expired. Explicit logout and hard auth failures still clear both.
+  for (const name of [ADMIN_ACCESS_COOKIE, ADMIN_REFRESH_COOKIE]) {
     headers.append('Set-Cookie', clearCookie(request, name));
   }
   return Response.json(
