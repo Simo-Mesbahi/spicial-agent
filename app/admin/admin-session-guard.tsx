@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { Clock3, LockKeyhole, LogOut, ShieldCheck } from 'lucide-react';
 import {
   productionRequest,
@@ -27,6 +28,7 @@ function emitSessionState(active: boolean) {
 }
 
 export default function AdminSessionGuard({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [authenticated, setAuthenticated] = useState(false);
   const [warning, setWarning] = useState(false);
   const [remainingMs, setRemainingMs] = useState(ADMIN_IDLE_TIMEOUT_MS);
@@ -72,9 +74,6 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       }
       setLockReason(null);
       setMessage('');
-      // Only create a baseline for a genuinely new browser-side session. If an
-      // existing activity timestamp is already expired, keep it: the timer will
-      // immediately lock the still-valid server session after sleep/reopen.
       if (!readLastActivity()) {
         try { localStorage.setItem(ADMIN_LAST_ACTIVITY_KEY, String(now)); } catch {}
         lastWrite.current = now;
@@ -109,11 +108,10 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
     logoutInFlight.current = true;
     setWorking(true);
     setMessage('');
-    // Lock the UI before the network call so sensitive admin data is never left visible.
     finishLocalLock(reason);
     try {
       await productionRequest('/admin/logout', { method: 'POST', body: '{}', keepalive: true }, 12_000);
-      window.location.assign(`/admin?reason=${encodeURIComponent(reason)}`);
+      router.replace(`/admin?reason=${encodeURIComponent(reason)}`);
     } catch {
       setLockReason('network');
       setMessage('La session est verrouillée sur cet appareil, mais le serveur n’a pas confirmé la fermeture. Reconnectez le réseau puis réessayez la déconnexion.');
@@ -121,7 +119,7 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       logoutInFlight.current = false;
       setWorking(false);
     }
-  }, [finishLocalLock]);
+  }, [finishLocalLock, router]);
 
   const continueSession = useCallback(async () => {
     if (working) return;
@@ -131,7 +129,7 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       const active = await probeSession(true);
       if (!active) {
         finishLocalLock('expired');
-        window.location.assign('/admin?reason=expired');
+        router.replace('/admin?reason=expired');
         return;
       }
       const now = Date.now();
@@ -144,10 +142,11 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
     } finally {
       setWorking(false);
     }
-  }, [finishLocalLock, probeSession, working]);
+  }, [finishLocalLock, probeSession, router, working]);
 
   useEffect(() => {
-    void probeSession(true);
+    const timer = window.setTimeout(() => void probeSession(true), 0);
+    return () => clearTimeout(timer);
   }, [probeSession]);
 
   useEffect(() => {
@@ -165,15 +164,14 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
   useEffect(() => {
     if (!authenticated || lockReason) return;
     const tick = () => {
-      const last = readLastActivity();
-      const snapshot = adminIdleSnapshot(last);
+      const snapshot = adminIdleSnapshot(readLastActivity());
       setRemainingMs(snapshot.remainingMs);
       setWarning(snapshot.status === 'warning');
       if (snapshot.status === 'expired') void logout('idle');
     };
-    tick();
     const timer = window.setInterval(tick, 1_000);
     const health = window.setInterval(() => void probeSession(true), SESSION_HEALTHCHECK_MS);
+    const initial = window.setTimeout(tick, 0);
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         tick();
@@ -183,6 +181,7 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     return () => {
+      clearTimeout(initial);
       clearInterval(timer);
       clearInterval(health);
       document.removeEventListener('visibilitychange', onVisible);
@@ -198,9 +197,8 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
         setWarning(snapshot.status === 'warning');
       }
       if (event.key === ADMIN_FORCE_LOCK_KEY && event.newValue) {
-        // Another tab initiated logout. Do not rebroadcast and create a loop.
         finishLocalLock('manual', false);
-        window.setTimeout(() => window.location.assign('/admin?reason=logout'), 400);
+        window.setTimeout(() => router.replace('/admin?reason=logout'), 400);
       }
     };
     const onLogoutRequest = () => void logout('manual');
@@ -210,7 +208,7 @@ export default function AdminSessionGuard({ children }: { children: ReactNode })
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(ADMIN_LOGOUT_EVENT, onLogoutRequest);
     };
-  }, [authenticated, finishLocalLock, logout]);
+  }, [authenticated, finishLocalLock, logout, router]);
 
   if (lockReason === 'network') {
     return (
