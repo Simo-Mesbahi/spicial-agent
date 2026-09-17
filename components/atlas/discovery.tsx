@@ -328,7 +328,7 @@ export function Discovery({
               actions. Les limites restent visibles.
             </p>
             <button onClick={onContact}>
-              Poser une question <Mail size={17} />
+              Poser une question par email <Mail size={17} />
             </button>
           </div>
           <Accordion type="single" collapsible defaultValue="demo" className="discovery-faq">

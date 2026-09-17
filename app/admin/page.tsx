@@ -216,20 +216,22 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
 
   async function verify(event: FormEvent) {
     event.preventDefault();
-    if (busy || !factorId) return;
+    if (busy || enrollmentBusy.current || !factorId || !/^\d{6}$/.test(code)) return;
+    enrollmentBusy.current = true;
     setBusy(true);
     setError('');
     try {
       const result = await request<{ status: 'authenticated'; admin: Admin }>('/admin/mfa/verify', {
         method: 'POST',
         body: JSON.stringify({ factorId, code }),
-      });
+      }, 60_000);
       setCode('');
       setEnrollment(null);
       onAuthenticated(result.admin);
     } catch (cause) {
       mfaFailure(cause, 'Vérification impossible.');
     } finally {
+      enrollmentBusy.current = false;
       setBusy(false);
     }
   }
@@ -301,7 +303,7 @@ function SignIn({ onAuthenticated }: { onAuthenticated: (admin: Admin) => void }
               <p className="admin-muted">La consultation des données nécessite un second facteur.</p>
               <p className="admin-muted">Compte protégé : <strong>{mfa.admin.email}</strong></p>
               {error && <div className="admin-error" role="alert"><AlertTriangle size={16} />{error}</div>}
-              {error && <button type="button" disabled={busy} onClick={() => void resumeMfa()}>Reprendre la vérification</button>}
+              {error && <button type="button" className="admin-secondary" disabled={busy} onClick={() => void resumeMfa()}>Reprendre la vérification</button>}
               {mfa.enrollmentRequired && !enrollment ? (
                 <div aria-busy={busy}>
                   <button type="button" className="admin-primary" disabled={busy} onClick={() => void enroll()}>
@@ -389,6 +391,7 @@ export default function AdminPage() {
   const [totalCases, setTotalCases] = useState(0);
   const [organizationId, setOrganizationId] = useState('');
   const [search, setSearch] = useState('');
+  const dataRevision = useRef(0);
 
   const membership = useMemo(
     () => admin?.memberships.find((item) => item.organizationId === organizationId) ?? admin?.memberships[0] ?? null,
@@ -406,17 +409,19 @@ export default function AdminPage() {
 
   const loadData = useCallback(async (selectedOrganizationId: string) => {
     if (!selectedOrganizationId) return;
+    const revision = ++dataRevision.current;
     setBusy(true);
     setError('');
     try {
       const result = await fetchData(selectedOrganizationId);
+      if (revision !== dataRevision.current) return;
       setDashboard(result.dashboard);
       setCases(result.cases);
       setTotalCases(result.total);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Chargement impossible.');
+      if (revision === dataRevision.current) setError(cause instanceof Error ? cause.message : 'Chargement impossible.');
     } finally {
-      setBusy(false);
+      if (revision === dataRevision.current) setBusy(false);
     }
   }, [fetchData]);
 
@@ -437,45 +442,48 @@ export default function AdminPage() {
 
   useEffect(() => {
     let active = true;
-    if (organizationId) {
-      void fetchData(organizationId)
-        .then((result) => {
-          if (!active) return;
-          setDashboard(result.dashboard);
-          setCases(result.cases);
-          setTotalCases(result.total);
-        })
-        .catch((cause) => {
-          if (active) setError(cause instanceof Error ? cause.message : 'Chargement impossible.');
-        });
-    }
+    const revision = ++dataRevision.current;
+    if (organizationId) void fetchData(organizationId)
+      .then(result => {
+        if (!active || revision !== dataRevision.current) return;
+        setDashboard(result.dashboard); setCases(result.cases); setTotalCases(result.total);
+      })
+      .catch(cause => {
+        if (active && revision === dataRevision.current) setError(cause instanceof Error ? cause.message : 'Chargement impossible.');
+      })
+      .finally(() => { if (active && revision === dataRevision.current) setBusy(false); });
     return () => { active = false; };
   }, [organizationId, fetchData]);
 
   async function applySearch(event: FormEvent) {
     event.preventDefault();
-    if (!organizationId) return;
+    if (!organizationId || busy) return;
+    const revision = ++dataRevision.current;
     setBusy(true);
     setError('');
     try {
       const params = new URLSearchParams({ organizationId, search, limit: '50' });
       const result = await request<{ items: AdminCase[]; total: number }>(`/admin/cases?${params}`);
+      if (revision !== dataRevision.current) return;
       setCases(result.items);
       setTotalCases(result.total);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Recherche impossible.');
+      if (revision === dataRevision.current) setError(cause instanceof Error ? cause.message : 'Recherche impossible.');
     } finally {
-      setBusy(false);
+      if (revision === dataRevision.current) setBusy(false);
     }
   }
 
   async function logout() {
-    setBusy(true);
-    await request('/admin/logout', { method: 'POST', body: '{}' }).catch(() => undefined);
-    setAdmin(null);
-    setDashboard(null);
-    setCases([]);
-    setBusy(false);
+    if (busy) return;
+    dataRevision.current++;
+    setBusy(true); setError('');
+    try {
+      await request('/admin/logout', { method: 'POST', body: '{}' });
+      setAdmin(null); setDashboard(null); setCases([]); setTotalCases(0); setOrganizationId('');
+    } catch {
+      setError('La déconnexion n’a pas été confirmée. Réessayez avant de quitter cet appareil.');
+    } finally { setBusy(false); }
   }
 
   if (loading) return <main className="admin-loading"><LoaderCircle className="spin" /><span>Ouverture de l’espace sécurisé…</span></main>;
@@ -503,7 +511,7 @@ export default function AdminPage() {
         <header className="admin-topbar">
           <div><p>Administration</p><strong>{admin.email}</strong></div>
           <div className="admin-top-actions">
-            {admin.memberships.length > 1 && <select aria-label="Organisation" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>{admin.memberships.map((item) => <option value={item.organizationId} key={item.organizationId}>{item.organizationName}</option>)}</select>}
+            {admin.memberships.length > 1 && <select aria-label="Organisation" value={organizationId} onChange={(event) => { dataRevision.current++; setDashboard(null); setCases([]); setTotalCases(0); setSearch(''); setOrganizationId(event.target.value); }}>{admin.memberships.map((item) => <option value={item.organizationId} key={item.organizationId}>{item.organizationName}</option>)}</select>}
             <button onClick={() => void loadData(organizationId)} disabled={busy}><RefreshCw className={busy ? 'spin' : ''} size={17} />Actualiser</button>
           </div>
         </header>
