@@ -163,7 +163,7 @@ test('explicit logout revocation remains fail-closed even if upstream logout can
   assert.equal(await session.touchAdminServerSession(db, refresh, baseNow + 2_000), false);
 });
 
-test('expired response is private, neutral and clears every admin/preauth cookie', async () => {
+test('expired privileged session response clears admin cookies but preserves MFA preauth cookies', async () => {
   const request = new Request('https://atlas.test/api/production/admin/session');
   const response = session.adminSessionExpiredResponse(request);
   assert.equal(response.status, 401);
@@ -172,9 +172,11 @@ test('expired response is private, neutral and clears every admin/preauth cookie
   assert.equal(body.code, 'admin_session_idle_expired');
   assert.doesNotMatch(JSON.stringify(body), /refresh-token|access-token/i);
   const cookies = response.headers.get('set-cookie') ?? '';
-  for (const name of ['savsc_admin_access', 'savsc_admin_refresh', 'savsc_admin_preauth', 'savsc_admin_preauth_refresh']) {
+  for (const name of ['savsc_admin_access', 'savsc_admin_refresh']) {
     assert.match(cookies, new RegExp(`${name}=`));
   }
+  assert.doesNotMatch(cookies, /savsc_admin_preauth=/);
+  assert.doesNotMatch(cookies, /savsc_admin_preauth_refresh=/);
   assert.match(cookies, /Max-Age=0/);
 });
 
