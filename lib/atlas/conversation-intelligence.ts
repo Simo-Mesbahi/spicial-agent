@@ -343,3 +343,19 @@ export function retrievalQuery(message: string): string {
     if (intent.patterns.some((pattern) => pattern.test(text))) return intent.query;
   return text;
 }
+
+
+export function asksAboutCurrentCase(message: string): boolean {
+  const text = message.trim();
+  return (
+    /\b(mon|ma|mes)\b.{0,50}\b(dossier|reparation|réparation|commande|livraison|remboursement|retour|colis|devis)\b/i.test(text) ||
+    /\b(ou en est|où en est|statut|prochaine etape|prochaine étape)\b/i.test(text) ||
+    /\b(my|mine)\b.{0,50}\b(case|repair|order|delivery|refund|return|package|parcel|quote)\b/i.test(text) ||
+    /\b(where is my|what is the status of my|what's the status of my|whats the status of my)\b/i.test(text) ||
+    /\b(mein|meine|meinen)\b.{0,50}\b(vorgang|fall|reparatur|bestellung|lieferung|erstattung|ruckgabe|rückgabe|paket)\b/i.test(text) ||
+    /\b(wo ist mein|wie ist der status)\b/i.test(text) ||
+    /\b(mi|mis)\b.{0,50}\b(expediente|caso|reparacion|reparación|pedido|entrega|reembolso|devolucion|devolución|paquete)\b/i.test(text) ||
+    /\b(donde esta mi|dónde está mi|cual es el estado|cuál es el estado)\b/i.test(text) ||
+    /(?:ملفي|طلبي|إصلاحي|شحن(?:تي)?|استردادي|طلبيتي)/u.test(text)
+  );
+}
