@@ -841,7 +841,7 @@ test('Unavailable local model uses an explicitly identified non-AI fallback with
       calls.push(url);
       throw new Error('ECONNREFUSED');
     };
-    const reply = await c.call('chat', { message: 'Bonjour' });
+    const reply = await c.call('chat', { message: 'Question générale au modèle' });
     assert.equal(reply.status, 200);
     assert.equal(reply.body.metadata.mode, 'demo');
     assert.equal(reply.body.metadata.fallback, 'provider_unavailable');
@@ -866,7 +866,7 @@ test('Malformed model output is never presented as a generated answer', async ()
       { role: 'assistant', tool_calls: 'invalid' },
     ]) {
       globalThis.fetch = async () => Response.json({ choices: [{ message }] });
-      const reply = await c.call('chat', { message: 'Bonjour' });
+      const reply = await c.call('chat', { message: 'Question générale au modèle' });
       assert.equal(reply.status, 200);
       assert.equal(reply.body.metadata.fallback, 'provider_unavailable');
       assert.equal(reply.body.metadata.mode, 'demo');
@@ -1034,20 +1034,20 @@ test('Daily model quota falls back without another provider call, including a ze
       calls++;
       return Response.json({ choices: [{ message: { role: 'assistant', content: 'Bonjour.' } }] });
     };
-    assert.equal((await c.call('chat', { message: 'Bonjour' })).body.metadata.mode, 'ollama');
+    assert.equal((await c.call('chat', { message: 'Question générale au modèle' })).body.metadata.mode, 'ollama');
     assert.equal(
-      (await c.call('chat', { message: 'Bonjour' })).body.metadata.fallback,
+      (await c.call('chat', { message: 'Question générale au modèle' })).body.metadata.fallback,
       'daily_limit',
     );
     db.sql.prepare('DELETE FROM rate_buckets WHERE id=?').run('llm-global');
     c.env.LLM_DAILY_LIMIT = '0';
     assert.equal(
-      (await c.call('chat', { message: 'Bonjour' })).body.metadata.fallback,
+      (await c.call('chat', { message: 'Question générale au modèle' })).body.metadata.fallback,
       'daily_limit',
     );
     assert.equal(calls, 1);
     db.sql.prepare('UPDATE spaces SET chat_count=60').run();
-    assert.equal((await c.call('chat', { message: 'Bonjour' })).status, 429);
+    assert.equal((await c.call('chat', { message: 'Question générale au modèle' })).status, 429);
   } finally {
     globalThis.fetch = original;
     db.sql.close();
@@ -1073,7 +1073,7 @@ test('Unknown tools, extra arguments, duplicate IDs and truncated output never b
     ];
     for (const choice of choices) {
       globalThis.fetch = async () => Response.json({ choices: [choice] });
-      const reply = await c.call('chat', { message: 'Bonjour' });
+      const reply = await c.call('chat', { message: 'Question générale au modèle' });
       assert.equal(reply.status, 200);
       assert.equal(reply.body.metadata.mode, 'demo');
       assert.equal(reply.body.metadata.fallback, 'provider_unavailable');
@@ -1096,7 +1096,7 @@ test('Request and provider JSON bodies are bounded by bytes, not characters', as
     assert.equal(db.sql.prepare('SELECT chat_count FROM spaces').get().chat_count, 0);
     c.env.LLM_PROVIDER = 'ollama';
     globalThis.fetch = async () => Response.json({ padding: 'x'.repeat(65536) });
-    const reply = await c.call('chat', { message: 'Bonjour' });
+    const reply = await c.call('chat', { message: 'Question générale au modèle' });
     assert.equal(reply.body.metadata.fallback, 'provider_unavailable');
   } finally {
     globalThis.fetch = original;
@@ -1175,7 +1175,7 @@ test('Concurrent copies of a chat share one generation instead of spending quota
       await waiting;
       return Response.json({ choices: [{ message: { role: 'assistant', content: 'Bonjour.' } }] });
     };
-    const payload = { message: 'Bonjour', requestId: crypto.randomUUID() };
+    const payload = { message: 'Question générale au modèle', requestId: crypto.randomUUID() };
     const first = c.call('chat', payload);
     await started;
     const concurrent = await c.call('chat', payload);
@@ -1282,7 +1282,7 @@ test('Conversation context is selected per dossier before truncating model histo
       return Response.json({ choices: [{ message: { role: 'assistant', content: 'Bonjour.' } }] });
     };
     assert.equal(
-      (await c.call('chat', { caseId: first.id, message: 'Bonjour' })).body.metadata.mode,
+      (await c.call('chat', { caseId: first.id, message: 'Question générale sur le contexte' })).body.metadata.mode,
       'ollama',
     );
   } finally {
