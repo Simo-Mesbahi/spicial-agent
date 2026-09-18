@@ -26,6 +26,8 @@ import {
   localizedWarrantyReply,
   wantsAnotherCase,
   anotherCaseReply,
+  conversationRoute,
+  contextualRetrievalQuery,
 } from './conversation-intelligence';
 import type { SupabaseRuntimeEnv } from './supabase';
 import { effectiveEnvironment } from './runtime-settings';
@@ -147,6 +149,10 @@ export class ApiError extends Error {
 
 type ProviderFailureReason =
   | 'network_or_timeout'
+  | 'upstream_auth'
+  | 'upstream_rate_limited'
+  | 'upstream_request_rejected'
+  | 'upstream_unavailable'
   | 'upstream_rejected'
   | 'invalid_upstream_response'
   | 'missing_verifiable_sources'
@@ -156,8 +162,13 @@ type ProviderFailureReason =
 
 function providerFailureReason(error: ApiError): ProviderFailureReason {
   const message = error.message.toLowerCase();
+  if (message.includes('fournisseur ia est temporairement indisponible'))
+    return 'upstream_unavailable';
   if (message.includes('temporairement indisponible') || message.includes('ne répond pas'))
     return 'network_or_timeout';
+  if (message.includes('refusé l’authentification')) return 'upstream_auth';
+  if (message.includes('atteint sa limite')) return 'upstream_rate_limited';
+  if (message.includes('rejeté le format')) return 'upstream_request_rejected';
   if (message.includes('refusé la requête') || message.includes('redirection'))
     return 'upstream_rejected';
   if (message.includes('réponse invalide') || message.includes('pas fourni de réponse'))
@@ -807,10 +818,12 @@ async function generate(
   const sources = new Map<string, Article>();
   const trace: string[] = [];
   const callIds = new Set<string>();
-  const language = detectConversationLanguage(
-    message,
-    history.filter((item) => item.role === 'user').map((item) => item.content),
-  );
+  const previousUserMessages = history
+    .filter((item) => item.role === 'user')
+    .map((item) => item.content);
+  const language = detectConversationLanguage(message, previousUserMessages);
+  const route = conversationRoute(message, previousUserMessages);
+  const activeTools = route === 'open' ? [] : tools;
   const system = `Vous êtes SAV SC Assistant AI, un assistant conversationnel de service client. Comportez-vous comme un véritable assistant : comprenez les formulations naturelles, les fautes, les abréviations et le contexte de la conversation. Répondez dans la langue du dernier message du client ; langue détectée côté serveur : ${language}. Si le client demande explicitement une autre langue, suivez sa demande. Vous pouvez converser naturellement (salutations, "ça va ?", remerciements, demandes générales) sans forcer une recherche documentaire.
 
 Pour tout fait propre à un dossier, appelez get_case à nouveau. Pour toute règle, procédure, garantie, retour, livraison, remboursement, devis ou autre information métier Maison Atlas, appelez search_knowledge. Si le client parle anglais, allemand, espagnol ou arabe, vous pouvez formuler la requête de recherche en français avec le même sens afin de retrouver les procédures françaises, puis répondre dans la langue du client. Ne changez jamais le sens de sa demande.
@@ -842,14 +855,20 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
         body: JSON.stringify({
           model: settings.model,
           messages: msgs,
-          tools,
-          tool_choice: round === 2 ? 'none' : 'auto',
-          ...(mode === 'openai' || mode === 'gemini'
-            ? { max_completion_tokens: 650 }
-            : { max_tokens: 650 }),
-          ...(mode === 'ollama' || mode === 'gemini'
-            ? { reasoning_effort: 'none', temperature: 0.2 }
+          ...(activeTools.length
+            ? {
+                tools: activeTools,
+                tool_choice: round === 2 ? 'none' : 'auto',
+                ...(mode === 'openai' ? { parallel_tool_calls: false } : {}),
+              }
             : {}),
+          ...(mode === 'openai' || mode === 'gemini'
+            ? { max_completion_tokens: route === 'open' ? 500 : 1200 }
+            : { max_tokens: route === 'open' ? 500 : 1200 }),
+          ...(mode === 'openai' || mode === 'ollama' || mode === 'gemini'
+            ? { reasoning_effort: 'none' }
+            : {}),
+          ...(mode === 'ollama' || mode === 'gemini' ? { temperature: 0.2 } : {}),
         }),
         signal: deadline,
         // Cloudflare does not implement redirect: "error". Inspect the first
@@ -868,11 +887,18 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
       void res.body?.cancel().catch(() => {});
       throw new ApiError(503, 'Le fournisseur IA a renvoyé une redirection non autorisée.');
     }
-    if (!res.ok)
-      throw new ApiError(
-        503,
-        'Le fournisseur IA a refusé la requête ou atteint sa limite. Réessayez plus tard.',
-      );
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
+      if (res.status === 401 || res.status === 403)
+        throw new ApiError(503, 'Le fournisseur IA a refusé l’authentification.');
+      if (res.status === 429)
+        throw new ApiError(503, 'Le fournisseur IA a atteint sa limite.');
+      if (res.status === 400 || res.status === 422)
+        throw new ApiError(503, 'Le fournisseur IA a rejeté le format de la requête.');
+      if (res.status >= 500)
+        throw new ApiError(503, 'Le fournisseur IA est temporairement indisponible.');
+      throw new ApiError(503, 'Le fournisseur IA a refusé la requête.');
+    }
     const parsed = completionSchema.safeParse(
       await boundedJson(res, 65536, deadline).catch(() => {
         throw new ApiError(503, 'Le modèle a renvoyé une réponse invalide.');
@@ -903,7 +929,11 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
       // Casual conversation may use model phrasing. Business facts remain
       // server-composed from verified case/document evidence so model inventions
       // never become customer-visible facts.
-      if (casualIntent(message) && expected.tools.length === 0)
+      if (
+        (casualIntent(message) || route === 'open') &&
+        expected.tools.length === 0 &&
+        !expected.sources.length
+      )
         return {
           ...expected,
           content: m.content.trim(),
@@ -964,7 +994,10 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
           .strict()
           .safeParse(args);
         if (!a.success) throw new ApiError(503, 'Arguments d’outil invalides.');
-        const found = await searchKnowledge(env, retrievalQuery(a.data.query));
+        const found = await searchKnowledge(
+          env,
+          contextualRetrievalQuery(a.data.query, previousUserMessages),
+        );
         found.articles.forEach((x) => sources.set(x.id, x));
         result = found.articles;
       }
@@ -1220,12 +1253,21 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           .all<MessageRow>()
       ).results.reverse();
       await reserveQuota(db, 'chat:' + (await networkBucket(req)), 120, HOUR);
-      const casual = casualIntent(message);
-      const switchCase = wantsAnotherCase(message);
+      const previousUserMessages = history
+        .filter((item) => item.role === 'user')
+        .map((item) => item.content);
+      const route = conversationRoute(message, previousUserMessages);
+      const casual = route === 'small_talk';
+      const switchCase = route === 'switch_case';
       const knowledge: KnowledgeSearchResult =
-        casual || switchCase
-          ? { articles: [], scope: 'not_required' }
-          : await searchKnowledge(env, retrievalQuery(message));
+        route === 'business'
+          ? {
+              ...(await searchKnowledge(
+                env,
+                contextualRetrievalQuery(message, previousUserMessages),
+              )),
+            }
+          : { articles: [], scope: 'not_required' };
       const deterministic = demoAnswer(message, c, history, env, knowledge.articles);
       const conversationHandled = Boolean(casual || switchCase);
       const guarded =
