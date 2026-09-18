@@ -815,7 +815,6 @@ async function generate(
       },
     },
   ];
-  const activeTools = route === 'open' ? [] : tools;
   const sources = new Map<string, Article>();
   const trace: string[] = [];
   const callIds = new Set<string>();
@@ -824,6 +823,7 @@ async function generate(
     .map((item) => item.content);
   const language = detectConversationLanguage(message, previousUserMessages);
   const route = conversationRoute(message, previousUserMessages);
+  const activeTools = route === 'open' ? [] : tools;
   const system = `Vous êtes SAV SC Assistant AI, un assistant conversationnel de service client. Comportez-vous comme un véritable assistant : comprenez les formulations naturelles, les fautes, les abréviations et le contexte de la conversation. Répondez dans la langue du dernier message du client ; langue détectée côté serveur : ${language}. Si le client demande explicitement une autre langue, suivez sa demande. Vous pouvez converser naturellement (salutations, "ça va ?", remerciements, demandes générales) sans forcer une recherche documentaire.
 
 Pour tout fait propre à un dossier, appelez get_case à nouveau. Pour toute règle, procédure, garantie, retour, livraison, remboursement, devis ou autre information métier Maison Atlas, appelez search_knowledge. Si le client parle anglais, allemand, espagnol ou arabe, vous pouvez formuler la requête de recherche en français avec le même sens afin de retrouver les procédures françaises, puis répondre dans la langue du client. Ne changez jamais le sens de sa demande.
