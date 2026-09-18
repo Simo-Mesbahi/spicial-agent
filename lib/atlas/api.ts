@@ -162,13 +162,13 @@ type ProviderFailureReason =
 
 function providerFailureReason(error: ApiError): ProviderFailureReason {
   const message = error.message.toLowerCase();
+  if (message.includes('fournisseur ia est temporairement indisponible'))
+    return 'upstream_unavailable';
   if (message.includes('temporairement indisponible') || message.includes('ne répond pas'))
     return 'network_or_timeout';
   if (message.includes('refusé l’authentification')) return 'upstream_auth';
   if (message.includes('atteint sa limite')) return 'upstream_rate_limited';
   if (message.includes('rejeté le format')) return 'upstream_request_rejected';
-  if (message.includes('fournisseur ia est temporairement indisponible'))
-    return 'upstream_unavailable';
   if (message.includes('refusé la requête') || message.includes('redirection'))
     return 'upstream_rejected';
   if (message.includes('réponse invalide') || message.includes('pas fourni de réponse'))
