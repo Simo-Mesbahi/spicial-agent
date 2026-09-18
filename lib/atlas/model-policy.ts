@@ -126,7 +126,7 @@ export function modelSettings(env: ModelEnvironment) {
 
   if (budgetMode !== 'approved')
     throw new Error(
-      'Les fournisseurs externes payants nécessitent LLM_BUDGET_MODE=approved.',
+      'Budget IA 0 / mode non approuvé : les fournisseurs externes payants nécessitent LLM_BUDGET_MODE=approved.',
     );
 
   if (provider === 'openai') {
