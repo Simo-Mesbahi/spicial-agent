@@ -108,7 +108,9 @@ export function wantsAnotherCase(message: string): boolean {
     /\b(changer|change|consulter|voir|renseigner|renseignement).{0,35}\b(dossier|autre dossier)\b/.test(text) ||
     /\b(another|different|other|new)\b.{0,25}\b(case|order|repair|return)\b/i.test(message) ||
     /\b(not|no)\b.{0,15}\b(this|that)\b.{0,15}\b(case|order|repair|return)\b/i.test(message) ||
-    /\b(anderen|anderer|anderes|neuen)\b.{0,25}\b(vorgang|fall|bestellung|reparatur)\b/i.test(message) ||
+    (/\b(anderen|anderer|anderes|neuen)\b.{0,25}\b(vorgang|fall|bestellung|reparatur)\b/i.test(message) ||
+      /\b(vorgang|fall|bestellung|reparatur)\b.{0,30}\b(anderen|anderer|anderes|neuen)\b/i.test(message) ||
+      /\b(nicht|kein)\b.{0,20}\b(diesen|dieser|diese)\b.{0,20}\b(vorgang|fall|bestellung|reparatur)\b/i.test(message)) ||
     /\b(otro|otra|distinto|diferente|nuevo)\b.{0,25}\b(expediente|caso|pedido|reparacion|reparación)\b/i.test(message) ||
     /(?:ملف|طلب).{0,12}(?:آخر|اخر)|(?:ليس|مو|مش).{0,12}(?:هذا|هاذا).{0,12}(?:الملف|الطلب)/u.test(message)
   );
