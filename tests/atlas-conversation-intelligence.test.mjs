@@ -17,6 +17,9 @@ const {
   retrievalQuery,
   asksAboutCurrentCase,
   wantsAnotherCase,
+  serviceIntentQuery,
+  contextualRetrievalQuery,
+  conversationRoute,
 } = await import(
   'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
 );
@@ -73,4 +76,31 @@ test('explicitly asking for another case never means the currently selected case
   ]) assert.equal(wantsAnotherCase(message), true, message);
 
   assert.equal(wantsAnotherCase('Où en est mon dossier ?'), false);
+});
+
+
+test('routes open conversation separately from business retrieval', () => {
+  assert.equal(conversationRoute('cc cv ?'), 'small_talk');
+  assert.equal(conversationRoute('non pas ce dossier'), 'switch_case');
+  assert.equal(conversationRoute('Comment fonctionne un retour ?'), 'business');
+  assert.equal(conversationRoute('Raconte-moi une blague courte'), 'open');
+  assert.equal(conversationRoute('I had a difficult day today'), 'open');
+});
+
+test('understands French service intent and contextual follow-ups', () => {
+  assert.equal(serviceIntentQuery('Comment fonctionne un retour ?'), 'retour échange');
+  assert.equal(serviceIntentQuery('Mon paiement a été débité deux fois'), 'paiement débit anomalie transaction');
+  assert.equal(serviceIntentQuery('Ma réparation attend une pièce'), 'attente pièce indisponible');
+
+  const query = contextualRetrievalQuery('et ça prend combien de temps ?', [
+    'Bonjour',
+    'Comment fonctionne un retour ?',
+  ]);
+  assert.match(query, /^retour échange /);
+  assert.match(query, /combien de temps/);
+
+  assert.equal(
+    conversationRoute('et ça prend combien de temps ?', ['Comment fonctionne un retour ?']),
+    'business',
+  );
 });
