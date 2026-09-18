@@ -66,11 +66,6 @@ create index if not exists knowledge_documents_org_scope_idx
 create index if not exists knowledge_documents_effective_idx
   on public.knowledge_documents(organization_id, effective_from, effective_until)
   where status = 'published';
-create index if not exists knowledge_documents_title_search_idx
-  on public.knowledge_documents using gin (
-    to_tsvector('french', coalesce(title,'') || ' ' || coalesce(category,'') || ' ' || array_to_string(tags,' '))
-  );
-
 -- Direct table writes are intentionally removed from authenticated clients.
 -- All mutations pass through audited SECURITY DEFINER RPCs below.
 revoke insert, update, delete on public.knowledge_documents from authenticated;
