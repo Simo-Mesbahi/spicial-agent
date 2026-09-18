@@ -132,6 +132,32 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+type ProviderFailureReason =
+  | 'network_or_timeout'
+  | 'upstream_rejected'
+  | 'invalid_upstream_response'
+  | 'missing_verifiable_sources'
+  | 'invalid_tool_arguments'
+  | 'tool_loop'
+  | 'unknown';
+
+function providerFailureReason(error: ApiError): ProviderFailureReason {
+  const message = error.message.toLowerCase();
+  if (message.includes('temporairement indisponible') || message.includes('ne répond pas'))
+    return 'network_or_timeout';
+  if (message.includes('refusé la requête') || message.includes('redirection'))
+    return 'upstream_rejected';
+  if (message.includes('réponse invalide') || message.includes('pas fourni de réponse'))
+    return 'invalid_upstream_response';
+  if (message.includes('sources vérifiables'))
+    return 'missing_verifiable_sources';
+  if (message.includes('arguments d’outil') || message.includes('identifiant d’outil'))
+    return 'invalid_tool_arguments';
+  if (message.includes('finalisée'))
+    return 'tool_loop';
+  return 'unknown';
+}
 function fail(status: number, message: string): never {
   throw new ApiError(status, message);
 }
@@ -653,7 +679,7 @@ export function demoAnswer(
   return {
     content: c
       ? 'Pouvez-vous préciser votre demande : avancement, devis, garantie, retour ou contact avec un conseiller ? Je réponds à partir des informations disponibles dans le dossier et les documents.'
-      : 'Bonjour ! Je peux expliquer les procédures SAV et service client. Pour un suivi personnalisé, choisissez un scénario puis saisissez sa référence et son code. Les scénarios et documents de cet espace sont fictifs.',
+      : 'Bonjour ! Je peux expliquer les procédures SAV et service client publiées. Pour un suivi personnalisé, vérifiez votre dossier avec sa référence et son code dans le formulaire sécurisé.',
     sources: [],
     tools: [],
     action: null,
@@ -1131,6 +1157,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           ? { ...deterministic, mode: 'demo' as const, inputTokens: 0, outputTokens: 0 }
           : null;
       let fallback: 'daily_limit' | 'provider_unavailable' | null = null;
+      let fallbackReason: ProviderFailureReason | 'daily_limit' | null = null;
       if ((env.LLM_PROVIDER ?? 'demo') !== 'demo' && !guarded) {
         const configured = Number(env.LLM_DAILY_LIMIT ?? 100);
         try {
@@ -1145,6 +1172,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         } catch (e) {
           if (!(e instanceof ApiError && e.status === 429)) throw e;
           fallback = 'daily_limit';
+          fallbackReason = 'daily_limit';
         }
       }
       const start = Date.now();
@@ -1155,6 +1183,12 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         } catch (e) {
           if (!(e instanceof ApiError && e.status === 503)) throw e;
           fallback = 'provider_unavailable';
+          fallbackReason = providerFailureReason(e);
+          console.warn('Atlas LLM fallback', {
+            provider: env.LLM_PROVIDER ?? 'demo',
+            model: env.LLM_MODEL ?? null,
+            reason: fallbackReason,
+          });
         }
       }
       const answer = generated ?? {
@@ -1171,6 +1205,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         tools: answer.tools,
         mode: answer.mode,
         fallback,
+        fallbackReason,
         latencyMs: timestamp - start,
         inputTokens: answer.inputTokens,
         outputTokens: answer.outputTokens,
