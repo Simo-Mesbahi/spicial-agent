@@ -406,6 +406,164 @@ export function asksAboutCurrentCase(message: string): boolean {
 }
 
 
+const serviceIntentPatterns: { query: string; patterns: RegExp[] }[] = [
+  {
+    query: 'suivi réparation',
+    patterns: [
+      /\b(suiv(?:re|i)|avancement|statut).{0,35}\b(reparation|réparation|sav)\b/i,
+      /\b(reparation|réparation|sav)\b.{0,35}\b(suiv(?:re|i)|avancement|statut)\b/i,
+      /\b(repair|repair status|track.*repair|where.*repair)\b/i,
+      /\b(reparatur|reparaturstatus|reparatur verfolgen)\b/i,
+      /\b(reparacion|reparación|seguimiento.*repar)\b/i,
+      /إصلاح|تصليح|متابعة.*إصلاح/u,
+    ],
+  },
+  {
+    query: 'retour échange',
+    patterns: [
+      /\b(retour|retourner|échange|echanger|échanger)\b/i,
+      /\b(return|exchange|send.*back)\b/i,
+      /\b(ruckgabe|rückgabe|umtausch)\b/i,
+      /\b(devolucion|devolución|cambio)\b/i,
+      /إرجاع|استبدال/u,
+    ],
+  },
+  {
+    query: 'colis incomplet endommagé',
+    patterns: [
+      /\b(colis|commande).{0,30}\b(incomplet|manquant|endommag|abim|abîm)\w*\b/i,
+      /\b(package|parcel).*(incomplete|missing|damaged)|\bmissing item\b/i,
+      /\b(paket).*(unvollstandig|unvollständig|beschadigt|beschädigt|fehlt)\b/i,
+      /\b(paquete).*(incompleto|falta|danado|dañado)\b/i,
+      /طرد.*ناقص|شحنة.*ناقصة|تالف/u,
+    ],
+  },
+  {
+    query: 'remboursement',
+    patterns: [
+      /\b(remboursement|rembours|rembourser)\w*\b/i,
+      /\b(refund|refunded|money back)\b/i,
+      /\b(erstattung|ruckerstattung|rückerstattung)\b/i,
+      /\b(reembolso)\b/i,
+      /استرداد|إرجاع المال/u,
+    ],
+  },
+  {
+    query: 'livraison retard incident',
+    patterns: [
+      /\b(livraison|livrer|transport|expedition|expédition).{0,30}\b(retard|incident|bloqu|perdu|date|suivi)\w*\b/i,
+      /\b(delivery|shipment|shipping|late delivery|delayed)\b/i,
+      /\b(lieferung|versand|verspatet|verspätet)\b/i,
+      /\b(entrega|envio|envío|retraso)\b/i,
+      /توصيل|شحن|تأخر/u,
+    ],
+  },
+  {
+    query: 'garantie prise en charge',
+    patterns: [
+      /\b(garantie|prise en charge|couvert|couverture)\b/i,
+      /\b(warranty|covered|coverage)\b/i,
+      /\b(garantie|gewahrleistung|gewährleistung)\b/i,
+      /\b(garantia|garantía|cobertura)\b/i,
+      /ضمان|تغطية/u,
+    ],
+  },
+  {
+    query: 'devis réparation',
+    patterns: [
+      /\b(devis|cout de reparation|coût de réparation|prix de reparation|prix de réparation)\b/i,
+      /\b(quote|estimate|repair cost)\b/i,
+      /\b(kostenvoranschlag|reparaturkosten)\b/i,
+      /\b(presupuesto|coste.*repar)\b/i,
+      /عرض سعر|تكلفة.*إصلاح/u,
+    ],
+  },
+  {
+    query: 'attente pièce indisponible',
+    patterns: [
+      /\b(piece|pièce|pieces|pièces).{0,30}\b(attente|indisponible|command|rupture|arriv)\w*\b/i,
+      /\b(attente|attend|attendre).{0,30}\b(piece|pièce)\b/i,
+      /\b(waiting.*part|replacement part|part unavailable|spare part)\b/i,
+      /\b(ersatzteil|teil.*nicht verfugbar|teil.*nicht verfügbar)\b/i,
+      /\b(pieza.*espera|pieza.*no disponible|repuesto)\b/i,
+      /قطعة.*غيار|انتظار.*قطعة/u,
+    ],
+  },
+  {
+    query: 'paiement débit anomalie transaction',
+    patterns: [
+      /\b(paiement|debit|débit|carte|transaction).{0,30}\b(refus|double|debite|débité|anomal|bloqu)\w*\b/i,
+      /\b(payment|charged|debited|double charge|card declined)\b/i,
+      /\b(zahlung|abgebucht|doppelt belastet|karte abgelehnt)\b/i,
+      /\b(pago|cobrado|cargo doble|tarjeta rechazada)\b/i,
+      /دفع|خصم|سحب|عملية.*مكررة/u,
+    ],
+  },
+  {
+    query: 'facture ticket justificatif achat',
+    patterns: [
+      /\b(facture|ticket|justificatif|preuve d'achat|preuve d’achat|duplicata)\b/i,
+      /\b(invoice|receipt|proof of purchase)\b/i,
+      /\b(rechnung|kassenbon|kaufbeleg)\b/i,
+      /\b(factura|recibo|comprobante de compra)\b/i,
+      /فاتورة|إيصال|إثبات الشراء/u,
+    ],
+  },
+];
+
+export function serviceIntentQuery(message: string): string | null {
+  const text = message.trim();
+  for (const intent of serviceIntentPatterns)
+    if (intent.patterns.some((pattern) => pattern.test(text))) return intent.query;
+  return null;
+}
+
+const contextualFollowUp =
+  /^(?:et\b|et ça|et ca|du coup|alors|ensuite|après|apres|combien de temps|quand|pourquoi|comment ça|comment ca|what about|and then|how long|when|why|und dann|wie lange|wann|y luego|cuanto tarda|cuánto tarda|cuando|cuándo|وماذا|ثم|كم يستغرق|متى)/iu;
+
+export function contextualRetrievalQuery(
+  message: string,
+  previousUserMessages: string[] = [],
+): string {
+  const direct = serviceIntentQuery(message);
+  if (direct) return direct;
+  const text = message.trim();
+  if (text.length <= 120 && contextualFollowUp.test(text)) {
+    for (const previous of [...previousUserMessages].reverse()) {
+      const priorIntent = serviceIntentQuery(previous);
+      if (priorIntent) return `${priorIntent} ${text}`.slice(0, 500);
+    }
+  }
+  return retrievalQuery(message);
+}
+
+export type ConversationRoute = 'small_talk' | 'switch_case' | 'business' | 'open';
+
+const broadBusinessVocabulary =
+  /\b(sav|dossier|commande|produit|article|reparation|réparation|retour|échange|echange|livraison|colis|remboursement|garantie|devis|paiement|facture|ticket|magasin|conseiller|réclamation|reclamation|repair|case|order|product|return|exchange|delivery|package|parcel|refund|warranty|quote|payment|invoice|advisor|complaint|reparatur|vorgang|bestellung|ruckgabe|rückgabe|lieferung|paket|erstattung|kostenvoranschlag|berater|reklamation|reparacion|reparación|expediente|pedido|devolucion|devolución|entrega|paquete|reembolso|garantía|garantia|presupuesto|asesor|reclamacion|reclamación)\b/i;
+
+export function conversationRoute(
+  message: string,
+  previousUserMessages: string[] = [],
+): ConversationRoute {
+  if (wantsAnotherCase(message)) return 'switch_case';
+  if (casualIntent(message)) return 'small_talk';
+  if (
+    asksAboutCurrentCase(message) ||
+    serviceIntentQuery(message) ||
+    broadBusinessVocabulary.test(message) ||
+    /(?:إصلاح|طلب|منتج|إرجاع|استبدال|توصيل|شحن|استرداد|ضمان|فاتورة|مستشار|شكوى|ملف)/u.test(message)
+  )
+    return 'business';
+
+  if (message.trim().length <= 120 && contextualFollowUp.test(message.trim())) {
+    for (const previous of [...previousUserMessages].reverse())
+      if (serviceIntentQuery(previous) || broadBusinessVocabulary.test(previous)) return 'business';
+  }
+  return 'open';
+}
+
+
 const statusLabels: Record<ConversationLanguage, Record<string, string>> = {
   fr: {
     deposited: 'Déposé en magasin', received: 'Reçu au SAV', diagnosis: 'Diagnostic en cours',
