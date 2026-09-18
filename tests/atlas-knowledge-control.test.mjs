@@ -48,7 +48,7 @@ test('knowledge drafts validate scope, dates and bounded metadata', () => {
 
 test('knowledge SQL enforces maker-checker publication and retrieval boundaries', () => {
   const sql = readFileSync(
-    'supabase/migrations/20260918111500_knowledge_control_plane.sql',
+    'supabase/migrations/20260918100917_knowledge_control_plane.sql',
     'utf8',
   );
   assert.match(sql, /revoke insert, update, delete on public\.knowledge_documents from authenticated/i);
