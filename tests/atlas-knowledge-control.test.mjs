@@ -60,6 +60,13 @@ test('knowledge SQL enforces maker-checker publication and retrieval boundaries'
   assert.match(sql, /effective_until is null or d\.effective_until>=current_date/);
   assert.match(sql, /knowledge_chunks_fts_idx|search_vector/);
   assert.match(sql, /knowledge\.published/);
+  const hardening = readFileSync(
+    'supabase/migrations/20260918101301_knowledge_control_plane_hardening.sql',
+    'utf8',
+  );
+  assert.match(hardening, /security invoker/i);
+  assert.match(hardening, /knowledge_documents_supersedes_id_idx/);
+  assert.match(hardening, /set schema app_private/);
 });
 
 test('admin knowledge API chunks server-side and never accepts client supplied chunks', () => {
