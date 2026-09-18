@@ -737,7 +737,7 @@ async function generate(
       type: 'function',
       function: {
         name: 'search_knowledge',
-        description: 'Rechercher les procédures fictives Maison Atlas.',
+        description: 'Rechercher les procédures publiées et en vigueur de Maison Atlas.',
         ...(mode === 'gemini' ? {} : { strict: true }),
         parameters: schema({ query: { type: 'string' } }),
       },
