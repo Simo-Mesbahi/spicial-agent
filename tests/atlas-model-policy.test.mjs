@@ -9,6 +9,8 @@ import {
   localBase,
   localModelName,
   geminiModels,
+  enabledProviders,
+  configuredModel,
 } from '../lib/atlas/model-policy.ts';
 import { configureFile, inspectLocal, localConfiguration } from '../scripts/local-ai.mjs';
 
@@ -20,18 +22,23 @@ test('Budget defaults to zero and no paid endpoint is selected by the demo', () 
 });
 
 test('External providers fail closed regardless of available API keys', () => {
-  for (const provider of ['openai', 'compatible', 'unknown']) {
+  for (const provider of ['openai', 'compatible']) {
     assert.throws(
       () =>
         modelSettings({
           LLM_PROVIDER: provider,
           LLM_MODEL: 'test',
           OPENAI_API_KEY: 'test-secret',
+          LLM_API_KEY: 'compatible-secret',
           LLM_BASE_URL: 'https://llm.test/v1',
         }),
-      /Budget IA 0/,
+      /approved/,
     );
   }
+  assert.throws(
+    () => modelSettings({ LLM_PROVIDER: 'unknown', LLM_BUDGET_MODE: 'approved' }),
+    /fournisseur de modèle/,
+  );
   assert.throws(() => modelSettings({ LLM_BUDGET_MODE: 'typo' }), /invalide/);
 });
 
@@ -47,7 +54,7 @@ test('Gemini free mode is a narrow allowlist with a separate secret', () => {
   assert.ok(geminiModels.includes('gemini-2.5-flash-lite'));
   assert.throws(
     () => modelSettings({ LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x' }),
-    /politique gratuite/,
+    /mode free ou approved/,
   );
   assert.throws(
     () => modelSettings({ LLM_PROVIDER: 'gemini', LLM_BUDGET_MODE: 'free' }),
@@ -70,6 +77,30 @@ test('Gemini free mode is a narrow allowlist with a separate secret', () => {
   });
   assert.equal(publicConfig.externalCallsAllowed, true);
   assert.ok(!JSON.stringify(publicConfig).includes('gemini-secret'));
+});
+
+test('Multiple providers can be configured together while remaining explicitly allowlisted', () => {
+  const env = {
+    LLM_PROVIDER: 'gemini',
+    LLM_ENABLED_PROVIDERS: 'gemini,openai',
+    LLM_BUDGET_MODE: 'approved',
+    GEMINI_MODEL: 'gemini-2.5-flash-lite',
+    GEMINI_API_KEY: 'gemini-secret',
+    OPENAI_MODEL: 'approved-openai-model',
+    OPENAI_API_KEY: 'openai-secret',
+  };
+  assert.deepEqual(enabledProviders(env), ['demo', 'gemini', 'openai']);
+  assert.equal(configuredModel(env, 'gemini'), 'gemini-2.5-flash-lite');
+  assert.equal(configuredModel(env, 'openai'), 'approved-openai-model');
+  assert.equal(modelSettings(env).model, 'gemini-2.5-flash-lite');
+  assert.equal(
+    modelSettings({ ...env, LLM_PROVIDER: 'openai' }).model,
+    'approved-openai-model',
+  );
+  assert.throws(
+    () => enabledProviders({ ...env, LLM_ENABLED_PROVIDERS: 'gemini,unknown' }),
+    /Fournisseur IA inconnu/,
+  );
 });
 
 test('Local configuration never forwards keys and disallows external addresses', () => {
@@ -110,7 +141,7 @@ test('Local model selection rejects cloud variants and unsafe names', () => {
 test('Public readiness reports budget blocks without exposing credentials', () => {
   const result = publicModelConfig({ LLM_PROVIDER: 'openai', OPENAI_API_KEY: 'hidden-key' });
   assert.equal(result.ready, false);
-  assert.match(result.blockedReason, /Budget IA 0/);
+  assert.match(result.blockedReason, /approved/);
   assert.ok(!JSON.stringify(result).includes('hidden-key'));
 });
 
