@@ -608,7 +608,7 @@ export function demoAnswer(
       sources: procedure('contacter', 'magasin-contact') ? [procedure('contacter', 'magasin-contact')!] : [],
       tools: c ? ['get_case', 'support_triage'] : ['support_triage'],
       action: 'assist' as const,
-      quickReplies: supportQuickReplies(c),
+      quickReplies: supportQuickReplies(c, language),
       supportPath: support.path,
     };
   if (support)
