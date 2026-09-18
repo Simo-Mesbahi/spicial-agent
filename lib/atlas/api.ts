@@ -21,6 +21,9 @@ import {
   detectConversationLanguage,
   retrievalQuery,
   asksAboutCurrentCase,
+  localizedCaseReply,
+  localizedProcedureReply,
+  localizedWarrantyReply,
 } from './conversation-intelligence';
 import type { SupabaseRuntimeEnv } from './supabase';
 import { effectiveEnvironment } from './runtime-settings';
@@ -631,7 +634,12 @@ export function demoAnswer(
     };
   if (c && (/garantie|prise en charge|couvert/.test(q) || canonicalQuery === 'garantie prise en charge'))
     return {
-      content: `Décision enregistrée pour ${c.reference} : ${c.warranty}.\n\n${procedure('garantie', 'sav-garantie')?.body ?? 'La procédure de garantie publiée est momentanément indisponible. Un conseiller doit vérifier les conditions applicables.'}`,
+      content: localizedWarrantyReply(
+        language,
+        c,
+        procedure('garantie', 'sav-garantie')?.body ??
+          'La procédure de garantie publiée est momentanément indisponible. Un conseiller doit vérifier les conditions applicables.',
+      ),
       sources: procedure('garantie', 'sav-garantie') ? [procedure('garantie', 'sav-garantie')!] : [],
       tools: ['get_case', 'search_knowledge'],
       action: null,
@@ -639,23 +647,25 @@ export function demoAnswer(
   if (c && (/devis|accepter|refuser/.test(q) || canonicalQuery === 'devis réparation'))
     return {
       content:
-        c.status === 'quote_pending'
-          ? grounded(c)
-          : `Aucun devis n’attend votre décision pour ${c.reference}. État actuel : ${labels[c.status]}.`,
+        language === 'fr'
+          ? c.status === 'quote_pending'
+            ? grounded(c)
+            : `Aucun devis n’attend votre décision pour ${c.reference}. État actuel : ${labels[c.status]}.`
+          : localizedCaseReply(language, c),
       sources: procedure('devis', 'sav-devis') ? [procedure('devis', 'sav-devis')!] : [],
       tools: ['get_case'],
       action: c.status === 'quote_pending' ? 'quote' : null,
     };
   if (c && asksAboutCurrentCase(message))
     return {
-      content: grounded(c),
+      content: language === 'fr' ? grounded(c) : localizedCaseReply(language, c),
       sources: [],
       tools: ['get_case'],
       action: null,
     };
   if (c && sources.length && /^(comment|quels documents|que faut.il) /.test(q))
     return {
-      content: sources[0].body,
+      content: localizedProcedureReply(language, canonicalQuery, sources[0].body),
       sources: sources.slice(0, 1),
       tools: ['search_knowledge'],
       action: null,
@@ -669,7 +679,7 @@ export function demoAnswer(
     return { content: grounded(c), sources: [], tools: ['get_case'], action: null };
   if (sources.length)
     return {
-      content: sources[0].body,
+      content: localizedProcedureReply(language, canonicalQuery, sources[0].body),
       sources: sources.slice(0, 1),
       tools: ['search_knowledge'],
       action: null,
@@ -878,21 +888,42 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
           (!sources.size || !expected.sources.every(source => sources.has(source.id))))
       )
         throw new ApiError(503, 'La réponse du modèle manque de sources vérifiables.');
-      // The model may phrase and translate the answer, but only after every
-      // evidence-bearing tool required by the deterministic policy has run.
-      // Metadata remains server-composed from the verified case/document set.
-      const verifiedSources =
-        expected.sources.length > 0
-          ? expected.sources
-          : [...sources.values()].slice(0, Math.max(1, env.RAG_RESULTS ?? 3));
-      return {
-        ...expected,
-        content: m.content.trim(),
-        sources: verifiedSources,
-        mode,
-        inputTokens,
-        outputTokens,
-      };
+      // Casual conversation may use model phrasing. Business facts remain
+      // server-composed from verified case/document evidence so model inventions
+      // never become customer-visible facts.
+      if (casualIntent(message) && expected.tools.length === 0)
+        return {
+          ...expected,
+          content: m.content.trim(),
+          mode,
+          inputTokens,
+          outputTokens,
+        };
+
+      const document = [...sources.values()][0];
+      const verified = expected.tools.length
+        ? expected
+        : c && trace.includes('get_case')
+          ? {
+              content:
+                language === 'fr' ? grounded(c) : localizedCaseReply(language, c),
+              sources: [],
+              tools: ['get_case'],
+              action: null,
+            }
+          : document
+            ? {
+                content: localizedProcedureReply(
+                  language,
+                  retrievalQuery(message),
+                  document.body,
+                ),
+                sources: [document],
+                tools: ['search_knowledge'],
+                action: null,
+              }
+            : expected;
+      return { ...verified, mode, inputTokens, outputTokens };
 
     }
     if (round === 2) throw new ApiError(503, 'La réponse n’a pas pu être finalisée.');
