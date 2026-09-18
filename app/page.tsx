@@ -1134,8 +1134,8 @@ export default function Home() {
                                       {m.metadata.fallback === 'daily_limit'
                                         ? 'Quota IA atteint.'
                                         : 'IA indisponible ou réponse non validée.'}{' '}
-                                      Réponse de secours sans IA, à partir des règles et des données
-                                      de démonstration.
+                                      Réponse de secours vérifiée à partir des procédures publiées et
+                                      des données disponibles.
                                     </p>
                                   )}
                                   {m.metadata.action === 'handoff' &&
