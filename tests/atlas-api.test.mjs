@@ -733,7 +733,7 @@ test('Gemini free adapter uses only its fixed endpoint and redacted conversation
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.metadata.mode, 'gemini');
     assert.equal(captured[0].model, 'gemini-2.5-flash');
-    assert.equal(captured[0].max_completion_tokens, 650);
+    assert.equal(captured[0].max_completion_tokens, 1200);
     assert.equal(captured[0].reasoning_effort, 'none');
     assert.ok(!('strict' in captured[0].tools[0].function));
     const outbound = JSON.stringify(captured);
@@ -1399,6 +1399,144 @@ test('Correcting the assistant to another dossier stops using the current dossie
       assert.ok(!reply.body.metadata.tools.includes('get_case'));
       assert.match(reply.body.content, /autre dossier/i);
       assert.doesNotMatch(reply.body.content, /Retour demandé|État actuel|étape/i);
+    }
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+
+test('OpenAI open conversation uses low-reasoning no-tool mode and keeps natural model prose', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    Object.assign(c.env, {
+      LLM_PROVIDER: 'openai',
+      LLM_BUDGET_MODE: 'approved',
+      OPENAI_MODEL: 'gpt-5.6-luna',
+      OPENAI_API_KEY: 'openai-test-key',
+    });
+    let calls = 0;
+    globalThis.fetch = async (url, init) => {
+      calls++;
+      assert.equal(url, 'https://api.openai.com/v1/chat/completions');
+      assert.equal(init.redirect, 'manual');
+      assert.equal(init.headers.Authorization, 'Bearer openai-test-key');
+      const body = JSON.parse(init.body);
+      assert.equal(body.model, 'gpt-5.6-luna');
+      assert.equal(body.reasoning_effort, 'none');
+      assert.equal(body.max_completion_tokens, 500);
+      assert.equal(body.tools, undefined);
+      assert.equal(body.tool_choice, undefined);
+      assert.equal(body.parallel_tool_calls, undefined);
+      return Response.json({
+        choices: [{ message: { role: 'assistant', content: 'Avec plaisir 😄 Que souhaitez-vous raconter ?' } }],
+        usage: { prompt_tokens: 42, completion_tokens: 12 },
+      });
+    };
+
+    const reply = await c.call('chat', { message: 'Raconte-moi une blague courte' });
+    assert.equal(reply.status, 200, JSON.stringify(reply.body));
+    assert.equal(reply.body.metadata.mode, 'openai');
+    assert.equal(reply.body.metadata.fallback, null);
+    assert.equal(reply.body.metadata.knowledgeScope, 'not_required');
+    assert.equal(reply.body.content, 'Avec plaisir 😄 Que souhaitez-vous raconter ?');
+    assert.equal(reply.body.metadata.inputTokens, 42);
+    assert.equal(reply.body.metadata.outputTokens, 12);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('OpenAI business tool calls use strict schemas, bounded output and one tool at a time', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find((item) => item.reference === 'SAV-2026-1042');
+    await verify(c, row);
+    Object.assign(c.env, {
+      LLM_PROVIDER: 'openai',
+      LLM_BUDGET_MODE: 'approved',
+      OPENAI_MODEL: 'gpt-5.6-luna',
+      OPENAI_API_KEY: 'openai-test-key',
+    });
+
+    const captured = [];
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(init.body);
+      captured.push(body);
+      assert.equal(body.reasoning_effort, 'none');
+      assert.equal(body.max_completion_tokens, 1200);
+      assert.equal(body.parallel_tool_calls, false);
+      assert.equal(body.tools.length, 2);
+      assert.ok(body.tools.every((tool) => tool.function.strict === true));
+      assert.ok(body.tools.every((tool) => tool.function.parameters.additionalProperties === false));
+
+      return Response.json({
+        choices: [{
+          message: captured.length === 1
+            ? {
+                role: 'assistant',
+                content: null,
+                tool_calls: [{
+                  id: 'openai-case-1',
+                  type: 'function',
+                  function: { name: 'get_case', arguments: '{}' },
+                }],
+              }
+            : { role: 'assistant', content: 'Votre dossier est en attente de pièce.' },
+        }],
+        usage: { prompt_tokens: 30, completion_tokens: 10 },
+      });
+    };
+
+    const reply = await c.call('chat', {
+      caseId: row.id,
+      message: 'Où en est mon dossier ?',
+    });
+    assert.equal(reply.status, 200, JSON.stringify(reply.body));
+    assert.equal(reply.body.metadata.mode, 'openai');
+    assert.equal(reply.body.metadata.fallback, null);
+    assert.ok(reply.body.metadata.tools.includes('get_case'));
+    assert.equal(captured.length, 2);
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Provider rejection classes are recorded without exposing upstream response bodies', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    Object.assign(c.env, {
+      LLM_PROVIDER: 'openai',
+      LLM_BUDGET_MODE: 'approved',
+      OPENAI_MODEL: 'gpt-5.6-luna',
+      OPENAI_API_KEY: 'openai-test-key',
+    });
+
+    for (const [status, expected] of [
+      [401, 'upstream_auth'],
+      [429, 'upstream_rate_limited'],
+      [400, 'upstream_request_rejected'],
+      [503, 'upstream_unavailable'],
+    ]) {
+      globalThis.fetch = async () => new Response('SECRET_UPSTREAM_BODY', { status });
+      const reply = await c.call('chat', {
+        message: 'Question générale au modèle ' + status,
+        requestId: crypto.randomUUID(),
+      });
+      assert.equal(reply.status, 200);
+      assert.equal(reply.body.metadata.fallback, 'provider_unavailable');
+      assert.equal(reply.body.metadata.fallbackReason, expected);
+      assert.doesNotMatch(JSON.stringify(reply.body), /SECRET_UPSTREAM_BODY/);
     }
   } finally {
     globalThis.fetch = original;
