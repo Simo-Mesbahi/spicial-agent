@@ -650,7 +650,7 @@ export async function handleAdminOperationsApi(
         return json({ environment, canEdit, revision: saved?.revision ?? 0,
           config, effectiveProvider: state.ready ? state.provider : 'demo', providerWarning: state.blockedReason,
           providers: availableProviders(env), budget: env.LLM_BUDGET_MODE ?? 'zero',
-          scope: 'Chat de démonstration · dossiers D1 et 12 documents fictifs',
+          scope: 'Chat de démonstration · dossiers D1 + base de connaissances Supabase publiée',
           history: history.results.map(item => ({ revision: item.revision, actor: item.actor, createdAt: item.created_at, config: runtimeConfigSchema.parse(JSON.parse(item.config)) })) }, 200, session.cookies);
       }
       if (req.method === 'POST') {
