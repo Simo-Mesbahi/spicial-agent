@@ -24,6 +24,8 @@ import {
   localizedCaseReply,
   localizedProcedureReply,
   localizedWarrantyReply,
+  wantsAnotherCase,
+  anotherCaseReply,
 } from './conversation-intelligence';
 import type { SupabaseRuntimeEnv } from './supabase';
 import { effectiveEnvironment } from './runtime-settings';
@@ -117,7 +119,7 @@ type MessageRow = {
   metadata: string;
   created_at: number;
 };
-type AssistantAction = 'assist' | 'contact' | 'handoff' | 'quote' | null;
+type AssistantAction = 'assist' | 'contact' | 'handoff' | 'quote' | 'switch_case' | null;
 type AssistantAnswer = {
   content: string;
   sources: Article[];
@@ -577,6 +579,7 @@ export function demoAnswer(
   const previousUserMessages = history.filter((item) => item.role === 'user').map((item) => item.content);
   const language = detectConversationLanguage(message, previousUserMessages);
   const casual = casualIntent(message);
+  const switchCase = wantsAnotherCase(message);
   const canonicalQuery = retrievalQuery(message);
   const sources = knowledgeSources ?? retrieve(canonicalQuery, rag.RAG_RESULTS, rag.RAG_MIN_ANCHORS);
   const procedure = (titleNeedle: string, legacyId: string) =>
@@ -602,7 +605,15 @@ export function demoAnswer(
       action: c ? ('handoff' as const) : ('contact' as const),
       supportPath: 'human_required' as const,
     };
-  const support = supportDecision(message, c, history);
+  if (switchCase)
+    return {
+      content: anotherCaseReply(language, c?.reference),
+      sources: [],
+      tools: ['context_switch'],
+      action: 'switch_case',
+    };
+
+    const support = supportDecision(message, c, history);
   if (support?.path === 'assist_first')
     return {
       content: c
@@ -712,7 +723,8 @@ function localGuard(answer: AssistantAnswer) {
   return (
     answer.tools.includes('security_guard') ||
     answer.sources.some((source) => source.id === 'produit-securite') ||
-    Boolean(answer.supportPath)
+    Boolean(answer.supportPath) ||
+    answer.action === 'switch_case'
   );
 }
 const completionSchema = z.object({
@@ -1209,13 +1221,22 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       ).results.reverse();
       await reserveQuota(db, 'chat:' + (await networkBucket(req)), 120, HOUR);
       const casual = casualIntent(message);
-      const knowledge: KnowledgeSearchResult = casual
-        ? { articles: [], scope: 'not_required' }
-        : await searchKnowledge(env, retrievalQuery(message));
+      const switchCase = wantsAnotherCase(message);
+      const knowledge: KnowledgeSearchResult =
+        casual || switchCase
+          ? { articles: [], scope: 'not_required' }
+          : await searchKnowledge(env, retrievalQuery(message));
       const deterministic = demoAnswer(message, c, history, env, knowledge.articles);
+      const conversationHandled = Boolean(casual || switchCase);
       const guarded =
-        (env.LLM_PROVIDER ?? 'demo') !== 'demo' && localGuard(deterministic)
-          ? { ...deterministic, mode: 'demo' as const, inputTokens: 0, outputTokens: 0 }
+        (env.LLM_PROVIDER ?? 'demo') !== 'demo' &&
+        (localGuard(deterministic) || conversationHandled)
+          ? {
+              ...deterministic,
+              mode: conversationHandled ? ('conversation' as const) : ('demo' as const),
+              inputTokens: 0,
+              outputTokens: 0,
+            }
           : null;
       let fallback: 'daily_limit' | 'provider_unavailable' | null = null;
       let fallbackReason: ProviderFailureReason | 'daily_limit' | null = null;

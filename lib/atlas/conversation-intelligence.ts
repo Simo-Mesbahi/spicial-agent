@@ -49,24 +49,29 @@ export function detectConversationLanguage(
 }
 
 export function casualIntent(message: string): CasualIntent {
-  const text = message.trim().toLowerCase();
+  const raw = message.trim().toLowerCase();
+  const text = raw
+    .replace(/[’']/g, "'")
+    .replace(/^(?:cc|coucou|slt|salut|hey|yo)\s*[,;:!.-]?\s+(?=\S)/iu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   if (
-    /^(cv|cv\s*\?|ça va|ca va|tu vas bien|vous allez bien|how are you|how's it going|hows it going|wie geht'?s|wie geht es dir|wie geht es ihnen|como estas|cómo estás|que tal|qué tal|كيف حالك|كيفك)[ !?.،؟]*$/iu.test(
+    /^(cv|cv\s*\?|ça va|ca va|sa va|tu vas bien|vous allez bien|tout va bien|how are you|how's it going|hows it going|you good|wie geht'?s|wie geht es dir|wie geht es ihnen|como estas|cómo estás|que tal|qué tal|كيف حالك|كيفك)[ !?.،؟]*$/iu.test(
       text,
     )
   )
     return 'wellbeing';
 
   if (
-    /^(bonjour|bonsoir|salut|hello|hi|hey|hallo|guten tag|hola|buenas|مرحبا|السلام عليكم)[ !?.،؟]*$/iu.test(
-      text,
+    /^(cc|coucou|slt|bonjour|bonsoir|salut|hello|hi|hey|yo|hallo|guten tag|hola|buenas|مرحبا|السلام عليكم)[ !?.،؟]*$/iu.test(
+      raw,
     )
   )
     return 'greeting';
 
   if (
-    /^(merci|merci beaucoup|thanks|thank you|danke|vielen dank|gracias|muchas gracias|شكرا|شكرًا)[ !?.،؟]*$/iu.test(
+    /^(merci|merci beaucoup|thanks|thank you|thx|danke|vielen dank|gracias|muchas gracias|شكرا|شكرًا)[ !?.،؟]*$/iu.test(
       text,
     )
   )
@@ -80,13 +85,50 @@ export function casualIntent(message: string): CasualIntent {
     return 'farewell';
 
   if (
-    /^(tu peux faire quoi|vous pouvez faire quoi|comment peux tu m aider|comment pouvez vous m aider|what can you do|how can you help me|was kannst du|wie konnen sie mir helfen|wie können sie mir helfen|que puedes hacer|qué puedes hacer|como puedes ayudarme|cómo puedes ayudarme|ماذا يمكنك أن تفعل|كيف يمكنك مساعدتي)[ !?.،؟]*$/iu.test(
+    /^(tu peux faire quoi|vous pouvez faire quoi|comment peux tu m aider|comment pouvez vous m aider|aide moi|aidez moi|what can you do|how can you help me|help me|was kannst du|wie konnen sie mir helfen|wie können sie mir helfen|que puedes hacer|qué puedes hacer|como puedes ayudarme|cómo puedes ayudarme|ماذا يمكنك أن تفعل|كيف يمكنك مساعدتي)[ !?.،؟]*$/iu.test(
       text,
     )
   )
     return 'help';
 
   return null;
+}
+
+export function wantsAnotherCase(message: string): boolean {
+  const text = message
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return (
+    /\b(autre|different|nouveau)\b.{0,30}\b(dossier|sav|commande|retour|reclamation)\b/.test(text) ||
+    /\b(dossier|sav|commande|retour|reclamation)\b.{0,30}\b(autre|different|nouveau)\b/.test(text) ||
+    /\b(pas|non)\b.{0,20}\b(ce|cet|celui|dossier)\b/.test(text) ||
+    /\b(changer|change|consulter|voir|renseigner|renseignement).{0,35}\b(dossier|autre dossier)\b/.test(text) ||
+    /\b(another|different|other|new)\b.{0,25}\b(case|order|repair|return)\b/i.test(message) ||
+    /\b(not|no)\b.{0,15}\b(this|that)\b.{0,15}\b(case|order|repair|return)\b/i.test(message) ||
+    (/\b(anderen|anderer|anderes|neuen)\b.{0,25}\b(vorgang|fall|bestellung|reparatur)\b/i.test(message) ||
+      /\b(vorgang|fall|bestellung|reparatur)\b.{0,30}\b(anderen|anderer|anderes|neuen)\b/i.test(message) ||
+      /\b(nicht|kein)\b.{0,20}\b(diesen|dieser|diese)\b.{0,20}\b(vorgang|fall|bestellung|reparatur)\b/i.test(message)) ||
+    /\b(otro|otra|distinto|diferente|nuevo)\b.{0,25}\b(expediente|caso|pedido|reparacion|reparación)\b/i.test(message) ||
+    /(?:ملف|طلب).{0,12}(?:آخر|اخر)|(?:ليس|مو|مش).{0,12}(?:هذا|هاذا).{0,12}(?:الملف|الطلب)/u.test(message)
+  );
+}
+
+export function anotherCaseReply(
+  language: ConversationLanguage,
+  currentReference?: string | null,
+): string {
+  const reference = currentReference ? ` ${currentReference}` : '';
+  const replies: Record<ConversationLanguage, string> = {
+    fr: `Bien sûr. Je ne vais pas utiliser le dossier${reference} pour cette demande. Choisissez l’autre dossier que vous souhaitez consulter ; s’il n’est pas encore vérifié, l’application vous demandera sa référence et son code d’accès sécurisé.`,
+    en: `Of course. I won’t use case${reference} for this request. Choose the other case you want to view; if it has not been verified yet, the app will ask for its reference and secure access code.`,
+    de: `Natürlich. Für diese Anfrage verwende ich den Vorgang${reference} nicht. Wählen Sie den anderen Vorgang aus; falls er noch nicht verifiziert ist, fragt die Anwendung nach Referenz und sicherem Zugangscode.`,
+    es: `Claro. No utilizaré el expediente${reference} para esta consulta. Elija el otro expediente que quiere consultar; si aún no está verificado, la aplicación pedirá su referencia y código de acceso seguro.`,
+    ar: `بالتأكيد. لن أستخدم الملف${reference} لهذا الطلب. اختر الملف الآخر الذي تريد الاطلاع عليه، وإذا لم يكن موثقًا بعد فسيطلب التطبيق مرجعه ورمز الدخول الآمن.`,
+  };
+  return replies[language];
 }
 
 const replies: Record<
@@ -241,7 +283,8 @@ export function casualReply(
   currentCase: Pick<CaseRow, 'reference'> | null,
 ) {
   const reply = replies[language][intent];
-  return currentCase ? reply.withCase(currentCase.reference) : reply.general;
+  if (intent === 'help' && currentCase) return reply.withCase(currentCase.reference);
+  return reply.general;
 }
 
 const retrievalIntents: { query: string; patterns: RegExp[] }[] = [

@@ -16,6 +16,7 @@ const {
   casualReply,
   retrievalQuery,
   asksAboutCurrentCase,
+  wantsAnotherCase,
 } = await import(
   'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
 );
@@ -30,10 +31,16 @@ test('detects common customer languages and keeps French abbreviations conversat
 
 test('recognizes natural small talk without forcing document retrieval', () => {
   assert.equal(casualIntent('cv ?'), 'wellbeing');
+  assert.equal(casualIntent('cc cv ?'), 'wellbeing');
+  assert.equal(casualIntent('coucou ça va ?'), 'wellbeing');
   assert.equal(casualIntent('how are you?'), 'wellbeing');
   assert.equal(casualIntent('Danke!'), 'thanks');
   assert.equal(casualIntent('مرحبا'), 'greeting');
   assert.match(casualReply('fr', 'wellbeing', null), /Et vous/);
+  assert.doesNotMatch(
+    casualReply('fr', 'wellbeing', { reference: 'RET-2026-3012' }),
+    /RET-2026-3012/,
+  );
   assert.match(casualReply('en', 'greeting', null), /How can I help/i);
 });
 
@@ -51,4 +58,19 @@ test('detects questions that must refresh the verified case', () => {
   assert.equal(asksAboutCurrentCase('¿Dónde está mi pedido?'), true);
   assert.equal(asksAboutCurrentCase('أين طلبي؟'), true);
   assert.equal(asksAboutCurrentCase('How does a return work?'), false);
+});
+
+
+test('explicitly asking for another case never means the currently selected case', () => {
+  for (const message of [
+    "non d'autre dossier",
+    'non pas ce dossier',
+    "je veux me renseigner sur un autre dossier",
+    'I mean another case',
+    'nicht diesen Vorgang, einen anderen',
+    'quiero otro expediente',
+    'أريد ملف آخر',
+  ]) assert.equal(wantsAnotherCase(message), true, message);
+
+  assert.equal(wantsAnotherCase('Où en est mon dossier ?'), false);
 });
