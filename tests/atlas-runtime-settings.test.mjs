@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { build } from 'esbuild';
 async function moduleFrom(path) { const output = await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',write:false}); return import('data:text/javascript;base64,'+Buffer.from(output.outputFiles[0].text).toString('base64')); }
 const {handleAdminOperationsApi} = await moduleFrom('lib/atlas/admin-operations-api.ts');
-const {effectiveEnvironment, environmentLabel, defaults} = await moduleFrom('lib/atlas/runtime-settings.ts');
+const {effectiveEnvironment, environmentLabel, defaults, availableProviders} = await moduleFrom('lib/atlas/runtime-settings.ts');
 const {demoAnswer} = await moduleFrom('lib/atlas/api.ts');
 const org='00000000-0000-4000-8000-000000000001';
 function database() {
@@ -99,4 +99,16 @@ test('zero server quota is preserved and revoked providers fall back safely',asy
  const env={...setup(t),LLM_DAILY_LIMIT:'0',LLM_BUDGET_MODE:'free',GEMINI_API_KEY:'private-test-key'};assert.equal(defaults(env).dailyLimit,0);
  assert.equal((await call(env,{...payload,config:{...config,provider:'gemini',model:'gemini-2.5-flash'}})).status,200);
  assert.equal((await effectiveEnvironment({...env,LLM_BUDGET_MODE:'zero'},'https://atlas.test')).LLM_PROVIDER,'demo');
+});
+
+test('approved deployment exposes multiple configured providers without exposing secrets',async t=>{
+ const env={...setup(t),LLM_PROVIDER:'gemini',LLM_ENABLED_PROVIDERS:'gemini,openai',LLM_BUDGET_MODE:'approved',GEMINI_MODEL:'gemini-2.5-flash-lite',GEMINI_API_KEY:'gemini-private',OPENAI_MODEL:'approved-openai-model',OPENAI_API_KEY:'openai-private'};
+ assert.equal(defaults(env).model,'gemini-2.5-flash-lite');
+ const providers=availableProviders(env);
+ assert.ok(providers.some(item=>item.provider==='gemini'&&item.model==='gemini-2.5-flash-lite'&&item.available));
+ assert.ok(providers.some(item=>item.provider==='openai'&&item.model==='approved-openai-model'&&item.available));
+ assert.ok(!JSON.stringify(providers).includes('gemini-private'));
+ assert.ok(!JSON.stringify(providers).includes('openai-private'));
+ const response=await call(env,{...payload,config:{...config,provider:'openai',model:'approved-openai-model'}});
+ assert.equal(response.status,200);
 });
