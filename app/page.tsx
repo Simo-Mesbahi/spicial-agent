@@ -1171,6 +1171,22 @@ export default function Home() {
                                         </button>
                                       </div>
                                     )}
+                                  {m.metadata.action === 'switch_case' &&
+                                    m.id === messages.at(-1)?.id && (
+                                      <div className="reply-actions">
+                                        <button
+                                          className="button primary reply-action"
+                                          disabled={busy || sending}
+                                          onClick={() => {
+                                            setView('dossiers');
+                                            setContextOpen(false);
+                                            setGuideOpen(true);
+                                          }}
+                                        >
+                                          <FileText size={15} /> Choisir un autre dossier
+                                        </button>
+                                      </div>
+                                    )}
                                   {Boolean(m.metadata.quickReplies?.length) &&
                                     m.id === messages.at(-1)?.id && (
                                       <div className="guided-replies" aria-label="Étapes proposées">
