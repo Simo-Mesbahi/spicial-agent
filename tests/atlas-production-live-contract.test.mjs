@@ -108,6 +108,7 @@ test('local Supabase migration versions stay aligned with the linked project his
     '20260918101301_knowledge_control_plane_hardening.sql',
     '20260918105536_seed_procedures_and_rag_v2.sql',
     '20260918105847_backfill_knowledge_chunks.sql',
+    '20260918113236_professional_knowledge_corpus_v3.sql',
   ]);
   assert.ok(!migrations.includes('202609030001_production_foundation.sql'));
 });
