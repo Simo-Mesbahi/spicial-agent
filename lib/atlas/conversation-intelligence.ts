@@ -513,8 +513,10 @@ const serviceIntentPatterns: { query: string; patterns: RegExp[] }[] = [
 
 export function serviceIntentQuery(message: string): string | null {
   const text = message.trim();
+  const plain = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   for (const intent of serviceIntentPatterns)
-    if (intent.patterns.some((pattern) => pattern.test(text))) return intent.query;
+    if (intent.patterns.some((pattern) => pattern.test(text) || pattern.test(plain)))
+      return intent.query;
   return null;
 }
 
