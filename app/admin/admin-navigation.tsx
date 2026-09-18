@@ -1,7 +1,7 @@
 'use client';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Activity, SlidersHorizontal, ArrowUpRight, LogOut, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Activity, SlidersHorizontal, ArrowUpRight, LogOut, ShieldCheck, Library } from 'lucide-react';
 import { productionRequest } from '@/lib/atlas/production-client';
 import { ADMIN_LOGOUT_EVENT, ADMIN_SESSION_STATE_EVENT } from '@/lib/atlas/admin-session';
 
@@ -30,6 +30,7 @@ export default function AdminNavigation() {
   const links = [
     { href: '/admin', label: 'Vue d’ensemble', icon: LayoutDashboard },
     { href: '/admin/operations', label: 'Opérations', icon: Activity },
+    { href: '/admin/knowledge', label: 'Connaissances', icon: Library },
     { href: '/admin/performance', label: 'Performance & réglages', icon: SlidersHorizontal },
   ];
 
