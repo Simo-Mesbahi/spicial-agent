@@ -339,6 +339,8 @@ const retrievalIntents: { query: string; patterns: RegExp[] }[] = [
 
 export function retrievalQuery(message: string): string {
   const text = message.trim();
+  const language = detectConversationLanguage(text);
+  if (language === 'fr') return text;
   for (const intent of retrievalIntents)
     if (intent.patterns.some((pattern) => pattern.test(text))) return intent.query;
   return text;
@@ -358,4 +360,215 @@ export function asksAboutCurrentCase(message: string): boolean {
     /\b(donde esta mi|dónde está mi|cual es el estado|cuál es el estado)\b/i.test(text) ||
     /(?:ملفي|طلبي|إصلاحي|شحن(?:تي)?|استردادي|طلبيتي)/u.test(text)
   );
+}
+
+
+const statusLabels: Record<ConversationLanguage, Record<string, string>> = {
+  fr: {
+    deposited: 'Déposé en magasin', received: 'Reçu au SAV', diagnosis: 'Diagnostic en cours',
+    waiting_part: 'En attente de pièce', quote_pending: 'Devis à valider', repairing: 'En réparation',
+    repaired: 'Réparation terminée', replacement: 'Échange validé', shipping: 'Retour en transport',
+    ready: 'Disponible au retrait', delivered: 'Livré', preparing: 'En préparation',
+    transit: 'En livraison', delayed: 'Livraison retardée', return_requested: 'Retour demandé',
+    return_approved: 'Retour autorisé', return_received: 'Retour réceptionné',
+    refund_pending: 'Remboursement en traitement', refunded: 'Remboursé', open: 'Réclamation ouverte',
+    reviewing: 'En cours d’examen', resolved: 'Réclamation résolue', declined: 'Devis refusé',
+  },
+  en: {
+    deposited: 'Dropped off in store', received: 'Received by after-sales service', diagnosis: 'Diagnosis in progress',
+    waiting_part: 'Waiting for a part', quote_pending: 'Quote awaiting approval', repairing: 'Being repaired',
+    repaired: 'Repair completed', replacement: 'Replacement approved', shipping: 'Return shipment in progress',
+    ready: 'Ready for pickup', delivered: 'Delivered', preparing: 'Being prepared',
+    transit: 'Out for delivery', delayed: 'Delivery delayed', return_requested: 'Return requested',
+    return_approved: 'Return approved', return_received: 'Return received',
+    refund_pending: 'Refund being processed', refunded: 'Refunded', open: 'Complaint open',
+    reviewing: 'Under review', resolved: 'Complaint resolved', declined: 'Quote declined',
+  },
+  de: {
+    deposited: 'Im Geschäft abgegeben', received: 'Beim Kundendienst eingegangen', diagnosis: 'Diagnose läuft',
+    waiting_part: 'Warten auf ein Ersatzteil', quote_pending: 'Kostenvoranschlag wartet auf Freigabe', repairing: 'In Reparatur',
+    repaired: 'Reparatur abgeschlossen', replacement: 'Austausch bestätigt', shipping: 'Rücktransport läuft',
+    ready: 'Abholbereit', delivered: 'Geliefert', preparing: 'In Vorbereitung',
+    transit: 'In Zustellung', delayed: 'Lieferung verspätet', return_requested: 'Rückgabe angefordert',
+    return_approved: 'Rückgabe genehmigt', return_received: 'Rückgabe eingegangen',
+    refund_pending: 'Erstattung wird bearbeitet', refunded: 'Erstattet', open: 'Reklamation offen',
+    reviewing: 'In Prüfung', resolved: 'Reklamation abgeschlossen', declined: 'Kostenvoranschlag abgelehnt',
+  },
+  es: {
+    deposited: 'Depositado en tienda', received: 'Recibido por posventa', diagnosis: 'Diagnóstico en curso',
+    waiting_part: 'En espera de una pieza', quote_pending: 'Presupuesto pendiente de aprobación', repairing: 'En reparación',
+    repaired: 'Reparación terminada', replacement: 'Cambio aprobado', shipping: 'Transporte de retorno en curso',
+    ready: 'Listo para recoger', delivered: 'Entregado', preparing: 'En preparación',
+    transit: 'En reparto', delayed: 'Entrega retrasada', return_requested: 'Devolución solicitada',
+    return_approved: 'Devolución autorizada', return_received: 'Devolución recibida',
+    refund_pending: 'Reembolso en proceso', refunded: 'Reembolsado', open: 'Reclamación abierta',
+    reviewing: 'En revisión', resolved: 'Reclamación resuelta', declined: 'Presupuesto rechazado',
+  },
+  ar: {
+    deposited: 'تم الإيداع في المتجر', received: 'تم الاستلام لدى خدمة ما بعد البيع', diagnosis: 'التشخيص جارٍ',
+    waiting_part: 'في انتظار قطعة غيار', quote_pending: 'عرض السعر بانتظار الموافقة', repairing: 'قيد الإصلاح',
+    repaired: 'اكتمل الإصلاح', replacement: 'تمت الموافقة على الاستبدال', shipping: 'الإرجاع قيد النقل',
+    ready: 'جاهز للاستلام', delivered: 'تم التوصيل', preparing: 'قيد التجهيز',
+    transit: 'قيد التوصيل', delayed: 'التوصيل متأخر', return_requested: 'تم طلب الإرجاع',
+    return_approved: 'تمت الموافقة على الإرجاع', return_received: 'تم استلام المرتجع',
+    refund_pending: 'الاسترداد قيد المعالجة', refunded: 'تم الاسترداد', open: 'الشكوى مفتوحة',
+    reviewing: 'قيد المراجعة', resolved: 'تم حل الشكوى', declined: 'تم رفض عرض السعر',
+  },
+};
+
+function formatMoney(cents: number, language: ConversationLanguage) {
+  const locale = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE', es: 'es-ES', ar: 'ar' }[language];
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100);
+}
+
+export function localizedCaseReply(
+  language: ConversationLanguage,
+  currentCase: Pick<
+    CaseRow,
+    'reference' | 'product' | 'status' | 'quote_cents' | 'refund_cents' | 'store' | 'updated_at'
+  >,
+): string {
+  const status = statusLabels[language][currentCase.status] ?? currentCase.status;
+  const amount =
+    currentCase.status === 'quote_pending' && Number.isSafeInteger(currentCase.quote_cents) && currentCase.quote_cents! >= 0
+      ? formatMoney(currentCase.quote_cents!, language)
+      : (currentCase.status === 'refund_pending' || currentCase.status === 'refunded') &&
+          Number.isSafeInteger(currentCase.refund_cents) && currentCase.refund_cents! >= 0
+        ? formatMoney(currentCase.refund_cents!, language)
+        : null;
+
+  if (language === 'en') {
+    let text = `Your verified case ${currentCase.reference} for ${currentCase.product} is currently “${status}”.`;
+    if (currentCase.status === 'waiting_part') text += ' The repair is waiting for the required part; I will not invent a delivery date if none is recorded.';
+    if (currentCase.status === 'quote_pending') text += amount ? ` The recorded quote is ${amount} and is awaiting your decision.` : ' The quote amount is not recorded.';
+    if (currentCase.status === 'ready') text += ` The item is recorded as ready for pickup at ${currentCase.store}.`;
+    if (currentCase.status === 'delayed') text += ' The delivery is recorded as delayed; no new confirmed date should be assumed unless it appears in the case.';
+    if (currentCase.status === 'refund_pending') text += amount ? ` The recorded refund amount is ${amount} and the refund is still being processed.` : ' The refund is still being processed.';
+    if (currentCase.status === 'refunded') text += amount ? ` The case records a refund of ${amount} as completed.` : ' The case records the refund as completed.';
+    return text;
+  }
+  if (language === 'de') {
+    let text = `Ihr verifizierter Vorgang ${currentCase.reference} für ${currentCase.product} hat aktuell den Status „${status}“.`;
+    if (currentCase.status === 'waiting_part') text += ' Die Reparatur wartet auf das benötigte Ersatzteil; ohne bestätigte Angabe nenne ich kein Lieferdatum.';
+    if (currentCase.status === 'quote_pending') text += amount ? ` Der hinterlegte Kostenvoranschlag beträgt ${amount} und wartet auf Ihre Entscheidung.` : ' Der Betrag des Kostenvoranschlags ist nicht hinterlegt.';
+    if (currentCase.status === 'ready') text += ` Der Artikel ist zur Abholung bei ${currentCase.store} vorgemerkt.`;
+    if (currentCase.status === 'delayed') text += ' Die Lieferung ist als verspätet erfasst; ein neues Datum wird nur genannt, wenn es bestätigt im Vorgang steht.';
+    return text;
+  }
+  if (language === 'es') {
+    let text = `Su expediente verificado ${currentCase.reference} para ${currentCase.product} está actualmente en estado «${status}».`;
+    if (currentCase.status === 'waiting_part') text += ' La reparación está esperando la pieza necesaria; no indicaré una fecha si no está confirmada en el expediente.';
+    if (currentCase.status === 'quote_pending') text += amount ? ` El presupuesto registrado es de ${amount} y está pendiente de su decisión.` : ' El importe del presupuesto no está registrado.';
+    if (currentCase.status === 'ready') text += ` El producto figura como listo para recoger en ${currentCase.store}.`;
+    if (currentCase.status === 'delayed') text += ' La entrega figura como retrasada; no se debe suponer una nueva fecha si no está confirmada.';
+    return text;
+  }
+  if (language === 'ar') {
+    let text = `حالة ملفك الموثق ${currentCase.reference} الخاص بـ ${currentCase.product} هي حاليًا «${status}».`;
+    if (currentCase.status === 'waiting_part') text += ' الإصلاح ينتظر قطعة الغيار المطلوبة، ولن أذكر تاريخًا غير مؤكد.';
+    if (currentCase.status === 'quote_pending') text += amount ? ` عرض السعر المسجل هو ${amount} وينتظر قرارك.` : ' قيمة عرض السعر غير مسجلة.';
+    if (currentCase.status === 'ready') text += ` المنتج مسجل كجاهز للاستلام من ${currentCase.store}.`;
+    if (currentCase.status === 'delayed') text += ' التوصيل مسجل كمتأخر، ولن أفترض موعدًا جديدًا ما لم يكن مؤكدًا في الملف.';
+    return text;
+  }
+
+  return `Votre dossier vérifié ${currentCase.reference} (${currentCase.product}) est à l’étape « ${status} ».`;
+}
+
+const procedureSummaries: Record<string, Record<Exclude<ConversationLanguage, 'fr'>, string>> = {
+  'suivi réparation': {
+    en: 'To track a repair, use the verified case status and its latest recorded update. If no date is recorded, no date should be guessed.',
+    de: 'Für die Reparaturverfolgung wird der verifizierte Vorgangsstatus mit der letzten gespeicherten Aktualisierung verwendet. Fehlt ein Datum, wird keines erfunden.',
+    es: 'Para seguir una reparación se utiliza el estado verificado del expediente y su última actualización registrada. Si no hay fecha, no se inventa ninguna.',
+    ar: 'لمتابعة الإصلاح يتم الاعتماد على حالة الملف الموثق وآخر تحديث مسجل. إذا لم يوجد تاريخ مؤكد فلن يتم اختراع تاريخ.',
+  },
+  'retour échange': {
+    en: 'A return or exchange must follow the published procedure applicable to the order and product. If eligibility cannot be confirmed, the case should be handed to an advisor rather than guessed.',
+    de: 'Eine Rückgabe oder ein Umtausch richtet sich nach der veröffentlichten, für Bestellung und Produkt geltenden Regel. Wenn die Berechtigung nicht bestätigt werden kann, erfolgt eine Weiterleitung an einen Berater.',
+    es: 'Una devolución o cambio debe seguir el procedimiento publicado aplicable al pedido y al producto. Si no se puede confirmar la elegibilidad, se deriva a un asesor.',
+    ar: 'يجب أن يتبع الإرجاع أو الاستبدال الإجراء المنشور المطبق على الطلب والمنتج. إذا تعذر تأكيد الأهلية، يتم التحويل إلى مستشار بدل التخمين.',
+  },
+  'colis incomplet endommagé': {
+    en: 'For an incomplete or damaged package, first identify what is missing or damaged and verify the order details. Any replacement, refund, or commercial decision must be confirmed by the authorized process.',
+    de: 'Bei einem unvollständigen oder beschädigten Paket wird zuerst geklärt, was fehlt oder beschädigt ist, und die Bestellung geprüft. Ersatz, Erstattung oder Kulanz müssen über den autorisierten Prozess bestätigt werden.',
+    es: 'Si un paquete está incompleto o dañado, primero se identifica qué falta o está dañado y se verifican los datos del pedido. Cualquier sustitución o reembolso debe confirmarse por el proceso autorizado.',
+    ar: 'إذا كانت الشحنة ناقصة أو تالفة، يتم أولًا تحديد ما هو مفقود أو تالف والتحقق من بيانات الطلب. أي استبدال أو استرداد يجب أن يؤكده المسار المعتمد.',
+  },
+  remboursement: {
+    en: 'Refund tracking distinguishes between a refund being requested, approved, issued, or completed. Only the amount and timing actually recorded in the case should be stated.',
+    de: 'Bei der Erstattungsverfolgung wird zwischen beantragt, bestätigt, ausgeführt und abgeschlossen unterschieden. Betrag und Zeitpunkt werden nur genannt, wenn sie im Vorgang gespeichert sind.',
+    es: 'El seguimiento del reembolso distingue entre solicitado, aprobado, emitido y completado. Solo se indican el importe y los plazos realmente registrados.',
+    ar: 'تتبع الاسترداد يميز بين الطلب والموافقة والإصدار والإتمام. لا يتم ذكر مبلغ أو موعد إلا إذا كان مسجلًا فعليًا.',
+  },
+  'livraison retard incident': {
+    en: 'Delivery information is based on the latest recorded tracking event. A date is only presented as confirmed when the source explicitly confirms it; otherwise it remains an estimate or unavailable.',
+    de: 'Lieferinformationen beruhen auf dem letzten gespeicherten Tracking-Ereignis. Ein Datum gilt nur dann als bestätigt, wenn die Quelle es ausdrücklich bestätigt.',
+    es: 'La información de entrega se basa en el último evento de seguimiento registrado. Una fecha solo se presenta como confirmada cuando la fuente la confirma expresamente.',
+    ar: 'تعتمد معلومات التوصيل على آخر حدث تتبع مسجل. لا يُذكر أي موعد على أنه مؤكد إلا إذا أكدته المصدر صراحة.',
+  },
+  'garantie prise en charge': {
+    en: 'Warranty and coverage answers must come from the recorded case decision and the applicable published procedure. No coverage, free repair, refund, or legal right should be invented.',
+    de: 'Aussagen zu Garantie und Kostenübernahme müssen aus der gespeicherten Vorgangsentscheidung und der geltenden veröffentlichten Regel stammen. Es werden keine Ansprüche oder Leistungen erfunden.',
+    es: 'Las respuestas sobre garantía y cobertura deben proceder de la decisión registrada en el expediente y del procedimiento publicado aplicable. No se inventan coberturas ni derechos.',
+    ar: 'يجب أن تعتمد إجابات الضمان والتغطية على القرار المسجل في الملف والإجراء المنشور المطبق. لا يتم اختراع أي تغطية أو حق.',
+  },
+  'devis réparation': {
+    en: 'A repair quote must use the amount actually recorded in the case. No paid repair should be presented as started before the customer’s explicit confirmation.',
+    de: 'Ein Reparaturkostenvoranschlag darf nur den tatsächlich gespeicherten Betrag verwenden. Eine kostenpflichtige Reparatur wird nicht vor ausdrücklicher Zustimmung als gestartet dargestellt.',
+    es: 'Un presupuesto de reparación debe utilizar el importe realmente registrado. No se presenta una reparación de pago como iniciada antes de la confirmación explícita del cliente.',
+    ar: 'يجب أن يعتمد عرض سعر الإصلاح على المبلغ المسجل فعليًا. لا يتم اعتبار الإصلاح المدفوع قد بدأ قبل موافقة العميل الصريحة.',
+  },
+  'attente pièce indisponible': {
+    en: 'When a repair is waiting for a part, the intervention remains blocked until the required part is received. A supply date is only stated if it is actually recorded.',
+    de: 'Wenn eine Reparatur auf ein Ersatzteil wartet, bleibt die Arbeit bis zum Eingang des benötigten Teils blockiert. Ein Lieferdatum wird nur genannt, wenn es tatsächlich gespeichert ist.',
+    es: 'Cuando una reparación espera una pieza, la intervención queda bloqueada hasta recibirla. Solo se indica una fecha de suministro si está realmente registrada.',
+    ar: 'عندما ينتظر الإصلاح قطعة غيار، يبقى التدخل متوقفًا حتى وصول القطعة المطلوبة. لا يُذكر تاريخ التوريد إلا إذا كان مسجلًا.',
+  },
+  'paiement débit anomalie transaction': {
+    en: 'For a payment anomaly, first distinguish between a declined payment, pending authorization, confirmed debit, or duplicate charge. Never share or request full card details, PINs, or banking passwords.',
+    de: 'Bei einer Zahlungsabweichung wird zuerst zwischen Ablehnung, ausstehender Autorisierung, bestätigter Abbuchung oder Doppelbelastung unterschieden. Vollständige Kartendaten, PIN oder Banking-Passwörter werden nie angefordert.',
+    es: 'Ante una anomalía de pago, primero se distingue entre pago rechazado, autorización pendiente, débito confirmado o cargo duplicado. Nunca se solicitan datos completos de tarjeta, PIN o contraseñas bancarias.',
+    ar: 'عند وجود مشكلة في الدفع، يتم أولًا التمييز بين الرفض أو التفويض المعلق أو الخصم المؤكد أو الخصم المكرر. لا يتم طلب بيانات البطاقة الكاملة أو الرقم السري أو كلمات مرور البنك.',
+  },
+  'facture ticket justificatif achat': {
+    en: 'For an invoice, receipt, or proof of purchase, the system should first verify whether the document actually exists. If it is unavailable, an advisor may need to check whether a duplicate can be issued.',
+    de: 'Bei Rechnung, Kassenbon oder Kaufbeleg wird zuerst geprüft, ob das Dokument tatsächlich vorhanden ist. Falls nicht, kann ein Berater die Möglichkeit eines Duplikats prüfen.',
+    es: 'Para una factura, recibo o justificante de compra, primero se verifica si el documento existe realmente. Si no está disponible, un asesor puede comprobar si es posible emitir un duplicado.',
+    ar: 'بالنسبة للفاتورة أو الإيصال أو إثبات الشراء، يتم أولًا التحقق مما إذا كان المستند موجودًا فعليًا. وإذا لم يكن متاحًا فقد يحتاج المستشار إلى التحقق من إمكانية إصدار نسخة.',
+  },
+};
+
+export function localizedProcedureReply(
+  language: ConversationLanguage,
+  canonicalQuery: string,
+  fallbackFrench: string,
+): string {
+  if (language === 'fr') return fallbackFrench;
+  return procedureSummaries[canonicalQuery]?.[language] ??
+    ({
+      en: 'I found a published procedure related to your question. I can use it to guide you, but I will not invent any detail that is not supported by the procedure or your verified case.',
+      de: 'Ich habe eine veröffentlichte Regel gefunden, die zu Ihrer Frage passt. Ich kann Sie damit unterstützen, ohne nicht belegte Details zu erfinden.',
+      es: 'He encontrado un procedimiento publicado relacionado con su pregunta. Puedo utilizarlo para orientarle sin inventar detalles que no estén respaldados.',
+      ar: 'وجدت إجراءً منشورًا مرتبطًا بسؤالك ويمكنني استخدامه لإرشادك دون اختراع أي تفاصيل غير مدعومة.',
+    } as const)[language];
+}
+
+export function localizedWarrantyReply(
+  language: ConversationLanguage,
+  currentCase: Pick<CaseRow, 'reference' | 'warranty'>,
+  procedureText: string,
+): string {
+  if (language === 'fr') return `Décision enregistrée pour ${currentCase.reference} : ${currentCase.warranty}.\n\n${procedureText}`;
+  const warranty = currentCase.warranty === 'Prise en charge validée'
+    ? { en: 'coverage approved', de: 'Kostenübernahme bestätigt', es: 'cobertura aprobada', ar: 'تمت الموافقة على التغطية' }[language]
+    : currentCase.warranty === 'Sans objet'
+      ? { en: 'not applicable', de: 'nicht anwendbar', es: 'no aplicable', ar: 'غير منطبق' }[language]
+      : { en: 'not covered', de: 'nicht übernommen', es: 'no cubierto', ar: 'غير مشمول' }[language];
+  const intro = {
+    en: `The recorded warranty decision for case ${currentCase.reference} is: ${warranty}.`,
+    de: `Die gespeicherte Garantieentscheidung für Vorgang ${currentCase.reference} lautet: ${warranty}.`,
+    es: `La decisión de garantía registrada para el expediente ${currentCase.reference} es: ${warranty}.`,
+    ar: `قرار الضمان المسجل للملف ${currentCase.reference} هو: ${warranty}.`,
+  } as const;
+  return intro[language] + ' ' + localizedProcedureReply(language, 'garantie prise en charge', procedureText);
 }
