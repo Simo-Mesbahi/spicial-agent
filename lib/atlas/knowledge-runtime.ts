@@ -24,7 +24,7 @@ const searchRowSchema = z.object({
 
 export type KnowledgeSearchResult = {
   articles: Article[];
-  scope: 'supabase_published' | 'legacy_demo' | 'supabase_unavailable';
+  scope: 'supabase_published' | 'legacy_demo' | 'supabase_unavailable' | 'not_required';
 };
 
 function configured(env: SupabaseRuntimeEnv) {
