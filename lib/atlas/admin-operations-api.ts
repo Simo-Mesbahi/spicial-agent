@@ -3,6 +3,7 @@ import { retrieve } from './domain';
 import { publicModelConfig } from './model-policy';
 import { applyConfig, availableProviders, defaults, environmentLabel, readSettings, runtimeConfigSchema, saveSettings, scopeKey, validateConfig, type Revision } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
+import { chunkKnowledge, knowledgeDocumentSchema, knowledgeDraftSchema, knowledgeListSchema } from './knowledge-control';
 import type { ProductionEnv } from './production-api';
 import { SupabaseRequestError, supabaseRequest } from './supabase';
 
@@ -255,11 +256,11 @@ function guardMutation(req: Request) {
     fail(403, 'Requête externe refusée.', 'cross_site_request');
 }
 
-async function requestBody(req: Request) {
+async function requestBody(req: Request, maxBytes = 16 * 1024) {
   if (!req.headers.get('content-type')?.toLowerCase().includes('application/json'))
     fail(415, 'Une requête JSON est requise.', 'json_required');
   try {
-    const value = await boundedJson(req, 16 * 1024);
+    const value = await boundedJson(req, maxBytes);
     if (!value || typeof value !== 'object' || Array.isArray(value))
       fail(400, 'Format de requête invalide.', 'invalid_body');
     return value;
@@ -398,6 +399,238 @@ export async function handleAdminOperationsApi(
       const membership = session.me.memberships.find(item => item.organization_id === env.SUPABASE_ORGANIZATION_ID);
       if (!membership) fail(403, 'Ce compte n’a pas accès à l’organisation de ce déploiement.', 'deployment_organization_only');
       return json({ organizationId: membership.organization_id, environment: environmentLabel(env, req.url) }, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/knowledge` && req.method === 'GET') {
+      const organization = organizationId(url, session.me);
+      const membership = session.me.memberships.find(item => item.organization_id === organization);
+      const status = url.searchParams.get('status') || null;
+      const search = url.searchParams.get('search') || null;
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 50) || 50, 100));
+      const offset = Math.max(0, Math.min(Number(url.searchParams.get('offset') ?? 0) || 0, 100000));
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_knowledge_list',
+        { p_organization_id: organization, p_status: status, p_search: search, p_limit: limit, p_offset: offset },
+        session.accessToken,
+      );
+      const parsed = knowledgeListSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Base de connaissances invalide.', 'invalid_knowledge_list');
+      return json({
+        ...parsed.data,
+        permissions: {
+          canEdit: ['super_admin','sav_manager','sc_manager'].includes(membership?.role ?? ''),
+          canPublish: membership?.role === 'super_admin',
+        },
+      }, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/knowledge/document` && req.method === 'GET') {
+      const organization = organizationId(url, session.me);
+      const documentId = url.searchParams.get('documentId') ?? '';
+      if (!z.string().uuid().safeParse(documentId).success)
+        fail(400, 'Document invalide.', 'invalid_knowledge_document_id');
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_knowledge_get',
+        { p_organization_id: organization, p_document_id: documentId },
+        session.accessToken,
+      );
+      if (result == null) fail(404, 'Document introuvable.', 'knowledge_document_not_found');
+      const parsed = knowledgeDocumentSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Document de connaissance invalide.', 'invalid_knowledge_document');
+      return json({ document: parsed.data }, 200, session.cookies);
+    }
+
+    if (path.startsWith(`${BASE_PATH}/knowledge/`) && req.method === 'POST') {
+      guardMutation(req);
+      const raw = await requestBody(req, 160 * 1024);
+      const common = z.object({
+        organizationId: z.string().uuid(),
+        documentId: z.string().uuid(),
+        expectedLockVersion: z.number().int().positive(),
+      }).strict();
+
+      if (path === `${BASE_PATH}/knowledge/create`) {
+        const input = z.object({ organizationId: z.string().uuid(), document: knowledgeDraftSchema }).strict().safeParse(raw);
+        if (!input.success) fail(400, 'Document invalide.', 'invalid_knowledge_document');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const d = input.data.document;
+        const result = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_create',
+          {
+            p_organization_id: organization,
+            p_title: d.title,
+            p_category: d.category,
+            p_version: d.version,
+            p_content: d.content,
+            p_summary: d.summary || null,
+            p_locale: d.locale,
+            p_market: d.market,
+            p_tags: d.tags,
+            p_source_url: d.sourceUrl || null,
+            p_effective_from: d.effectiveFrom,
+            p_effective_until: d.effectiveUntil,
+          },
+          session.accessToken,
+        );
+        const id = z.string().uuid().safeParse(result);
+        if (!id.success) fail(502, 'Création documentaire non confirmée.', 'invalid_knowledge_create_response');
+        return json({ ok: true, id: id.data }, 201, session.cookies);
+      }
+
+      if (path === `${BASE_PATH}/knowledge/update`) {
+        const input = z.object({
+          organizationId: z.string().uuid(),
+          documentId: z.string().uuid(),
+          expectedLockVersion: z.number().int().positive(),
+          document: knowledgeDraftSchema,
+        }).strict().safeParse(raw);
+        if (!input.success) fail(400, 'Document invalide.', 'invalid_knowledge_document');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const d = input.data.document;
+        const result = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_update',
+          {
+            p_organization_id: organization,
+            p_document_id: input.data.documentId,
+            p_expected_lock_version: input.data.expectedLockVersion,
+            p_title: d.title,
+            p_category: d.category,
+            p_version: d.version,
+            p_content: d.content,
+            p_summary: d.summary || null,
+            p_locale: d.locale,
+            p_market: d.market,
+            p_tags: d.tags,
+            p_source_url: d.sourceUrl || null,
+            p_effective_from: d.effectiveFrom,
+            p_effective_until: d.effectiveUntil,
+          },
+          session.accessToken,
+        );
+        const lockVersion = z.number().int().positive().safeParse(result);
+        if (!lockVersion.success) fail(502, 'Mise à jour non confirmée.', 'invalid_knowledge_update_response');
+        return json({ ok: true, lockVersion: lockVersion.data }, 200, session.cookies);
+      }
+
+      if (path === `${BASE_PATH}/knowledge/review`) {
+        const input = common.safeParse(raw);
+        if (!input.success) fail(400, 'Demande de revue invalide.', 'invalid_knowledge_review');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const result = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_submit_review',
+          { p_organization_id: organization, p_document_id: input.data.documentId, p_expected_lock_version: input.data.expectedLockVersion },
+          session.accessToken,
+        );
+        const lockVersion = z.number().int().positive().safeParse(result);
+        if (!lockVersion.success) fail(502, 'Revue non confirmée.', 'invalid_knowledge_review_response');
+        return json({ ok: true, lockVersion: lockVersion.data }, 200, session.cookies);
+      }
+
+      if (path === `${BASE_PATH}/knowledge/publish`) {
+        const input = common.safeParse(raw);
+        if (!input.success) fail(400, 'Publication invalide.', 'invalid_knowledge_publish');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const current = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_get',
+          { p_organization_id: organization, p_document_id: input.data.documentId },
+          session.accessToken,
+        );
+        const parsed = knowledgeDocumentSchema.safeParse(current);
+        if (!parsed.success) fail(409, 'Le document doit être rechargé avant publication.', 'knowledge_document_refresh_required');
+        const chunks = chunkKnowledge(parsed.data.content);
+        if (!chunks.length) fail(400, 'Le document ne contient aucun contenu indexable.', 'knowledge_empty');
+        const result = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_publish',
+          {
+            p_organization_id: organization,
+            p_document_id: input.data.documentId,
+            p_expected_lock_version: input.data.expectedLockVersion,
+            p_chunks: chunks,
+          },
+          session.accessToken,
+        );
+        const lockVersion = z.number().int().positive().safeParse(result);
+        if (!lockVersion.success) fail(502, 'Publication non confirmée.', 'invalid_knowledge_publish_response');
+        return json({ ok: true, lockVersion: lockVersion.data, chunks: chunks.length }, 200, session.cookies);
+      }
+
+      if (path === `${BASE_PATH}/knowledge/archive`) {
+        const input = common.safeParse(raw);
+        if (!input.success) fail(400, 'Archivage invalide.', 'invalid_knowledge_archive');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const result = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_archive',
+          { p_organization_id: organization, p_document_id: input.data.documentId, p_expected_lock_version: input.data.expectedLockVersion },
+          session.accessToken,
+        );
+        const lockVersion = z.number().int().positive().safeParse(result);
+        if (!lockVersion.success) fail(502, 'Archivage non confirmé.', 'invalid_knowledge_archive_response');
+        return json({ ok: true, lockVersion: lockVersion.data }, 200, session.cookies);
+      }
+
+      if (path === `${BASE_PATH}/knowledge/revision`) {
+        const input = z.object({
+          organizationId: z.string().uuid(),
+          documentId: z.string().uuid(),
+          version: z.string().trim().min(1).max(80),
+        }).strict().safeParse(raw);
+        if (!input.success) fail(400, 'Nouvelle version invalide.', 'invalid_knowledge_revision');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const result = await safeRpc<unknown>(
+          env,
+          'admin_knowledge_create_revision',
+          { p_organization_id: organization, p_document_id: input.data.documentId, p_version: input.data.version },
+          session.accessToken,
+        );
+        const id = z.string().uuid().safeParse(result);
+        if (!id.success) fail(502, 'Création de version non confirmée.', 'invalid_knowledge_revision_response');
+        return json({ ok: true, id: id.data }, 201, session.cookies);
+      }
+
+      if (path === `${BASE_PATH}/knowledge/search`) {
+        const input = z.object({
+          organizationId: z.string().uuid(),
+          query: z.string().trim().min(2).max(500),
+          limit: z.number().int().min(1).max(8).default(3),
+          locale: z.string().regex(/^[a-z]{2}(?:-[A-Z]{2})?$/).nullable().default(null),
+          market: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,15}$/).nullable().default(null),
+        }).strict().safeParse(raw);
+        if (!input.success) fail(400, 'Recherche documentaire invalide.', 'invalid_knowledge_search');
+        const organization = organizationFromBody(input.data.organizationId, session.me);
+        const result = await safeRpc<unknown>(
+          env,
+          'knowledge_search',
+          { p_organization_id: organization, p_query: input.data.query, p_limit: input.data.limit, p_locale: input.data.locale, p_market: input.data.market },
+          session.accessToken,
+        );
+        const resultSchema = z.array(z.object({
+          document_id: z.string().uuid(),
+          chunk_id: z.string().uuid(),
+          title: z.string().max(240),
+          category: z.string().max(120),
+          version: z.string().max(80),
+          locale: z.string(),
+          market: z.string(),
+          effective_from: z.string().nullable(),
+          effective_until: z.string().nullable(),
+          chunk_ordinal: z.number().int().nonnegative(),
+          content: z.string().max(4000),
+          rank: z.number().nonnegative(),
+        })).max(8);
+        const parsed = resultSchema.safeParse(result);
+        if (!parsed.success) fail(502, 'Résultats documentaires invalides.', 'invalid_knowledge_search_response');
+        return json({ results: parsed.data }, 200, session.cookies);
+      }
+
+      return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404, session.cookies);
     }
 
     if (path === `${BASE_PATH}/settings` || path === `${BASE_PATH}/settings/preview`) {
