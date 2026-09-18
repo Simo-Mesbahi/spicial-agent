@@ -815,6 +815,7 @@ async function generate(
       },
     },
   ];
+  const activeTools = route === 'open' ? [] : tools;
   const sources = new Map<string, Article>();
   const trace: string[] = [];
   const callIds = new Set<string>();
@@ -854,12 +855,16 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
         body: JSON.stringify({
           model: settings.model,
           messages: msgs,
-          tools,
-          tool_choice: round === 2 ? 'none' : 'auto',
-          ...(mode === 'openai' ? { parallel_tool_calls: false } : {}),
+          ...(activeTools.length
+            ? {
+                tools: activeTools,
+                tool_choice: round === 2 ? 'none' : 'auto',
+                ...(mode === 'openai' ? { parallel_tool_calls: false } : {}),
+              }
+            : {}),
           ...(mode === 'openai' || mode === 'gemini'
-            ? { max_completion_tokens: 1200 }
-            : { max_tokens: 1200 }),
+            ? { max_completion_tokens: route === 'open' ? 500 : 1200 }
+            : { max_tokens: route === 'open' ? 500 : 1200 }),
           ...(mode === 'openai' || mode === 'ollama' || mode === 'gemini'
             ? { reasoning_effort: 'none' }
             : {}),
