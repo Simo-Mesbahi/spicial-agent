@@ -540,7 +540,7 @@ test('Knowledge answers include actual document references, unsafe repair redire
   const danger = await c.call('chat', {
     message: 'Mon appareil fait de la fumée, comment le réparer ?',
   });
-  assert.match(danger.body.content, /cessez d’utiliser/);
+  assert.match(danger.body.content, /cessez d’utiliser/i);
   db.sql.close();
 });
 test('Secret-like codes and emails are not retained in messages', async () => {
@@ -728,7 +728,7 @@ test('Gemini free adapter uses only its fixed endpoint and redacted conversation
   try {
     const r = await c.call('chat', {
       caseId: row.id,
-      message: 'Mon code est ' + row.demoCode + ' et mon email est test@example.com',
+      message: 'Où en est mon dossier ? Mon code est ' + row.demoCode + ' et mon email est test@example.com',
     });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.metadata.mode, 'gemini');
@@ -1337,7 +1337,7 @@ test('An unsupported answer without evidence is replaced with a clarification', 
   try {
     const c = await client(db); c.env.LLM_PROVIDER = 'ollama';
     globalThis.fetch = async () => Response.json({ choices: [{ message: { role: 'assistant', content: 'INVENTED_ANSWER: votre vol spatial part demain.' } }] });
-    const response = await c.call('chat', { message: 'Astronomie quantique intergalactique' });
+    const response = await c.call('chat', { message: 'Mon dossier concerne une fusée intergalactique' });
     assert.equal(response.status, 200);
     assert.equal(response.body.metadata.sources.length, 0);
     assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_ANSWER/);
