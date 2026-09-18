@@ -105,6 +105,7 @@ test('local Supabase migration versions stay aligned with the linked project his
     '20260908103327_admin_operations_and_session_security.sql',
     '20260908104855_client_session_lifecycle_and_retention.sql',
     '20260918100917_knowledge_control_plane.sql',
+    '20260918101301_knowledge_control_plane_hardening.sql',
   ]);
   assert.ok(!migrations.includes('202609030001_production_foundation.sql'));
 });
