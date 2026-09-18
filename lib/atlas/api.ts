@@ -20,6 +20,7 @@ import {
   casualReply,
   detectConversationLanguage,
   retrievalQuery,
+  asksAboutCurrentCase,
 } from './conversation-intelligence';
 import type { SupabaseRuntimeEnv } from './supabase';
 import { effectiveEnvironment } from './runtime-settings';
@@ -573,7 +574,8 @@ export function demoAnswer(
   const previousUserMessages = history.filter((item) => item.role === 'user').map((item) => item.content);
   const language = detectConversationLanguage(message, previousUserMessages);
   const casual = casualIntent(message);
-  const sources = knowledgeSources ?? retrieve(retrievalQuery(message), rag.RAG_RESULTS, rag.RAG_MIN_ANCHORS);
+  const canonicalQuery = retrievalQuery(message);
+  const sources = knowledgeSources ?? retrieve(canonicalQuery, rag.RAG_RESULTS, rag.RAG_MIN_ANCHORS);
   const procedure = (titleNeedle: string, legacyId: string) =>
     sources.find((source) => normalized(source.title).includes(titleNeedle)) ??
     (knowledgeSources === undefined ? articles.find((source) => source.id === legacyId) : undefined);
@@ -627,14 +629,14 @@ export function demoAnswer(
       tools: [],
       action: null,
     };
-  if (c && /garantie|prise en charge|couvert/.test(q))
+  if (c && (/garantie|prise en charge|couvert/.test(q) || canonicalQuery === 'garantie prise en charge'))
     return {
       content: `Décision enregistrée pour ${c.reference} : ${c.warranty}.\n\n${procedure('garantie', 'sav-garantie')?.body ?? 'La procédure de garantie publiée est momentanément indisponible. Un conseiller doit vérifier les conditions applicables.'}`,
       sources: procedure('garantie', 'sav-garantie') ? [procedure('garantie', 'sav-garantie')!] : [],
       tools: ['get_case', 'search_knowledge'],
       action: null,
     };
-  if (c && /devis|accepter|refuser/.test(q))
+  if (c && (/devis|accepter|refuser/.test(q) || canonicalQuery === 'devis réparation'))
     return {
       content:
         c.status === 'quote_pending'
@@ -643,6 +645,13 @@ export function demoAnswer(
       sources: procedure('devis', 'sav-devis') ? [procedure('devis', 'sav-devis')!] : [],
       tools: ['get_case'],
       action: c.status === 'quote_pending' ? 'quote' : null,
+    };
+  if (c && asksAboutCurrentCase(message))
+    return {
+      content: grounded(c),
+      sources: [],
+      tools: ['get_case'],
+      action: null,
     };
   if (c && sources.length && /^(comment|quels documents|que faut.il) /.test(q))
     return {
