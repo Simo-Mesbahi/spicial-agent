@@ -1343,3 +1343,65 @@ test('An unsupported answer without evidence is replaced with a clarification', 
     assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_ANSWER/);
   } finally { globalThis.fetch = original; db.sql.close(); }
 });
+
+
+test('Colloquial small talk stays conversational and never drags the selected case into the reply', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find((item) => item.reference === 'RET-2026-3012') ?? c.snapshot.cases[0];
+    await verify(c, row);
+    c.env.LLM_PROVIDER = 'ollama';
+    globalThis.fetch = async () => {
+      throw new Error('Casual turns must not call the model');
+    };
+
+    const reply = await c.call('chat', { caseId: row.id, message: 'cc cv ?' });
+    assert.equal(reply.status, 200);
+    assert.match(reply.body.content, /Ça va bien, merci/);
+    assert.doesNotMatch(reply.body.content, new RegExp(row.reference));
+    assert.equal(reply.body.metadata.mode, 'conversation');
+    assert.equal(reply.body.metadata.fallback, null);
+    assert.equal(reply.body.metadata.knowledgeScope, 'not_required');
+    assert.equal(reply.body.metadata.caseBrief, null);
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Correcting the assistant to another dossier stops using the current dossier', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find((item) => item.reference === 'RET-2026-3012') ?? c.snapshot.cases[0];
+    await verify(c, row);
+    c.env.LLM_PROVIDER = 'ollama';
+    globalThis.fetch = async () => {
+      throw new Error('Case-switch turns must not call the model');
+    };
+
+    for (const message of [
+      "non d'autre dossier",
+      'non pas ce dossier',
+      "putain je veux me renseigner d'autre dossier",
+    ]) {
+      const reply = await c.call('chat', { caseId: row.id, message });
+      assert.equal(reply.status, 200);
+      assert.equal(reply.body.metadata.action, 'switch_case');
+      assert.equal(reply.body.metadata.mode, 'conversation');
+      assert.equal(reply.body.metadata.fallback, null);
+      assert.equal(reply.body.metadata.knowledgeScope, 'not_required');
+      assert.equal(reply.body.metadata.caseBrief, null);
+      assert.ok(reply.body.metadata.tools.includes('context_switch'));
+      assert.ok(!reply.body.metadata.tools.includes('get_case'));
+      assert.match(reply.body.content, /autre dossier/i);
+      assert.doesNotMatch(reply.body.content, /Retour demandé|État actuel|étape/i);
+    }
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
