@@ -24,6 +24,7 @@ const searchRowSchema = z.object({
 
 export type KnowledgeSearchResult = {
   articles: Article[];
+  evidence?: { documentId: string; chunkId: string; version: string; score: number; locale: string; market: string }[];
   scope: 'supabase_published' | 'legacy_demo' | 'supabase_unavailable' | 'not_required';
 };
 
@@ -70,6 +71,7 @@ export async function searchKnowledge(
     if (!parsed.success) return { articles: [], scope: 'supabase_unavailable' };
 
     return {
+      evidence: parsed.data.map(row => ({ documentId: row.document_id, chunkId: row.chunk_id, version: row.version, score: row.rank, locale: row.locale, market: row.market })),
       articles: parsed.data.map((row) => ({
         id: row.document_id,
         title: row.title,

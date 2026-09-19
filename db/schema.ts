@@ -186,3 +186,13 @@ export const mfaEnrollments = sqliteTable('mfa_enrollments', {
   lockId: text('lock_id').notNull(),
   lockUntil: integer('lock_until').notNull(),
 });
+
+// One bounded cache/lease row per deployment; fingerprint invalidates on key/config rotation.
+export const providerHealth = sqliteTable('provider_health', {
+  scope: text('scope').primaryKey(),
+  fingerprint: text('fingerprint').notNull(),
+  payload: text('payload'),
+  expiresAt: integer('expires_at').notNull(),
+  lockId: text('lock_id').notNull(),
+  lockUntil: integer('lock_until').notNull(),
+});

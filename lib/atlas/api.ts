@@ -1,3 +1,4 @@
+import { completionPayload, providerCompletion, providerTrace, ProviderError, type ProviderTrace, type ProviderFailureReason } from './provider-runtime';
 import {
   articles,
   scenarios,
@@ -31,7 +32,7 @@ import {
 } from './conversation-intelligence';
 import type { SupabaseRuntimeEnv } from './supabase';
 import { effectiveEnvironment } from './runtime-settings';
-import { modelSettings, publicModelConfig } from './model-policy';
+import { modelSettings, publicModelConfig, type ModelEnvironment } from './model-policy';
 import { caseBrief } from './case-brief';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { supportDecision, supportQuickReplies, type SupportPath } from './support-routing';
@@ -47,7 +48,7 @@ export interface Database {
   prepare(sql: string): Statement;
   batch(statements: Statement[]): Promise<unknown[]>;
 }
-export interface AtlasEnv extends SupabaseRuntimeEnv {
+export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment {
   DB: Database;
   APP_ENVIRONMENT?: string;
   SUPABASE_ORGANIZATION_ID?: string;
@@ -147,40 +148,6 @@ export class ApiError extends Error {
   }
 }
 
-type ProviderFailureReason =
-  | 'network_or_timeout'
-  | 'upstream_auth'
-  | 'upstream_rate_limited'
-  | 'upstream_request_rejected'
-  | 'upstream_unavailable'
-  | 'upstream_rejected'
-  | 'invalid_upstream_response'
-  | 'missing_verifiable_sources'
-  | 'invalid_tool_arguments'
-  | 'tool_loop'
-  | 'unknown';
-
-function providerFailureReason(error: ApiError): ProviderFailureReason {
-  const message = error.message.toLowerCase();
-  if (message.includes('fournisseur ia est temporairement indisponible'))
-    return 'upstream_unavailable';
-  if (message.includes('temporairement indisponible') || message.includes('ne répond pas'))
-    return 'network_or_timeout';
-  if (message.includes('refusé l’authentification')) return 'upstream_auth';
-  if (message.includes('atteint sa limite')) return 'upstream_rate_limited';
-  if (message.includes('rejeté le format')) return 'upstream_request_rejected';
-  if (message.includes('refusé la requête') || message.includes('redirection'))
-    return 'upstream_rejected';
-  if (message.includes('réponse invalide') || message.includes('pas fourni de réponse'))
-    return 'invalid_upstream_response';
-  if (message.includes('sources vérifiables'))
-    return 'missing_verifiable_sources';
-  if (message.includes('arguments d’outil') || message.includes('identifiant d’outil'))
-    return 'invalid_tool_arguments';
-  if (message.includes('finalisée'))
-    return 'tool_loop';
-  return 'unknown';
-}
 function fail(status: number, message: string): never {
   throw new ApiError(status, message);
 }
@@ -738,44 +705,13 @@ function localGuard(answer: AssistantAnswer) {
     answer.action === 'switch_case'
   );
 }
-const completionSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        finish_reason: z.enum(['stop', 'tool_calls']).nullish(),
-        message: z.object({
-          role: z.literal('assistant'),
-          content: z.string().max(6000).nullable().optional(),
-          tool_calls: z
-            .array(
-              z.object({
-                id: z.string().min(1).max(200),
-                type: z.literal('function').optional(),
-                function: z.object({
-                  name: z.enum(['get_case', 'search_knowledge']),
-                  arguments: z.string().max(2000),
-                }),
-              }),
-            )
-            .max(4)
-            .optional(),
-        }),
-      }),
-    )
-    .length(1),
-  usage: z
-    .object({
-      prompt_tokens: z.number().int().nonnegative().optional(),
-      completion_tokens: z.number().int().nonnegative().optional(),
-    })
-    .optional(),
-});
 async function generate(
   env: AtlasEnv,
   message: string,
   c: CaseRow | null,
   history: MessageRow[],
   knowledge: KnowledgeSearchResult,
+  telemetry: ProviderTrace,
 ): Promise<GeneratedAnswer> {
   let settings: ReturnType<typeof modelSettings>;
   try {
@@ -787,7 +723,7 @@ async function generate(
   const expected = demoAnswer(message, c, history, env, knowledge.articles);
   if (mode === 'demo' || localGuard(expected))
     return { ...expected, mode: 'demo', inputTokens: 0, outputTokens: 0 };
-  const { base, key } = settings;
+  const { base } = settings;
   if (!base) throw new ApiError(503, 'Adresse du modèle manquante.');
   const schema = (properties: Record<string, unknown>) => ({
     type: 'object',
@@ -844,79 +780,12 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
   // One deadline for the whole tool loop, not three independent long requests.
   const deadline = AbortSignal.timeout(settings.timeoutMs);
   for (let round = 0; round < 3; round++) {
-    let res: Response;
-    try {
-      res = await fetch(base.replace(/\/$/, '') + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(key ? { Authorization: 'Bearer ' + key } : {}),
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          messages: msgs,
-          ...(activeTools.length
-            ? {
-                tools: activeTools,
-                tool_choice: round === 2 ? 'none' : 'auto',
-                ...(mode === 'openai' ? { parallel_tool_calls: false } : {}),
-              }
-            : {}),
-          ...(mode === 'openai' || mode === 'gemini'
-            ? { max_completion_tokens: route === 'open' ? 500 : 1200 }
-            : { max_tokens: route === 'open' ? 500 : 1200 }),
-          ...(mode === 'openai' || mode === 'ollama' || mode === 'gemini'
-            ? { reasoning_effort: 'none' }
-            : {}),
-          ...(mode === 'ollama' || mode === 'gemini' ? { temperature: 0.2 } : {}),
-        }),
-        signal: deadline,
-        // Cloudflare does not implement redirect: "error". Inspect the first
-        // response instead; credentials must never follow a redirect.
-        redirect: 'manual',
-      });
-    } catch {
-      throw new ApiError(
-        503,
-        mode === 'ollama'
-          ? 'Le modèle local ne répond pas. Vérifiez qu’Ollama tourne sur cet ordinateur. Vos dossiers restent accessibles.'
-          : 'Le modèle est temporairement indisponible. Vos dossiers restent accessibles.',
-      );
-    }
-    if (res.status >= 300 && res.status < 400) {
-      void res.body?.cancel().catch(() => {});
-      throw new ApiError(503, 'Le fournisseur IA a renvoyé une redirection non autorisée.');
-    }
-    if (!res.ok) {
-      void res.body?.cancel().catch(() => {});
-      if (res.status === 401 || res.status === 403)
-        throw new ApiError(503, 'Le fournisseur IA a refusé l’authentification.');
-      if (res.status === 429)
-        throw new ApiError(503, 'Le fournisseur IA a atteint sa limite.');
-      if (res.status === 400 || res.status === 422)
-        throw new ApiError(503, 'Le fournisseur IA a rejeté le format de la requête.');
-      if (res.status >= 500)
-        throw new ApiError(503, 'Le fournisseur IA est temporairement indisponible.');
-      throw new ApiError(503, 'Le fournisseur IA a refusé la requête.');
-    }
-    const parsed = completionSchema.safeParse(
-      await boundedJson(res, 65536, deadline).catch(() => {
-        throw new ApiError(503, 'Le modèle a renvoyé une réponse invalide.');
-      }),
-    );
-    if (!parsed.success) throw new ApiError(503, 'Réponse du modèle invalide.');
-    const out = parsed.data;
+    const out = await providerCompletion(env,
+      completionPayload(env, msgs, activeTools, round === 2, route === 'open' ? 500 : 1200),
+      deadline, telemetry);
     const m = out.choices[0].message;
-    const inputCount = out.usage?.prompt_tokens;
-    const outputCount = out.usage?.completion_tokens;
-    inputTokens +=
-      typeof inputCount === 'number' && Number.isFinite(inputCount) && inputCount >= 0
-        ? inputCount
-        : 0;
-    outputTokens +=
-      typeof outputCount === 'number' && Number.isFinite(outputCount) && outputCount >= 0
-        ? outputCount
-        : 0;
+    inputTokens = telemetry.inputTokens;
+    outputTokens = telemetry.outputTokens;
     if (!m.tool_calls?.length) {
       if (typeof m.content !== 'string' || !m.content.trim())
         throw new ApiError(503, 'Le modèle n’a pas fourni de réponse.');
@@ -925,7 +794,7 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
         (expected.tools.includes('search_knowledge') &&
           (!sources.size || !expected.sources.every(source => sources.has(source.id))))
       )
-        throw new ApiError(503, 'La réponse du modèle manque de sources vérifiables.');
+        throw new ProviderError('missing_verifiable_sources');
       // Casual conversation may use model phrasing. Business facts remain
       // server-composed from verified case/document evidence so model inventions
       // never become customer-visible facts.
@@ -968,22 +837,25 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
       return { ...verified, mode, inputTokens, outputTokens };
 
     }
-    if (round === 2) throw new ApiError(503, 'La réponse n’a pas pu être finalisée.');
+    if (round === 2) throw new ProviderError('tool_loop');
+    if (!activeTools.length) throw new ProviderError('invalid_tool_arguments');
     msgs.push(m);
     for (const call of m.tool_calls) {
-      if (callIds.has(call.id)) throw new ApiError(503, 'Identifiant d’outil répété.');
+      if (callIds.has(call.id)) throw new ProviderError('invalid_tool_arguments');
       callIds.add(call.id);
       let args: unknown;
       try {
         args = JSON.parse(call.function.arguments);
       } catch {
-        throw new ApiError(503, 'Arguments d’outil invalides.');
+        throw new ProviderError('invalid_tool_arguments');
       }
       let result: unknown;
       trace.push(call.function.name);
+
       if (call.function.name === 'get_case') {
         if (!z.object({}).strict().safeParse(args).success)
-          throw new ApiError(503, 'Arguments d’outil invalides.');
+          throw new ProviderError('invalid_tool_arguments');
+        telemetry.tools.push('get_case');
         result = c
           ? safeCase(c)
           : { error: 'Dossier non vérifié. Invitez le client à utiliser le formulaire sécurisé.' };
@@ -993,18 +865,21 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
           .object({ query: z.string().trim().min(1).max(500) })
           .strict()
           .safeParse(args);
-        if (!a.success) throw new ApiError(503, 'Arguments d’outil invalides.');
+        if (!a.success) throw new ProviderError('invalid_tool_arguments');
+        telemetry.tools.push('search_knowledge');
+        const retrievalStarted = performance.now();
         const found = await searchKnowledge(
           env,
           contextualRetrievalQuery(a.data.query, previousUserMessages),
         );
+        telemetry.retrievals.push({ durationMs: Math.round((performance.now() - retrievalStarted) * 100) / 100, scope: found.scope, evidence: found.evidence ?? [] });
         found.articles.forEach((x) => sources.set(x.id, x));
         result = found.articles;
       }
       msgs.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
   }
-  throw new ApiError(503, 'La réponse n’a pas pu être finalisée.');
+  throw new ProviderError('tool_loop');
 }
 
 export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> {
@@ -1012,7 +887,12 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
   try {
     const path = new URL(req.url).pathname;
     const db = env.DB;
+    if (path === '/api/live' && req.method === 'GET') return json({ status: 'ok' });
     if (db) env = await effectiveEnvironment(env, req.url);
+    if (path === '/api/ready' && req.method === 'GET') {
+      const ready = publicModelConfig(env);
+      return json({ status: ready.ready && ready.provider !== 'demo' ? 'ready' : 'degraded', providerConfigured: ready.ready && ready.provider !== 'demo', synthetic: false });
+    }
     if (path === '/api/health') {
       if (!db) fail(503, 'Stockage indisponible.');
       await db.prepare('SELECT id FROM spaces LIMIT 1').first();
@@ -1194,6 +1074,9 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       return json({ case: safeCase(updated) });
     }
     if (path === '/api/chat') {
+      const totalStarted = performance.now();
+      const traceId = uuid();
+      const telemetry = providerTrace();
       const message = redacted(text(b.message, 1500).trim());
       if (!message) fail(400, 'Écrivez un message.');
       const id = b.caseId ? text(b.caseId, 80) : null;
@@ -1259,6 +1142,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const route = conversationRoute(message, previousUserMessages);
       const casual = route === 'small_talk';
       const switchCase = route === 'switch_case';
+      const retrievalStarted = performance.now();
       const knowledge: KnowledgeSearchResult =
         route === 'business'
           ? {
@@ -1268,6 +1152,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
               )),
             }
           : { articles: [], scope: 'not_required' };
+      const retrievalMs = Math.round((performance.now() - retrievalStarted) * 100) / 100;
       const deterministic = demoAnswer(message, c, history, env, knowledge.articles);
       const conversationHandled = Boolean(casual || switchCase);
       const guarded =
@@ -1299,18 +1184,20 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           fallbackReason = 'daily_limit';
         }
       }
-      const start = Date.now();
+
       let generated: Awaited<ReturnType<typeof generate>> | null = guarded;
       if (!fallback && !generated) {
         try {
-          generated = await generate(env, message, c, history, knowledge);
+          generated = await generate(env, message, c, history, knowledge, telemetry);
         } catch (e) {
-          if (!(e instanceof ApiError && e.status === 503)) throw e;
+          if (!(e instanceof ProviderError) && !(e instanceof ApiError && e.status === 503)) throw e;
           fallback = 'provider_unavailable';
-          fallbackReason = providerFailureReason(e);
+          fallbackReason = e instanceof ProviderError ? e.reason : 'configuration';
           console.warn('Atlas LLM fallback', {
             provider: env.LLM_PROVIDER ?? 'demo',
-            model: env.LLM_MODEL ?? null,
+            model: modelConfig.model,
+            requestId: traceId,
+            diagnostic: e instanceof ProviderError ? e.diagnostic : null,
             reason: fallbackReason,
           });
         }
@@ -1330,7 +1217,21 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         mode: answer.mode,
         fallback,
         fallbackReason,
-        latencyMs: timestamp - start,
+        requestId,
+        traceId,
+        provider: modelConfig.provider,
+        model: modelConfig.model,
+        route,
+        language: detectConversationLanguage(message, previousUserMessages),
+        latencyMs: Math.max(0.01, Math.round((performance.now() - totalStarted) * 100) / 100),
+        retrievalMs,
+        providerMs: telemetry.latencyMs,
+        providerCalls: telemetry.calls,
+        executedTools: telemetry.tools,
+        toolCallCount: telemetry.tools.length,
+        usageComplete: telemetry.usageComplete,
+        measuredInputTokens: telemetry.inputTokens,
+        measuredOutputTokens: telemetry.outputTokens,
         inputTokens: answer.inputTokens,
         outputTokens: answer.outputTokens,
         action: answer.action,
@@ -1341,6 +1242,17 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         presentation:
           c && answer.content === grounded(c) ? 'case_brief' : 'text',
       };
+      console.info('atlas.ai.interaction', {
+        schema: 1, requestId: traceId, sessionId: (await hash(s.id)).slice(0, 24),
+        timestamp: new Date(timestamp).toISOString(), provider: modelConfig.provider,
+        model: modelConfig.model, route, language: metadata.language,
+        mode: answer.mode, fallback, fallbackReason,
+        retrievalMs, latencyMs: metadata.latencyMs,
+        providerTrace: telemetry, escalation: answer.supportPath ?? null,
+        sources: answer.sources.map(a => ({ id: a.id, version: a.version })),
+        retrievalEvidence: knowledge.evidence ?? [],
+        outcome: fallback ? 'fallback' : telemetry.calls ? 'provider_success' : 'local',
+      });
       const userMessage = {
         id: uuid(),
         case_id: id,

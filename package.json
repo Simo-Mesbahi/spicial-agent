@@ -23,7 +23,9 @@
     "backend:setup": "node scripts/backend.mjs setup",
     "backend:doctor": "node scripts/backend.mjs doctor",
     "admin:create": "node scripts/backend.mjs admin-create",
-    "admin:grant": "node scripts/backend.mjs admin-grant"
+    "admin:grant": "node scripts/backend.mjs admin-grant",
+    "eval:ai": "node scripts/evaluate-ai.mjs --baseline evals/baseline-p0.json",
+    "ai:probe": "node scripts/probe-provider.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

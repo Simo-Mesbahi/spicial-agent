@@ -11,6 +11,7 @@ export type ModelEnvironment = {
   GEMINI_API_KEY?: string;
 
   OPENAI_MODEL?: string;
+  OPENAI_REASONING_EFFORT?: string;
   OPENAI_API_KEY?: string;
 
   OLLAMA_MODEL?: string;
@@ -130,6 +131,9 @@ export function modelSettings(env: ModelEnvironment) {
     );
 
   if (provider === 'openai') {
+    const effort = env.OPENAI_REASONING_EFFORT?.trim();
+    if (effort && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort))
+      throw new Error('Effort de raisonnement OpenAI invalide.');
     const model = configuredModel(env, 'openai');
     if (!model) throw new Error('Modèle OpenAI manquant.');
     if (!env.OPENAI_API_KEY) throw new Error('Clé OpenAI manquante.');

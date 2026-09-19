@@ -12,7 +12,9 @@ const bundled = await build({
     contents: `
       import { handleProductionApi } from './lib/atlas/production-api';
       import { handleApi } from './lib/atlas/api';
+      import { handleAdminOperationsApi } from './lib/atlas/admin-operations-api';
       export default { fetch(req, env) {
+        if(new URL(req.url).pathname.startsWith('/api/production/admin/operations/')) return handleAdminOperationsApi(req,env);
         return new URL(req.url).pathname.startsWith('/api/production/')
           ? handleProductionApi(req, env) : handleApi(req, env);
       }};`,
@@ -175,5 +177,30 @@ for (const redirect of [false, true]) test(`Cloudflare: Gemini ${redirect ? 'blo
     if (redirect) assert.equal(result.metadata.fallback, 'provider_unavailable');
     assert.equal(calls.length, redirect ? 1 : 2);
     assert.doesNotMatch(JSON.stringify(calls), new RegExp(row.demoCode));
+  } finally { await mf.dispose(); }
+});
+
+test('Cloudflare: protected synthetic provider health persists its cache in D1', async () => {
+  let completions = 0;
+  const mf = await runtime(async req => {
+    if (req.url.endsWith('/admin_me')) return Response.json({
+      user_id: '00000000-0000-4000-8000-000000000900', email: 'admin@example.test', aal: 'aal2',
+      memberships: [{ organization_id: organizationId, organization_name: 'Test', role: 'super_admin', display_name: null }],
+    });
+    assert.equal(req.url, 'https://api.openai.com/v1/chat/completions');
+    completions++;
+    const payload = await req.json();
+    assert.equal(payload.model, 'configured-test-model');
+    assert.equal(payload.max_completion_tokens, 128);
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'OK' } }], usage: { prompt_tokens: 6, completion_tokens: 1 } });
+  }, { LLM_PROVIDER: 'openai', OPENAI_MODEL: 'configured-test-model', OPENAI_API_KEY: 'test-key', LLM_BUDGET_MODE: 'approved' });
+  try {
+    const path = '/api/production/admin/operations/provider-health?organizationId=' + organizationId;
+    const first = await call(mf, path, { body: {}, cookie: 'savsc_admin_access=test-token' });
+    assert.equal(first.status, 200, await first.clone().text());
+    assert.equal((await first.json()).status, 'healthy');
+    const second = await call(mf, path, { body: {}, cookie: 'savsc_admin_access=test-token' });
+    assert.equal((await second.json()).cached, true);
+    assert.equal(completions, 1);
   } finally { await mf.dispose(); }
 });

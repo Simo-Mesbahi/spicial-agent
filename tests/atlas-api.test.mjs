@@ -911,7 +911,7 @@ test('Gemini keys and other secrets are removed from outgoing prompts, immediate
         ],
       });
     };
-    const reply = await c.call('chat', { message: raw });
+    const reply = await c.call('chat', { message: 'Mon colis est incomplet. ' + raw });
     assert.equal(reply.status, 200);
     assert.equal(reply.body.metadata.mode, 'ollama');
     const snapshot = await c.call('snapshot');
@@ -1308,9 +1308,9 @@ test('Model inventions after a valid case tool never enter the reply or stored h
     assert.equal(response.body.metadata.mode, 'ollama');
     assert.equal(response.body.metadata.responsePolicy, 'verified_content');
     assert.equal(response.body.metadata.presentation, 'case_brief');
-    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_PROMISE|9999/);
+    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_PROMISE|\b9999\b/);
     const snapshot = await c.call('snapshot');
-    assert.doesNotMatch(JSON.stringify(snapshot.body.messages), /INVENTED_PROMISE|9999/);
+    assert.doesNotMatch(JSON.stringify(snapshot.body.messages), /INVENTED_PROMISE|\b9999\b/);
   } finally { globalThis.fetch = original; db.sql.close(); }
 });
 
@@ -1407,7 +1407,7 @@ test('Correcting the assistant to another dossier stops using the current dossie
 });
 
 
-test('OpenAI open conversation uses low-reasoning no-tool mode and keeps natural model prose', async () => {
+test('OpenAI open conversation omits unconfigured reasoning and tools and keeps natural model prose', async () => {
   const db = database();
   const original = globalThis.fetch;
   try {
@@ -1426,7 +1426,7 @@ test('OpenAI open conversation uses low-reasoning no-tool mode and keeps natural
       assert.equal(init.headers.Authorization, 'Bearer openai-test-key');
       const body = JSON.parse(init.body);
       assert.equal(body.model, 'gpt-5.6-luna');
-      assert.equal(body.reasoning_effort, 'none');
+      assert.equal(body.reasoning_effort, undefined);
       assert.equal(body.max_completion_tokens, 500);
       assert.equal(body.tools, undefined);
       assert.equal(body.tool_choice, undefined);
@@ -1470,7 +1470,7 @@ test('OpenAI business tool calls use strict schemas, bounded output and one tool
     globalThis.fetch = async (_url, init) => {
       const body = JSON.parse(init.body);
       captured.push(body);
-      assert.equal(body.reasoning_effort, 'none');
+      assert.equal(body.reasoning_effort, undefined);
       assert.equal(body.max_completion_tokens, 1200);
       assert.equal(body.parallel_tool_calls, false);
       assert.equal(body.tools.length, 2);
@@ -1542,4 +1542,71 @@ test('Provider rejection classes are recorded without exposing upstream response
     globalThis.fetch = original;
     db.sql.close();
   }
+});
+
+test('P0 tool transcripts, accumulated tokens and actual executions survive a later fallback', async () => {
+  const db=database(), original=globalThis.fetch;
+  try {
+    const c=await client(db); const row=c.snapshot.cases[0]; await verify(c,row);
+    Object.assign(c.env,{LLM_PROVIDER:'openai',LLM_BUDGET_MODE:'approved',OPENAI_MODEL:'configured',OPENAI_API_KEY:'test-key'});
+    const requests=[];
+    globalThis.fetch=async(_url,init)=>{
+      const payload=JSON.parse(init.body);requests.push(payload);
+      if(requests.length===1)return Response.json({choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'case-tool',function:{name:'get_case',arguments:'{}'}}]}}],usage:{prompt_tokens:23,completion_tokens:9}});
+      const assistant=payload.messages.find(m=>m.tool_calls);
+      assert.equal(assistant.tool_calls[0].type,'function');
+      assert.equal(payload.messages.at(-1).tool_call_id,'case-tool');
+      assert.equal(payload.messages.at(-1).role,'tool');
+      return Response.json({error:{code:'insufficient_quota',message:'SECRET_RESPONSE'}},{status:429});
+    };
+    const result=await c.call('chat',{caseId:row.id,message:'Où en est mon dossier ?'});
+    assert.equal(result.status,200);const m=result.body.metadata;
+    assert.equal(m.fallbackReason,'upstream_rate_limited');assert.equal(m.provider,'openai');assert.equal(m.model,'configured');
+    assert.equal(m.measuredInputTokens,23);assert.equal(m.measuredOutputTokens,9);assert.equal(m.providerCalls,2);
+    assert.deepEqual(m.executedTools,['get_case']);assert.equal(m.usageComplete,false);assert.ok(m.providerMs>0);
+    assert.doesNotMatch(JSON.stringify(result.body),/SECRET_RESPONSE|insufficient_quota/);
+  }finally{globalThis.fetch=original;db.sql.close();}
+});
+
+test('P0 repeated tool IDs and exhausted tool loop have deterministic reasons',async()=>{
+ const db=database(),original=globalThis.fetch;
+ try{
+  const c=await client(db),row=c.snapshot.cases[0];await verify(c,row);c.env.LLM_PROVIDER='ollama';
+  for(const [repeat,reason]of [[true,'invalid_tool_arguments'],[false,'tool_loop']]){
+   let calls=0;globalThis.fetch=async()=>Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:repeat?'duplicate':`call-${++calls}`,function:{name:'get_case',arguments:'{}'}}]}}]});
+   const r=await c.call('chat',{caseId:row.id,message:'Où en est mon dossier ?'});assert.equal(r.body.metadata.fallbackReason,reason);
+  }
+ }finally{globalThis.fetch=original;db.sql.close();}
+});
+
+test('P0 OpenAI knowledge tool and multi-turn final responses use verified evidence',async()=>{
+ const db=database(),original=globalThis.fetch;
+ try{
+  const c=await client(db);Object.assign(c.env,{LLM_PROVIDER:'openai',LLM_BUDGET_MODE:'approved',OPENAI_MODEL:'configured',OPENAI_API_KEY:'test-key'});
+  let calls=0;globalThis.fetch=async(_url,init)=>{
+   calls++;const payload=JSON.parse(init.body);const isTool=payload.messages.at(-1).role==='tool';
+   if(calls>2)assert.ok(payload.messages.some(m=>m.role==='assistant'&&m.content));
+   return Response.json({choices:[{message:isTool?{role:'assistant',content:'Procédure confirmée.'}:{role:'assistant',tool_calls:[{id:`knowledge-${calls}`,function:{name:'search_knowledge',arguments:'{"query":"garantie"}'}}]}}],usage:{prompt_tokens:11,completion_tokens:4}});
+  };
+  for(const message of ['Comment fonctionne la garantie ?','Et la prise en charge en garantie ?']){
+   const r=await c.call('chat',{message});assert.equal(r.body.metadata.mode,'openai');assert.equal(r.body.metadata.fallback,null);assert.ok(r.body.metadata.sources.length);assert.equal(r.body.metadata.providerCalls,2);
+  }
+ }finally{globalThis.fetch=original;db.sql.close();}
+});
+
+test('P0 a provider cannot invoke a tool that was not advertised on an open route', async () => {
+  const db = database(), original = globalThis.fetch;
+  try {
+    const c = await client(db); c.env.LLM_PROVIDER = 'ollama';
+    globalThis.fetch = async (_url, init) => {
+      assert.equal(JSON.parse(init.body).tools, undefined);
+      return Response.json({ choices: [{ message: { role: 'assistant', tool_calls: [
+        { id: 'unadvertised', function: { name: 'get_case', arguments: '{}' } },
+      ] } }] });
+    };
+    const reply = await c.call('chat', { message: 'Raconte-moi une blague courte' });
+    assert.equal(reply.body.metadata.fallbackReason, 'invalid_tool_arguments');
+    assert.deepEqual(reply.body.metadata.executedTools, []);
+    assert.equal(reply.body.metadata.providerCalls, 1);
+  } finally { globalThis.fetch = original; db.sql.close(); }
 });
