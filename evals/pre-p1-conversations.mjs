@@ -829,7 +829,7 @@ const families = [
   },
   {
     id: 'code-switching',
-    capabilities: ['code-switching', 'language', 'context', 'business-guidance'],
+    capabilities: ['code-switching', 'language', 'context', 'business-guidance', 'user-preference'],
     tags: ['code-switch', 'language-switch', 'multilingual'],
     dialogs: {
       fr: [
