@@ -1,3 +1,5 @@
+import { syntheticProviderHealth } from './provider-health';
+import { effectiveEnvironment } from './runtime-settings';
 import { z } from 'zod';
 import { retrieve } from './domain';
 import { publicModelConfig } from './model-policy';
@@ -394,6 +396,23 @@ export async function handleAdminOperationsApi(
       return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404);
 
     const session = await requireAdmin(req, env);
+
+    if (path === `${BASE_PATH}/provider-health`) {
+      if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.', code: 'method_not_allowed' }, 405, session.cookies);
+      guardMutation(req);
+      if (req.headers.get('origin') !== url.origin)
+        fail(403, 'Origine requise.', 'invalid_origin');
+      const organization = organizationId(url, session.me);
+      if (organization !== env.SUPABASE_ORGANIZATION_ID)
+        fail(403, 'Organisation du déploiement uniquement.', 'deployment_organization_only');
+      if (!session.me.memberships.some(m => m.organization_id === organization && m.role === 'super_admin'))
+        fail(403, 'Accès super-administrateur requis.', 'settings_role_denied');
+      const input = z.object({}).strict().safeParse(await requestBody(req, 256));
+      if (!input.success) fail(400, 'Requête invalide.', 'invalid_body');
+      const effective = await effectiveEnvironment(env, req.url);
+      const result = await syntheticProviderHealth(effective, scopeKey(env, req.url));
+      return json(result, 200, session.cookies);
+    }
 
     if (path === `${BASE_PATH}/deployment` && req.method === 'GET') {
       const membership = session.me.memberships.find(item => item.organization_id === env.SUPABASE_ORGANIZATION_ID);
