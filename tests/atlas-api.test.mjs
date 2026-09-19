@@ -1510,7 +1510,7 @@ test('OpenAI business tool calls use strict schemas, bounded output and one tool
   }
 });
 
-test('Provider rejection classes are recorded without exposing upstream response bodies', async () => {
+test('Provider rejection classes are audited with safe upstream diagnostics only', async () => {
   const db = database();
   const original = globalThis.fetch;
   try {
@@ -1528,16 +1528,105 @@ test('Provider rejection classes are recorded without exposing upstream response
       [400, 'upstream_request_rejected'],
       [503, 'upstream_unavailable'],
     ]) {
-      globalThis.fetch = async () => new Response('SECRET_UPSTREAM_BODY', { status });
+      globalThis.fetch = async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              message: 'SECRET_UPSTREAM_BODY',
+              type: 'provider_error',
+              code: 'safe_code_' + status,
+            },
+          }),
+          {
+            status,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-request-id': 'req_' + status,
+            },
+          },
+        );
+      const requestId = crypto.randomUUID();
       const reply = await c.call('chat', {
         message: 'Question générale au modèle ' + status,
-        requestId: crypto.randomUUID(),
+        requestId,
       });
       assert.equal(reply.status, 200);
       assert.equal(reply.body.metadata.fallback, 'provider_unavailable');
       assert.equal(reply.body.metadata.fallbackReason, expected);
-      assert.doesNotMatch(JSON.stringify(reply.body), /SECRET_UPSTREAM_BODY/);
+      assert.doesNotMatch(JSON.stringify(reply.body), /SECRET_UPSTREAM_BODY|safe_code_|req_/);
+
+      const auditRow = db.sql
+        .prepare(
+          "SELECT detail FROM audits WHERE action='chat.completed' AND detail LIKE ? ORDER BY created_at DESC LIMIT 1",
+        )
+        .get('%' + requestId + '%');
+      assert.ok(auditRow, requestId);
+      const telemetry = JSON.parse(auditRow.detail);
+      assert.equal(telemetry.requestId, requestId);
+      assert.equal(telemetry.provider, 'openai');
+      assert.equal(telemetry.model, 'gpt-5.6-luna');
+      assert.equal(telemetry.fallbackReason, expected);
+      assert.equal(telemetry.upstreamStatus, status);
+      assert.equal(telemetry.upstreamCode, 'safe_code_' + status);
+      assert.equal(telemetry.upstreamRequestId, 'req_' + status);
+      assert.equal(telemetry.providerCalls, 1);
+      assert.ok(telemetry.providerLatencyMs >= 0);
+      assert.doesNotMatch(auditRow.detail, /SECRET_UPSTREAM_BODY|openai-test-key/);
     }
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+
+test('Internal synthetic LLM health is session-protected, cached and hidden from client edition', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    Object.assign(c.env, {
+      LLM_PROVIDER: 'openai',
+      LLM_BUDGET_MODE: 'approved',
+      OPENAI_MODEL: 'gpt-5.6-luna',
+      OPENAI_API_KEY: 'openai-test-key',
+    });
+    let calls = 0;
+    globalThis.fetch = async (_url, init) => {
+      calls++;
+      const payload = JSON.parse(init.body);
+      assert.equal(payload.tools, undefined);
+      assert.equal(payload.store, false);
+      return Response.json(
+        {
+          choices: [{ message: { content: 'OK' } }],
+          usage: { prompt_tokens: 5, completion_tokens: 1 },
+        },
+        { headers: { 'x-request-id': 'health_req_api' } },
+      );
+    };
+
+    const first = await c.call('health/llm');
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal(first.body.status, 'healthy');
+    assert.equal(first.body.cached, false);
+    assert.equal(first.body.provider, 'openai');
+    assert.equal(first.body.upstreamRequestId, 'health_req_api');
+
+    const second = await c.call('health/llm');
+    assert.equal(second.status, 200);
+    assert.equal(second.body.cached, true);
+    assert.equal(calls, 1);
+
+    const audit = db.sql
+      .prepare("SELECT detail FROM audits WHERE action='llm.health' ORDER BY created_at DESC LIMIT 1")
+      .get();
+    assert.ok(audit);
+    assert.doesNotMatch(audit.detail, /openai-test-key/);
+
+    c.env.APP_EDITION = 'client';
+    const hidden = await c.call('health/llm');
+    assert.equal(hidden.status, 404);
   } finally {
     globalThis.fetch = original;
     db.sql.close();
