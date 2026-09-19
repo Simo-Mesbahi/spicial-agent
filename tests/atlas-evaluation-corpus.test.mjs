@@ -146,3 +146,93 @@ test('risk and capability metadata stay normalized', () => {
       assert.ok(capabilitySet.has(capability), scenario.id + ': unknown capability ' + capability);
   }
 });
+
+
+test('Pre-P1 multilingual matrix keeps strict parity and semantic targets', () => {
+  const preP1 = scenarios.filter((scenario) => scenario.suite === 'pre-p1-conversation-contract');
+  const families = new Set(preP1.map((scenario) => scenario.matrixFamily));
+
+  assert.ok(
+    families.size >= evaluationContract.minimums.preP1MatrixFamilies,
+    'Pre-P1 family coverage below contract',
+  );
+  assert.ok(
+    preP1.length >= evaluationContract.minimums.preP1MatrixScenarios,
+    'Pre-P1 scenario coverage below contract',
+  );
+
+  const allowedIntents = new Set(evaluationContract.allowedTargetIntents);
+  const allowedGuidance = new Set(evaluationContract.allowedGuidanceModes);
+  const supportedLanguages = new Set(evaluationContract.supportedLanguages);
+
+  for (const family of families) {
+    const rows = preP1.filter((scenario) => scenario.matrixFamily === family);
+    assert.equal(
+      rows.length,
+      evaluationContract.preP1Matrix.scenariosPerFamily,
+      family + ': must cover every supported language exactly once',
+    );
+    assert.deepEqual(
+      new Set(rows.map((scenario) => scenario.matrixLanguage)),
+      supportedLanguages,
+      family + ': language parity mismatch',
+    );
+  }
+
+  let targetTurns = 0;
+  for (const scenario of preP1) {
+    assert.ok(supportedLanguages.has(scenario.matrixLanguage), scenario.id + ': unsupported language');
+    assert.equal(
+      scenario.turns.length,
+      evaluationContract.preP1Matrix.turnsPerScenario,
+      scenario.id + ': unexpected turn count',
+    );
+
+    for (const [index, row] of scenario.turns.entries()) {
+      targetTurns++;
+      assert.equal(row.language, scenario.matrixLanguage, scenario.id + ': language drift');
+      assert.ok(row.target, scenario.id + '/' + (index + 1) + ': target required');
+      assert.ok(
+        allowedIntents.has(row.target.intent),
+        scenario.id + '/' + (index + 1) + ': invalid semantic intent',
+      );
+      assert.ok(
+        allowedGuidance.has(row.target.guidance),
+        scenario.id + '/' + (index + 1) + ': invalid guidance mode',
+      );
+      assert.equal(typeof row.target.requiresCase, 'boolean');
+      assert.equal(typeof row.target.conversationRepair, 'boolean');
+      assert.ok(
+        supportedLanguages.has(row.target.responseLanguage),
+        scenario.id + '/' + (index + 1) + ': invalid response language',
+      );
+    }
+  }
+
+  assert.ok(
+    targetTurns >= evaluationContract.minimums.preP1TargetTurns,
+    'Pre-P1 target turn coverage below contract',
+  );
+
+  for (const language of evaluationContract.supportedLanguages) {
+    const count = preP1.filter((scenario) => scenario.matrixLanguage === language).length;
+    assert.ok(
+      count >= evaluationContract.minimums.preP1ScenariosPerLanguage,
+      language + ': Pre-P1 scenario parity below contract',
+    );
+  }
+});
+
+test('Pre-P1 contract explicitly covers guidance restraint and conversation repair', () => {
+  const preP1 = scenarios.filter((scenario) => scenario.suite === 'pre-p1-conversation-contract');
+  const targets = preP1.flatMap((scenario) => scenario.turns.map((row) => row.target));
+
+  assert.ok(targets.some((target) => target.guidance === 'soft_offer'));
+  assert.ok(targets.some((target) => target.guidance === 'respect_decline'));
+  assert.ok(targets.some((target) => target.guidance === 'clarify'));
+  assert.ok(targets.some((target) => target.guidance === 'business_direct'));
+  assert.ok(targets.some((target) => target.guidance === 'handoff'));
+  assert.ok(targets.some((target) => target.conversationRepair === true));
+  assert.ok(targets.some((target) => target.requiresCase === true));
+  assert.ok(targets.some((target) => target.requiresCase === false));
+});
