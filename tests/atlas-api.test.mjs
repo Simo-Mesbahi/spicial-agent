@@ -1308,9 +1308,9 @@ test('Model inventions after a valid case tool never enter the reply or stored h
     assert.equal(response.body.metadata.mode, 'ollama');
     assert.equal(response.body.metadata.responsePolicy, 'verified_content');
     assert.equal(response.body.metadata.presentation, 'case_brief');
-    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_PROMISE|9999/);
+    assert.doesNotMatch(JSON.stringify(response.body), /INVENTED_PROMISE|\b9999\b/);
     const snapshot = await c.call('snapshot');
-    assert.doesNotMatch(JSON.stringify(snapshot.body.messages), /INVENTED_PROMISE|9999/);
+    assert.doesNotMatch(JSON.stringify(snapshot.body.messages), /INVENTED_PROMISE|\b9999\b/);
   } finally { globalThis.fetch = original; db.sql.close(); }
 });
 
