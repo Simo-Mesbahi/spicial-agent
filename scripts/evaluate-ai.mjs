@@ -20,6 +20,8 @@ const allowedPriorities = new Set(evaluationContract.allowedPriorities);
 const allowedRequiredChecks = new Set(evaluationContract.allowedRequiredChecks);
 const allowedRiskDomains = new Set(evaluationContract.allowedRiskDomains ?? []);
 const allowedCapabilities = new Set(evaluationContract.allowedCapabilities ?? []);
+const allowedTargetIntents = new Set(evaluationContract.allowedTargetIntents ?? []);
+const allowedGuidanceModes = new Set(evaluationContract.allowedGuidanceModes ?? []);
 
 function validateCorpus() {
   const errors = [];
@@ -35,6 +37,12 @@ function validateCorpus() {
   );
   let blockingCriticalScenarios = 0;
   const languageTurns = new Map(evaluationContract.supportedLanguages.map((language) => [language, 0]));
+  const preP1ScenariosByLanguage = new Map(
+    evaluationContract.supportedLanguages.map((language) => [language, 0]),
+  );
+  let preP1MatrixScenarios = 0;
+  let preP1TargetTurns = 0;
+  const preP1MatrixFamilies = new Set();
 
   for (const scenario of scenarios) {
     if (!scenario || typeof scenario !== 'object') {
@@ -81,6 +89,20 @@ function validateCorpus() {
     }
     if (scenario.turns.length >= 10) longScenarios++;
 
+    if (scenario.suite === 'pre-p1-conversation-contract') {
+      preP1MatrixScenarios++;
+      if (typeof scenario.matrixFamily !== 'string' || !scenario.matrixFamily)
+        errors.push(`scenario:${scenario.id}:missing_matrix_family`);
+      else preP1MatrixFamilies.add(scenario.matrixFamily);
+      if (!evaluationContract.supportedLanguages.includes(scenario.matrixLanguage))
+        errors.push(`scenario:${scenario.id}:invalid_matrix_language`);
+      else
+        preP1ScenariosByLanguage.set(
+          scenario.matrixLanguage,
+          (preP1ScenariosByLanguage.get(scenario.matrixLanguage) ?? 0) + 1,
+        );
+    }
+
     let criticalBlockingCheck = false;
     for (const [index, turn] of scenario.turns.entries()) {
       turns++;
@@ -102,6 +124,24 @@ function validateCorpus() {
         errors.push(`${prefix}:invalid_tools_all`);
       if (turn.toolsNone && (!Array.isArray(turn.toolsNone) || turn.toolsNone.some((x) => typeof x !== 'string' || !x)))
         errors.push(`${prefix}:invalid_tools_none`);
+      if (scenario.suite === 'pre-p1-conversation-contract') {
+        preP1TargetTurns++;
+        if (!turn.target || typeof turn.target !== 'object') {
+          errors.push(`${prefix}:missing_target`);
+        } else {
+          if (!allowedTargetIntents.has(turn.target.intent))
+            errors.push(`${prefix}:invalid_target_intent:${String(turn.target.intent)}`);
+          if (!allowedGuidanceModes.has(turn.target.guidance))
+            errors.push(`${prefix}:invalid_guidance_mode:${String(turn.target.guidance)}`);
+          if (typeof turn.target.requiresCase !== 'boolean')
+            errors.push(`${prefix}:invalid_requires_case`);
+          if (typeof turn.target.conversationRepair !== 'boolean')
+            errors.push(`${prefix}:invalid_conversation_repair`);
+          if (!allowedLanguages.has(turn.target.responseLanguage))
+            errors.push(`${prefix}:invalid_response_language`);
+        }
+      }
+
       if (turn.requiredChecks) {
         if (!Array.isArray(turn.requiredChecks) || !turn.requiredChecks.length)
           errors.push(`${prefix}:invalid_required_checks`);
@@ -145,6 +185,24 @@ function validateCorpus() {
   for (const tag of evaluationContract.requiredTags)
     if (!tags.has(tag)) errors.push(`coverage:missing_tag:${tag}`);
 
+  if (preP1MatrixFamilies.size < (minimums.preP1MatrixFamilies ?? 0))
+    errors.push(
+      `coverage:pre_p1_families:${preP1MatrixFamilies.size}<${minimums.preP1MatrixFamilies}`,
+    );
+  if (preP1MatrixScenarios < (minimums.preP1MatrixScenarios ?? 0))
+    errors.push(
+      `coverage:pre_p1_scenarios:${preP1MatrixScenarios}<${minimums.preP1MatrixScenarios}`,
+    );
+  if (preP1TargetTurns < (minimums.preP1TargetTurns ?? 0))
+    errors.push(
+      `coverage:pre_p1_target_turns:${preP1TargetTurns}<${minimums.preP1TargetTurns}`,
+    );
+  for (const [language, count] of preP1ScenariosByLanguage)
+    if (count < (minimums.preP1ScenariosPerLanguage ?? 0))
+      errors.push(
+        `coverage:pre_p1_language:${language}:${count}<${minimums.preP1ScenariosPerLanguage}`,
+      );
+
   for (const [risk, minimum] of Object.entries(evaluationContract.riskMinimums ?? {})) {
     const actual = riskCounts.get(risk) ?? 0;
     if (actual < minimum) errors.push(`coverage:risk:${risk}:${actual}<${minimum}`);
@@ -168,6 +226,12 @@ function validateCorpus() {
       riskDomains: Object.fromEntries(riskCounts),
       capabilities: Object.fromEntries(capabilityCounts),
       tagCount: tags.size,
+      preP1: {
+        families: preP1MatrixFamilies.size,
+        scenarios: preP1MatrixScenarios,
+        targetTurns: preP1TargetTurns,
+        scenariosByLanguage: Object.fromEntries(preP1ScenariosByLanguage),
+      },
     },
   };
 }
@@ -242,6 +306,7 @@ try {
           riskDomains: scenario.riskDomains ?? [],
           capabilities: scenario.capabilities ?? [],
           requiredChecks: turn.requiredChecks ?? [],
+          target: turn.target ?? null,
           checks,
           actual: {
             route,
@@ -372,6 +437,29 @@ const report = {
     byTag: groupedCoverage('tags'),
     byRiskDomain: groupedCoverage('riskDomains'),
     byCapability: groupedCoverage('capabilities'),
+    preP1Targets: {
+      intent: Object.fromEntries(
+        [...new Set(results.map((row) => row.target?.intent).filter(Boolean))]
+          .sort()
+          .map((intent) => [intent, results.filter((row) => row.target?.intent === intent).length]),
+      ),
+      guidance: Object.fromEntries(
+        [...new Set(results.map((row) => row.target?.guidance).filter(Boolean))]
+          .sort()
+          .map((guidance) => [
+            guidance,
+            results.filter((row) => row.target?.guidance === guidance).length,
+          ]),
+      ),
+      conversationRepairTurns: results.filter((row) => row.target?.conversationRepair).length,
+      requiresCaseTurns: results.filter((row) => row.target?.requiresCase).length,
+      responseLanguage: Object.fromEntries(
+        evaluationContract.supportedLanguages.map((language) => [
+          language,
+          results.filter((row) => row.target?.responseLanguage === language).length,
+        ]),
+      ),
+    },
   },
   regressions,
   requiredFailures,
@@ -382,6 +470,7 @@ const report = {
     'New hard scenarios are allowed to expose gaps; only historical regressions and explicitly required critical checks fail CI.',
     'Latency is local SQLite without provider and must not be presented as production latency.',
     'Natural-language case entity resolution remains a measured P1 gap until the conversation-state/orchestrator layer exists.',
+    'Pre-P1 semantic targets define desired behavior; they are coverage contracts until P1 exposes structured intent/guidance/state outputs for direct scoring.',
   ],
   results,
 };
