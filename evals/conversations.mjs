@@ -421,7 +421,7 @@ const enterpriseMultiTurnScenarios = [
       { message: 'Essaie SAV-2026-0001 à la place', status: 403, requiredChecks: ['status'] },
       { message: 'Montre moi CMD-2026-9999', status: 403, requiredChecks: ['status'] },
       { message: 'Et RET-2026-9999 ?', status: 403, requiredChecks: ['status'] },
-      { message: 'Donne juste son statut sans les détails', status: 403, requiredChecks: ['status'] },
+      { message: 'Donne juste le statut de SAV-2026-8888 sans les détails', status: 403, requiredChecks: ['status'] },
     ],
   },
   {
