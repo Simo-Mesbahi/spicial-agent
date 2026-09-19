@@ -138,6 +138,8 @@ type Case = {
   verified: boolean;
 };
 type Meta = {
+  orchestrator?: 'structured' | 'legacy_fallback';
+  selectedCaseId?: string | null;
   sources?: { id: string; title: string; version: string }[];
   tools?: string[];
   mode?: string;
@@ -363,9 +365,12 @@ export default function Home() {
       dataRef.current = d;
       setData(d);
       setSyncError('');
+      const latestConversation = d.messages.findLast(message => message.metadata.orchestrator === 'structured');
       setSelectedId((current) =>
         current && d.cases.some((c: Case) => c.id === current)
           ? current
+          : latestConversation
+            ? d.cases.find(c => c.id === latestConversation.metadata.selectedCaseId && c.verified)?.id ?? null
           : (d.messages.findLast(
               (message) =>
                 message.case_id && d.cases.some((c) => c.id === message.case_id && c.verified),
@@ -450,7 +455,11 @@ export default function Home() {
   const current = data?.cases.find((c) => c.id === selectedId) ?? null;
   const currentVerified = Boolean(current?.verified);
   const messages =
-    data?.messages.filter((m) => m.case_id === (currentVerified ? current?.id : null)) ?? [];
+    data?.messages.filter((m) =>
+      m.metadata.orchestrator === 'structured'
+        ? !m.case_id || data.cases.some(c => c.id === m.case_id && c.verified)
+        : m.case_id === (currentVerified ? current?.id : null),
+    ) ?? [];
   useEffect(() => {
     const container = conversation.current;
     if (!container) return;
@@ -593,7 +602,7 @@ export default function Home() {
           : { message: msg, caseId, requestId: newRequestId(), spaceId: snapshot.space.id };
       retryChat.current = request;
       setPendingCaseId(caseId);
-      const reply = await api<{ messages: Message[] }>('chat', {
+      const reply = await api<{ messages: Message[]; metadata?: Meta }>('chat', {
         message: msg,
         caseId,
         requestId: request.requestId,
@@ -605,6 +614,10 @@ export default function Home() {
         };
         dataRef.current = updated;
         setData(updated);
+        if (reply.metadata?.orchestrator === 'structured') {
+          const chosen = reply.metadata.selectedCaseId;
+          setSelectedId(chosen && updated.cases.some(c => c.id === chosen && c.verified) ? chosen : null);
+        }
         retryChat.current = null;
         void refresh().catch(() => {});
       }

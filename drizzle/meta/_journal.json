@@ -43,6 +43,13 @@
       "when": 1789832716578,
       "tag": "0005_provider_health",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789857017697,
+      "tag": "0006_conversation_state",
+      "breakpoints": true
     }
   ]
 }

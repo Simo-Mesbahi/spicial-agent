@@ -37,6 +37,8 @@ import { caseBrief } from './case-brief';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { supportDecision, supportQuickReplies, type SupportPath } from './support-routing';
 import { z } from 'zod';
+import { acquireConversation, commitConversation, releaseConversation, ConversationBusy, type ConversationLease } from './conversation-state';
+import { understandConversation, executeConversation, type CaseCandidate } from './structured-conversation';
 
 export interface Statement {
   bind(...values: unknown[]): Statement;
@@ -63,6 +65,8 @@ export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment {
   GEMINI_API_KEY?: string;
   LLM_DAILY_LIMIT?: string;
   LLM_BUDGET_MODE?: string;
+  LLM_ORCHESTRATOR?: string;
+  LLM_STRUCTURED_OUTPUT?: string;
 }
 type Space = {
   id: string;
@@ -546,6 +550,9 @@ function grounded(c: CaseRow) {
   answer += `Dernière mise à jour : ${dateTime(c.updated_at)}. Données de démonstration.`;
   return answer;
 }
+function immediateSafetyRequest(message: string) {
+  return /fumee|etincelle|brule|incendie/.test(normalized(message));
+}
 export function demoAnswer(
   message: string,
   c: CaseRow | null,
@@ -575,7 +582,7 @@ export function demoAnswer(
       tools: ['security_guard'],
       action: null,
     };
-  if (/fumee|etincelle|brule|incendie/.test(q))
+  if (immediateSafetyRequest(message))
     return {
       content: `${procedure('danger', 'produit-securite')?.body ?? 'Cessez d’utiliser l’appareil et éloignez-vous du danger. En cas de danger immédiat, contactez les secours locaux.'}\n\nAprès la mise en sécurité, cette situation doit être examinée par un professionnel. Je peux préparer le relais sans vous faire répéter votre contexte.`,
       sources: procedure('danger', 'produit-securite') ? [procedure('danger', 'produit-securite')!] : [],
@@ -884,6 +891,7 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
 
 export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> {
   let pendingChat: { db: Database; id: string } | null = null;
+  let pendingConversation: { db: Database; lease: ConversationLease } | null = null;
   try {
     const path = new URL(req.url).pathname;
     const db = env.DB;
@@ -1077,9 +1085,11 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const totalStarted = performance.now();
       const traceId = uuid();
       const telemetry = providerTrace();
+      const structured = env.LLM_ORCHESTRATOR === 'structured' && (env.LLM_PROVIDER ?? 'demo') !== 'demo';
       const message = redacted(text(b.message, 1500).trim());
       if (!message) fail(400, 'Écrivez un message.');
       const id = b.caseId ? text(b.caseId, 80) : null;
+      let conversationCaseId = id;
       let c: CaseRow | null = null;
       if (id) {
         await granted(db, s, id);
@@ -1087,8 +1097,13 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         c = await getCase(db, s, id);
       }
       const refs = message.match(/(?:SAV|CMD|RET|REM|SC)-\d{4}-\d{4}(?:-\d+)?/gi) ?? [];
-      if (refs.some((ref) => ref.toUpperCase() !== c?.reference))
-        fail(403, 'Sélectionnez ce dossier et vérifiez son code dans le formulaire sécurisé.');
+      for (const ref of refs) {
+        if (ref.toUpperCase() === c?.reference) continue;
+        const allowed = structured && await db.prepare(`SELECT c.id FROM cases c JOIN grants g ON g.case_id=c.id
+          WHERE c.space_id=? AND g.space_id=? AND g.expires_at>? AND c.reference=?`)
+          .bind(s.id, s.id, Date.now(), ref.toUpperCase()).first();
+        if (!allowed) fail(403, 'Sélectionnez ce dossier et vérifiez son code dans le formulaire sécurisé.');
+      }
       const requestId = b.requestId === undefined ? uuid() : text(b.requestId, 80);
       if (!/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) fail(400, 'Identifiant de message invalide.');
       const requestKey = s.id + ':' + requestId;
@@ -1106,7 +1121,12 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           .first<{ input_hash: string; response: string | null }>();
         if (previous?.input_hash !== inputHash)
           fail(409, 'Cet identifiant correspond déjà à une autre question.');
-        if (previous.response) return json(JSON.parse(previous.response));
+        if (previous.response) {
+          const saved = JSON.parse(previous.response);
+          if (saved.metadata?.orchestrator === 'structured' && saved.metadata.selectedCaseId)
+            await granted(db, s, saved.metadata.selectedCaseId);
+          return json(saved);
+        }
         fail(
           409,
           'Cette question est encore en cours de traitement. Actualisez le suivi avant de réessayer. Si l’attente dépasse deux minutes, rechargez la page.',
@@ -1139,12 +1159,12 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const previousUserMessages = history
         .filter((item) => item.role === 'user')
         .map((item) => item.content);
-      const route = conversationRoute(message, previousUserMessages);
+      let route: string = conversationRoute(message, previousUserMessages);
       const casual = route === 'small_talk';
       const switchCase = route === 'switch_case';
       const retrievalStarted = performance.now();
-      const knowledge: KnowledgeSearchResult =
-        route === 'business'
+      let knowledge: KnowledgeSearchResult =
+        !structured && route === 'business'
           ? {
               ...(await searchKnowledge(
                 env,
@@ -1152,19 +1172,38 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
               )),
             }
           : { articles: [], scope: 'not_required' };
-      const retrievalMs = Math.round((performance.now() - retrievalStarted) * 100) / 100;
+      let retrievalMs = Math.round((performance.now() - retrievalStarted) * 100) / 100;
       const deterministic = demoAnswer(message, c, history, env, knowledge.articles);
       const conversationHandled = Boolean(casual || switchCase);
       const guarded =
         (env.LLM_PROVIDER ?? 'demo') !== 'demo' &&
-        (localGuard(deterministic) || conversationHandled)
+        (structured
+          ? deterministic.tools.includes('security_guard') || immediateSafetyRequest(message)
+          : localGuard(deterministic) || conversationHandled)
           ? {
               ...deterministic,
-              mode: conversationHandled ? ('conversation' as const) : ('demo' as const),
+              mode: !structured && conversationHandled ? ('conversation' as const) : ('demo' as const),
               inputTokens: 0,
               outputTokens: 0,
             }
           : null;
+      let conversation: Awaited<ReturnType<typeof executeConversation>> | null = null;
+      let candidates: CaseCandidate[] = [];
+      if (structured) {
+        const lease = await acquireConversation(db, s.id, s.expires_at);
+        pendingConversation = { db, lease };
+        candidates = (await db.prepare(`SELECT DISTINCT c.id,substr(c.reference,1,80) AS reference,substr(p.name,1,100) AS product,substr(c.kind,1,32) AS kind
+          FROM cases c JOIN purchases b ON b.id=c.purchase_id JOIN products p ON p.id=b.product_id
+          JOIN grants g ON g.case_id=c.id WHERE c.space_id=? AND g.space_id=? AND g.expires_at>?
+          ORDER BY c.created_at,c.id LIMIT 24`).bind(s.id, s.id, Date.now()).all<CaseCandidate>()).results;
+        const authorized = new Set(candidates.map(item => item.id));
+        if (lease.state.activeCaseId && !authorized.has(lease.state.activeCaseId)) lease.state.activeCaseId = null;
+        if (lease.state.previousCaseId && !authorized.has(lease.state.previousCaseId)) lease.state.previousCaseId = null;
+        if (id && authorized.has(id) && !(lease.state.pendingCaseSwitch && id === lease.state.previousCaseId)) {
+          if (lease.state.activeCaseId !== id) lease.state.previousCaseId = lease.state.activeCaseId;
+          lease.state.activeCaseId = id;
+        }
+      }
       let fallback: 'daily_limit' | 'provider_unavailable' | null = null;
       let fallbackReason: ProviderFailureReason | 'daily_limit' | null = null;
       if ((env.LLM_PROVIDER ?? 'demo') !== 'demo' && !guarded) {
@@ -1188,7 +1227,25 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       let generated: Awaited<ReturnType<typeof generate>> | null = guarded;
       if (!fallback && !generated) {
         try {
-          generated = await generate(env, message, c, history, knowledge, telemetry);
+          if (structured && pendingConversation) {
+            const understanding = await understandConversation(env, message, pendingConversation.lease.state, candidates, telemetry);
+            conversation = await executeConversation(understanding, pendingConversation.lease.state, candidates, message, {
+              readCase: async (caseId) => {
+                // Recheck after upstream latency; a remembered ID is never a grant.
+                await granted(db, s, caseId);
+                return getCase(db, s, caseId);
+              },
+              retrieve: query => searchKnowledge(env, query),
+              renderCase: (current, language) => language === 'fr' ? grounded(current) : localizedCaseReply(language, current),
+            }, telemetry);
+            conversationCaseId = conversation.state.activeCaseId;
+            if (conversationCaseId) await granted(db, s, conversationCaseId);
+            c = conversation.currentCase;
+            knowledge = conversation.knowledge;
+            retrievalMs = conversation.retrievalMs;
+            route = conversation.understanding.intent;
+            generated = { ...conversation.answer, mode: modelConfig.provider, inputTokens: telemetry.usageComplete ? telemetry.inputTokens : null, outputTokens: telemetry.usageComplete ? telemetry.outputTokens : null };
+          } else generated = await generate(env, message, c, history, knowledge, telemetry);
         } catch (e) {
           if (!(e instanceof ProviderError) && !(e instanceof ApiError && e.status === 503)) throw e;
           fallback = 'provider_unavailable';
@@ -1211,7 +1268,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const timestamp = Date.now();
       const metadata = {
         sources: answer.sources.map((a) => ({ id: a.id, title: a.title, version: a.version, effective: a.effective })),
-        responsePolicy: 'verified_content',
+        responsePolicy: conversation?.plan.kind === 'respond' ? 'guarded_conversation' : 'verified_content',
         knowledgeScope: knowledge.scope,
         tools: answer.tools,
         mode: answer.mode,
@@ -1222,7 +1279,15 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         provider: modelConfig.provider,
         model: modelConfig.model,
         route,
-        language: detectConversationLanguage(message, previousUserMessages),
+        language: conversation?.language ?? detectConversationLanguage(message, previousUserMessages),
+        ...(structured ? {
+          orchestrator: conversation ? 'structured' : 'legacy_fallback',
+          selectedCaseId: conversationCaseId,
+          understanding: conversation?.understanding ?? null,
+          plan: conversation?.plan.kind ?? null,
+          stateVersion: pendingConversation ? pendingConversation.lease.version + 1 : null,
+          groundingFailure: conversation?.groundingFailure ?? false,
+        } : {}),
         latencyMs: Math.max(0.01, Math.round((performance.now() - totalStarted) * 100) / 100),
         retrievalMs,
         providerMs: telemetry.latencyMs,
@@ -1242,7 +1307,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         presentation:
           c && answer.content === grounded(c) ? 'case_brief' : 'text',
       };
-      console.info('atlas.ai.interaction', {
+      const interaction = {
         schema: 1, requestId: traceId, sessionId: (await hash(s.id)).slice(0, 24),
         timestamp: new Date(timestamp).toISOString(), provider: modelConfig.provider,
         model: modelConfig.model, route, language: metadata.language,
@@ -1251,19 +1316,20 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         providerTrace: telemetry, escalation: answer.supportPath ?? null,
         sources: answer.sources.map(a => ({ id: a.id, version: a.version })),
         retrievalEvidence: knowledge.evidence ?? [],
-        outcome: fallback ? 'fallback' : telemetry.calls ? 'provider_success' : 'local',
-      });
+        ...(structured ? { orchestrator: metadata.orchestrator, understanding: metadata.understanding, plan: metadata.plan, stateVersion: metadata.stateVersion, groundingFailure: metadata.groundingFailure } : {}),
+        outcome: fallback ? 'fallback' : conversation?.groundingFailure ? 'grounding_rejected' : telemetry.calls ? 'provider_success' : 'local',
+      };
       const userMessage = {
         id: uuid(),
-        case_id: id,
+        case_id: conversationCaseId,
         role: 'user',
         content: message,
-        metadata: {},
+        metadata: conversation ? { orchestrator: 'structured', selectedCaseId: conversationCaseId } : {},
         created_at: timestamp,
       };
       const assistantMessage = {
         id: uuid(),
-        case_id: id,
+        case_id: conversationCaseId,
         role: 'assistant',
         content: redacted(answer.content),
         metadata,
@@ -1275,11 +1341,12 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         messages: [userMessage, assistantMessage],
       };
       await db.batch([
+        ...(pendingConversation ? [commitConversation(db, pendingConversation.lease, conversation?.state ?? pendingConversation.lease.state)] : []),
         db
           .prepare(
             'INSERT INTO messages (id,space_id,case_id,role,content,metadata,created_at) VALUES (?,?,?,?,?,?,?)',
           )
-          .bind(userMessage.id, s.id, id, 'user', message, '{}', timestamp),
+          .bind(userMessage.id, s.id, conversationCaseId, 'user', message, JSON.stringify(userMessage.metadata), timestamp),
         db
           .prepare(
             'INSERT INTO messages (id,space_id,case_id,role,content,metadata,created_at) VALUES (?,?,?,?,?,?,?)',
@@ -1287,7 +1354,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           .bind(
             assistantMessage.id,
             s.id,
-            id,
+            conversationCaseId,
             'assistant',
             redacted(answer.content),
             JSON.stringify(metadata),
@@ -1307,10 +1374,16 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           ),
       ]);
       pendingChat = null;
+      pendingConversation = null;
+      console.info('atlas.ai.interaction', interaction);
       return json(reply);
     }
     fail(404, 'Ressource introuvable.');
   } catch (e) {
+    if (pendingConversation) {
+      try { await releaseConversation(pendingConversation.db, pendingConversation.lease); }
+      catch { console.error('Atlas conversation lease cleanup failed'); }
+    }
     if (pendingChat) {
       try {
         await pendingChat.db
@@ -1322,6 +1395,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       }
     }
     if (e instanceof ApiError) return json({ error: e.message }, e.status);
+    if (e instanceof ConversationBusy) return json({ error: 'Un message est déjà en cours dans cette conversation. Réessayez après sa réponse.' }, 409);
     console.error('Atlas API failure', e instanceof Error ? e.name : 'Unknown');
     return json(
       {

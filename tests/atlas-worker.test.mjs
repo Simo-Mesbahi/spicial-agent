@@ -204,3 +204,46 @@ test('Cloudflare: protected synthetic provider health persists its cache in D1',
     assert.equal(completions, 1);
   } finally { await mf.dispose(); }
 });
+
+test('Cloudflare: structured chat persists bounded state and idempotency atomically in D1', async () => {
+  let completions = 0;
+  let stealLease = false;
+  let db;
+  const mf = await runtime(async req => {
+    assert.equal(req.url, 'https://api.openai.com/v1/chat/completions');
+    completions++;
+    const payload = await req.json();
+    assert.equal(payload.tools, undefined);
+    const context = JSON.parse(payload.messages[1].content);
+    if (completions > 1) assert.equal(context.session.recentTurns.length, 1);
+    if (stealLease) await db.prepare("UPDATE conversation_states SET lock_id='new-owner'").run();
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify({
+      language: 'fr', preferredResponseLanguage: null, intent: 'casual', subIntent: 'wellbeing', topic: null,
+      guidance: 'none', guidancePreference: 'keep', reference: 'none', selectedCaseId: null, referencedProduct: null,
+      referencesPreviousTurn: false, conversationRepair: false, requiresCase: false, requiresKnowledge: false,
+      requiresClarification: false, requiresHuman: false, confidence: 0.95, style: { length: 'keep', emoji: 'keep' },
+      retrievalQuery: null, response: 'Merci de demander ! Et vous ?',
+    }) } }], usage: { prompt_tokens: 40, completion_tokens: 80 } });
+  }, { LLM_PROVIDER: 'openai', OPENAI_MODEL: 'test-model', OPENAI_API_KEY: 'test-key', LLM_BUDGET_MODE: 'approved', LLM_ORCHESTRATOR: 'structured' });
+  try {
+    db = await mf.getD1Database('DB');
+    const session = await call(mf, '/api/session', { body: {} });
+    const cookie = session.headers.get('set-cookie').split(';')[0];
+    const { space } = await session.json();
+    const request = { cookie, csrf: space.csrf, body: { message: 'dis moi toi cv ?', requestId: 'worker-p1-retry' } };
+    const first = await call(mf, '/api/chat', request);
+    assert.equal(first.status, 200, await first.clone().text());
+    const body = await first.json();
+    assert.equal(body.metadata.orchestrator, 'structured');
+    assert.equal(body.metadata.stateVersion, 1);
+    assert.deepEqual(await (await call(mf, '/api/chat', request)).json(), body);
+    assert.equal(completions, 1);
+    stealLease = true;
+    const failed = await call(mf, '/api/chat', { ...request, body: { message: 'suite', requestId: 'worker-p1-stale' } });
+    assert.equal(failed.status, 503);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM messages').first()).n, 2);
+    assert.equal((await db.prepare('SELECT version FROM conversation_states').first()).version, 1);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM chat_requests').first()).n, 1);
+    assert.equal((await db.prepare('SELECT lock_id FROM conversation_states').first()).lock_id, 'new-owner');
+  } finally { await mf.dispose(); }
+});
