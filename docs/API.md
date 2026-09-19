@@ -4,7 +4,8 @@ Toutes les réponses de données utilisent `Cache-Control: no-store`. Les erreur
 
 | Méthode | Route              | Effet                                                                          |
 | ------- | ------------------ | ------------------------------------------------------------------------------ |
-| GET     | `/api/health`      | Vérification du schéma et mode configuré, aucun dossier                        |
+| GET     | `/api/health`      | Liveness/readiness locale : stockage + configuration, sans appel au modèle     |
+| GET     | `/api/health/llm`  | Diagnostic synthétique LLM interne, session requise, cache 60 s et rate limit |
 | GET     | `/api/knowledge`   | Corpus public fictif                                                           |
 | POST    | `/api/session`     | Crée l’espace et le cookie, ou restitue la session existante                   |
 | GET     | `/api/snapshot`    | État de l’espace de démonstration possédé par le visiteur                      |
@@ -22,7 +23,7 @@ Codes attendus : 400 données invalides, 401 session manquante/expirée, 403 acc
 
 `/api/snapshot` expose uniquement l’espace fictif appartenant au visiteur. En édition client, les journaux d’audit et demandes de relais sont retirés de la réponse et l’état de simulation est neutralisé. Cet endpoint reste propre à la démonstration et ne doit pas être branché sur des données clients réelles.
 
-La configuration publique inclut `budgetMode`, `externalCallsAllowed` et `blockedReason`. `ready` signifie « configuration valide », pas « génération réelle testée » : `/api/health` n’envoie aucun appel au modèle. En budget `zero`, un fournisseur externe retourne 503 avant appel réseau et consommation du quota de messages. Aucun paramètre HTTP ne peut modifier le budget. Les réponses du modèle conservent `mode` et `caseVersion` dans leurs métadonnées.
+La configuration publique inclut `budgetMode`, `externalCallsAllowed` et `blockedReason`. `ready` signifie « configuration valide », pas « génération réelle testée » : `/api/health` reste un endpoint de liveness/readiness et n’envoie aucun appel au modèle. En édition interne uniquement, `/api/health/llm` effectue une mini-génération réelle sans tool, sous session existante, cache mémoire 60 secondes et quotas global/réseau. Il renvoie un état normalisé (`healthy`, `degraded`, `disabled`, `unavailable`) avec latence, tokens et identifiants techniques fournisseur assainis ; aucun corps brut d’erreur ni secret n’est exposé. L’endpoint est masqué en `APP_EDITION=client`. En budget `zero`, un fournisseur externe retourne 503 avant appel réseau et consommation du quota de messages. Aucun paramètre HTTP ne peut modifier le budget. Les réponses du modèle conservent `mode` et `caseVersion` dans leurs métadonnées.
 
 ## Synthèse du dossier dans la conversation
 
@@ -48,3 +49,10 @@ Le client envoie un `requestId` aléatoire de 8 à 80 caractères alphanumériqu
 Le registre est supprimé avec l’espace, soumis à la rétention de session de 24 h. En cas d’arrêt brutal du serveur, une réservation inachevée peut rester bloquée jusqu’au nettoyage de l’espace. L’utilisateur est alors invité à actualiser puis à recharger la page après deux minutes ; un nouvel identifiant peut provoquer une nouvelle génération. Il ne s’agit pas d’une garantie d’exécution externe exactement une fois en cas de crash.
 
 Le navigateur limite les réponses JSON à 2 Mio et borne l’attente totale, lecture du corps comprise : 45 secondes pour le chat, 20 secondes pour les autres appels. Il signale le mode hors ligne, les réponses lentes et l’échec d’une actualisation. Il ne rejoue jamais automatiquement une mutation.
+
+
+## Observabilité fournisseur
+
+Les appels LLM écrivent une télémétrie structurée dans l’audit interne `chat.completed` et dans les logs serveur : request ID applicatif, provider, modèle, route, scope documentaire, tools, mode, fallback, classification d’erreur, latence totale, nombre d’appels provider, latence provider cumulée, tokens et, lorsque disponible, statut/code/request ID upstream assainis.
+
+Les réponses client conservent leur contrat existant et ne reçoivent pas le corps d’erreur fournisseur, les clés, les prompts système ni ces détails opérateur. Un HTTP 400/401/429/5xx du fournisseur reste un fallback fonctionnel côté client, mais sa cause devient diagnosticable côté exploitation.
