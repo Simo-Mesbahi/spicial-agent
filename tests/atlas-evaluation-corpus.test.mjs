@@ -11,6 +11,18 @@ test('enterprise AI evaluation corpus keeps its coverage contract', () => {
   const high = scenarios.filter((scenario) => scenario.priority === 'high').length;
   const long = scenarios.filter((scenario) => scenario.turns.length >= 10).length;
   const tags = new Set(scenarios.flatMap((scenario) => scenario.tags ?? []));
+  const riskCounts = Object.fromEntries(
+    evaluationContract.allowedRiskDomains.map((risk) => [
+      risk,
+      scenarios.filter((scenario) => (scenario.riskDomains ?? []).includes(risk)).length,
+    ]),
+  );
+  const capabilityCounts = Object.fromEntries(
+    evaluationContract.allowedCapabilities.map((capability) => [
+      capability,
+      scenarios.filter((scenario) => (scenario.capabilities ?? []).includes(capability)).length,
+    ]),
+  );
 
   assert.ok(scenarios.length >= evaluationContract.minimums.scenarios);
   assert.ok(turns >= evaluationContract.minimums.turns);
@@ -20,6 +32,23 @@ test('enterprise AI evaluation corpus keeps its coverage contract', () => {
 
   for (const tag of evaluationContract.requiredTags)
     assert.ok(tags.has(tag), 'missing required evaluation tag: ' + tag);
+
+  for (const [risk, minimum] of Object.entries(evaluationContract.riskMinimums))
+    assert.ok(
+      riskCounts[risk] >= minimum,
+      'risk coverage below contract: ' + risk + '=' + riskCounts[risk] + ' < ' + minimum,
+    );
+
+  for (const [capability, minimum] of Object.entries(evaluationContract.capabilityMinimums))
+    assert.ok(
+      capabilityCounts[capability] >= minimum,
+      'capability coverage below contract: ' +
+        capability +
+        '=' +
+        capabilityCounts[capability] +
+        ' < ' +
+        minimum,
+    );
 
   const languageCounts = Object.fromEntries(
     evaluationContract.supportedLanguages.map((language) => [
@@ -59,4 +88,61 @@ test('historical P0 scenario ids remain present for baseline comparability', () 
     'thirty-turn-corrections',
   ])
     assert.ok(scenarios.some((scenario) => scenario.id === id), 'missing historical scenario ' + id);
+});
+
+
+test('critical evaluation scenarios are explicitly governed and blocking', () => {
+  const risks = new Set(evaluationContract.allowedRiskDomains);
+  const capabilities = new Set(evaluationContract.allowedCapabilities);
+  const critical = scenarios.filter((scenario) => scenario.priority === 'critical');
+  let blocking = 0;
+
+  for (const scenario of critical) {
+    assert.ok(
+      Array.isArray(scenario.riskDomains) && scenario.riskDomains.length,
+      scenario.id + ': critical scenario must declare riskDomains',
+    );
+    assert.ok(
+      Array.isArray(scenario.capabilities) && scenario.capabilities.length,
+      scenario.id + ': critical scenario must declare capabilities',
+    );
+    for (const risk of scenario.riskDomains)
+      assert.ok(risks.has(risk), scenario.id + ': unsupported risk domain ' + risk);
+    for (const capability of scenario.capabilities)
+      assert.ok(capabilities.has(capability), scenario.id + ': unsupported capability ' + capability);
+
+    const hasBlocking = scenario.turns.some((turn) => (turn.requiredChecks ?? []).length > 0);
+    assert.ok(hasBlocking, scenario.id + ': critical scenario must contain a blocking check');
+    if (hasBlocking) blocking++;
+  }
+
+  assert.ok(
+    blocking >= evaluationContract.minimums.blockingCriticalScenarios,
+    'blocking critical coverage below contract: ' +
+      blocking +
+      ' < ' +
+      evaluationContract.minimums.blockingCriticalScenarios,
+  );
+});
+
+test('risk and capability metadata stay normalized', () => {
+  const riskSet = new Set(evaluationContract.allowedRiskDomains);
+  const capabilitySet = new Set(evaluationContract.allowedCapabilities);
+
+  for (const scenario of scenarios) {
+    assert.equal(
+      new Set(scenario.riskDomains ?? []).size,
+      (scenario.riskDomains ?? []).length,
+      scenario.id + ': duplicate risk domain',
+    );
+    assert.equal(
+      new Set(scenario.capabilities ?? []).size,
+      (scenario.capabilities ?? []).length,
+      scenario.id + ': duplicate capability',
+    );
+    for (const risk of scenario.riskDomains ?? [])
+      assert.ok(riskSet.has(risk), scenario.id + ': unknown risk domain ' + risk);
+    for (const capability of scenario.capabilities ?? [])
+      assert.ok(capabilitySet.has(capability), scenario.id + ': unknown capability ' + capability);
+  }
 });

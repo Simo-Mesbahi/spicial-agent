@@ -8,18 +8,29 @@ It is intentionally harder than the current implementation. A failed new scenari
 
 ## Current corpus contract
 
-- at least 155 scenarios;
-- at least 330 conversational turns;
-- French, English, German, Spanish and Arabic coverage;
-- critical/high/standard priorities;
-- long conversations;
-- safety and prompt-injection probes;
-- case switching and implicit-reference probes;
-- noisy language, typos and slang;
-- returns, refunds, delivery, repair, warranty, payment, quote and human handoff;
-- explicit abstention / anti-fabrication cases.
+The corpus is now governed as an enterprise test asset rather than a loose list of examples.
 
-The current expanded corpus contains 160 scenarios and 368 turns.
+Minimum contract:
+
+- at least 200 scenarios;
+- at least 525 conversational turns;
+- French, English, German, Spanish and Arabic coverage;
+- at least 30 explicitly labelled turns per supported language;
+- critical/high/standard priorities;
+- at least 15 critical scenarios with blocking invariants;
+- at least 35 high-priority scenarios;
+- at least 9 conversations of 10+ turns;
+- explicit risk-domain coverage for privacy, security, financial, physical-safety, policy, action-integrity and context-integrity;
+- explicit capability coverage for routing, language, context, case isolation, abstention, handoff, grounding, action safety and conversation quality;
+- multilingual prompt-injection and cross-customer isolation probes;
+- consent reversal and no-action semantics;
+- unsupported commitment and fabricated policy probes;
+- case switching, co-reference and implicit-reference probes;
+- noisy language, typos, emojis, slang and code switching;
+- long-context recovery up to 50 turns;
+- returns, refunds, delivery, repair, warranty, payment, quote and human handoff.
+
+The evaluator validates these thresholds before executing the application. A malformed or under-covered corpus fails CI independently of application behavior.
 
 ## CI policy
 
@@ -39,7 +50,7 @@ This prevents two bad practices:
 
 - corpus version and coverage summary;
 - global route/language/tool/action/safety/status metrics;
-- coverage and metrics by suite, priority and tag;
+- coverage and metrics by suite, priority, tag, risk domain and capability;
 - historical regressions;
 - critical required failures;
 - known gaps;
@@ -82,7 +93,36 @@ Every new scenario must:
 - use human-authored expectations;
 - avoid encoding implementation details unnecessarily;
 - preserve safe backend facts and permissions;
+- declare a meaningful suite, priority, tags and, where relevant, risk domains/capabilities;
 - use `requiredChecks` only for genuine invariants that must block CI;
-- never be changed merely to make a score look better.
+- never weaken an expectation merely to make a score look better.
+
+Every **critical** scenario additionally must:
+
+- declare at least one approved `riskDomain`;
+- declare at least one approved `capability`;
+- contain at least one blocking `requiredChecks` assertion;
+- avoid relying on a probabilistic or aesthetic judgment for its blocking condition.
+
+This keeps CI strict on security, privacy, action integrity and factual commitments while allowing difficult P1 capability gaps to remain visible without falsifying the baseline.
 
 The corpus contract is tested independently in `tests/atlas-evaluation-corpus.test.mjs`.
+
+
+## Enterprise risk taxonomy
+
+Risk metadata is intentionally separate from tags. Tags are descriptive; risk domains are governed.
+
+Current risk domains:
+
+- `privacy`: cross-customer access, enumeration and unnecessary disclosure;
+- `security`: secret extraction and prompt-injection behavior;
+- `financial`: invented amounts, refunds and payment claims;
+- `physical-safety`: unsafe device guidance;
+- `policy`: fabricated warranty/return commitments;
+- `action-integrity`: consent, reversal and no-write semantics;
+- `context-integrity`: wrong dossier/topic/reference carry-over.
+
+Capabilities describe what the assistant must eventually demonstrate, including context retention, case isolation, grounding, abstention, handoff and action safety.
+
+The evaluator reports both dimensions independently so a future P1 improvement can be measured by customer capability and operational risk rather than a single opaque score.
