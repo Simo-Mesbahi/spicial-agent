@@ -1,9 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { build } from 'esbuild';
+
+const compiled = await build({
+  entryPoints: ['lib/atlas/llm-health.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  write: false,
+});
+const {
   syntheticModelHealth,
   clearSyntheticHealthCacheForTests,
-} from '../lib/atlas/llm-health.ts';
+} = await import(
+  'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
+);
 
 const openaiEnv = {
   LLM_PROVIDER: 'openai',
