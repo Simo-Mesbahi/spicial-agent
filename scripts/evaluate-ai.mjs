@@ -18,6 +18,8 @@ const allowedRoutes = new Set(evaluationContract.allowedRoutes);
 const allowedLanguages = new Set(evaluationContract.supportedLanguages);
 const allowedPriorities = new Set(evaluationContract.allowedPriorities);
 const allowedRequiredChecks = new Set(evaluationContract.allowedRequiredChecks);
+const allowedRiskDomains = new Set(evaluationContract.allowedRiskDomains ?? []);
+const allowedCapabilities = new Set(evaluationContract.allowedCapabilities ?? []);
 
 function validateCorpus() {
   const errors = [];
@@ -27,6 +29,11 @@ function validateCorpus() {
   let highPriorityScenarios = 0;
   let longScenarios = 0;
   const tags = new Set();
+  const riskCounts = new Map((evaluationContract.allowedRiskDomains ?? []).map((risk) => [risk, 0]));
+  const capabilityCounts = new Map(
+    (evaluationContract.allowedCapabilities ?? []).map((capability) => [capability, 0]),
+  );
+  let blockingCriticalScenarios = 0;
   const languageTurns = new Map(evaluationContract.supportedLanguages.map((language) => [language, 0]));
 
   for (const scenario of scenarios) {
@@ -44,6 +51,26 @@ function validateCorpus() {
     if (priority === 'critical') criticalScenarios++;
     if (priority === 'high') highPriorityScenarios++;
 
+    const riskDomains = scenario.riskDomains ?? [];
+    const capabilities = scenario.capabilities ?? [];
+    if (!Array.isArray(riskDomains))
+      errors.push(`scenario:${scenario.id}:invalid_risk_domains`);
+    else {
+      for (const risk of riskDomains) {
+        if (!allowedRiskDomains.has(risk)) errors.push(`scenario:${scenario.id}:unknown_risk:${risk}`);
+        else riskCounts.set(risk, (riskCounts.get(risk) ?? 0) + 1);
+      }
+    }
+    if (!Array.isArray(capabilities))
+      errors.push(`scenario:${scenario.id}:invalid_capabilities`);
+    else {
+      for (const capability of capabilities) {
+        if (!allowedCapabilities.has(capability))
+          errors.push(`scenario:${scenario.id}:unknown_capability:${capability}`);
+        else capabilityCounts.set(capability, (capabilityCounts.get(capability) ?? 0) + 1);
+      }
+    }
+
     if (!Array.isArray(scenario.tags) || !scenario.tags.length)
       errors.push(`scenario:${scenario.id}:missing_tags`);
     else scenario.tags.forEach((tag) => tags.add(tag));
@@ -54,6 +81,7 @@ function validateCorpus() {
     }
     if (scenario.turns.length >= 10) longScenarios++;
 
+    let criticalBlockingCheck = false;
     for (const [index, turn] of scenario.turns.entries()) {
       turns++;
       const prefix = `${scenario.id}/${index + 1}`;
@@ -77,10 +105,24 @@ function validateCorpus() {
       if (turn.requiredChecks) {
         if (!Array.isArray(turn.requiredChecks) || !turn.requiredChecks.length)
           errors.push(`${prefix}:invalid_required_checks`);
-        else
-          for (const check of turn.requiredChecks)
-            if (!allowedRequiredChecks.has(check)) errors.push(`${prefix}:unknown_required_check:${check}`);
+        else {
+          for (const check of turn.requiredChecks) {
+            if (!allowedRequiredChecks.has(check))
+              errors.push(`${prefix}:unknown_required_check:${check}`);
+            else criticalBlockingCheck = true;
+          }
+        }
       }
+    }
+
+    if (priority === 'critical') {
+      if (!Array.isArray(riskDomains) || !riskDomains.length)
+        errors.push(`scenario:${scenario.id}:critical_missing_risk_domain`);
+      if (!Array.isArray(capabilities) || !capabilities.length)
+        errors.push(`scenario:${scenario.id}:critical_missing_capability`);
+      if (!criticalBlockingCheck)
+        errors.push(`scenario:${scenario.id}:critical_without_blocking_check`);
+      else blockingCriticalScenarios++;
     }
   }
 
@@ -93,11 +135,25 @@ function validateCorpus() {
     errors.push(`coverage:high:${highPriorityScenarios}<${minimums.highPriorityScenarios}`);
   if (longScenarios < minimums.longScenarios)
     errors.push(`coverage:long:${longScenarios}<${minimums.longScenarios}`);
+  if (blockingCriticalScenarios < (minimums.blockingCriticalScenarios ?? 0))
+    errors.push(
+      `coverage:blocking_critical:${blockingCriticalScenarios}<${minimums.blockingCriticalScenarios}`,
+    );
   for (const [language, count] of languageTurns)
     if (count < minimums.turnsPerLanguage)
       errors.push(`coverage:language:${language}:${count}<${minimums.turnsPerLanguage}`);
   for (const tag of evaluationContract.requiredTags)
     if (!tags.has(tag)) errors.push(`coverage:missing_tag:${tag}`);
+
+  for (const [risk, minimum] of Object.entries(evaluationContract.riskMinimums ?? {})) {
+    const actual = riskCounts.get(risk) ?? 0;
+    if (actual < minimum) errors.push(`coverage:risk:${risk}:${actual}<${minimum}`);
+  }
+  for (const [capability, minimum] of Object.entries(evaluationContract.capabilityMinimums ?? {})) {
+    const actual = capabilityCounts.get(capability) ?? 0;
+    if (actual < minimum)
+      errors.push(`coverage:capability:${capability}:${actual}<${minimum}`);
+  }
 
   return {
     errors,
@@ -107,7 +163,10 @@ function validateCorpus() {
       criticalScenarios,
       highPriorityScenarios,
       longScenarios,
+      blockingCriticalScenarios,
       languageTurns: Object.fromEntries(languageTurns),
+      riskDomains: Object.fromEntries(riskCounts),
+      capabilities: Object.fromEntries(capabilityCounts),
       tagCount: tags.size,
     },
   };
@@ -180,6 +239,8 @@ try {
           suite: scenario.suite ?? 'p0-legacy',
           priority: scenario.priority ?? 'standard',
           tags: scenario.tags,
+          riskDomains: scenario.riskDomains ?? [],
+          capabilities: scenario.capabilities ?? [],
           requiredChecks: turn.requiredChecks ?? [],
           checks,
           actual: {
@@ -309,6 +370,8 @@ const report = {
     bySuite: groupedCoverage('suite'),
     byPriority: groupedCoverage('priority'),
     byTag: groupedCoverage('tags'),
+    byRiskDomain: groupedCoverage('riskDomains'),
+    byCapability: groupedCoverage('capabilities'),
   },
   regressions,
   requiredFailures,
