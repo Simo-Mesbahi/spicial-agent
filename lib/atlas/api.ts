@@ -35,6 +35,13 @@ import { modelSettings, publicModelConfig } from './model-policy';
 import { caseBrief } from './case-brief';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { supportDecision, supportQuickReplies, type SupportPath } from './support-routing';
+import {
+  providerFailureReason,
+  providerRequestId,
+  sanitizeDiagnosticToken,
+  type ProviderErrorDetails,
+} from './llm-diagnostics';
+import { syntheticModelHealth } from './llm-health';
 import { z } from 'zod';
 
 export interface Statement {
@@ -134,6 +141,11 @@ type GeneratedAnswer = AssistantAnswer & {
   mode: string;
   inputTokens: number | null;
   outputTokens: number | null;
+  providerCalls?: number;
+  providerLatencyMs?: number;
+  upstreamStatus?: number | null;
+  upstreamCode?: string | null;
+  upstreamRequestId?: string | null;
 };
 const selectCases =
   'SELECT c.*, p.name AS product,p.category,p.price,u.name AS customer,u.city,b.store,b.receipt,b.purchased_at FROM cases c JOIN purchases b ON b.id=c.purchase_id JOIN products p ON p.id=b.product_id JOIN customers u ON u.id=b.customer_id';
@@ -142,44 +154,10 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public providerDetails: ProviderErrorDetails = {},
   ) {
     super(message);
   }
-}
-
-type ProviderFailureReason =
-  | 'network_or_timeout'
-  | 'upstream_auth'
-  | 'upstream_rate_limited'
-  | 'upstream_request_rejected'
-  | 'upstream_unavailable'
-  | 'upstream_rejected'
-  | 'invalid_upstream_response'
-  | 'missing_verifiable_sources'
-  | 'invalid_tool_arguments'
-  | 'tool_loop'
-  | 'unknown';
-
-function providerFailureReason(error: ApiError): ProviderFailureReason {
-  const message = error.message.toLowerCase();
-  if (message.includes('fournisseur ia est temporairement indisponible'))
-    return 'upstream_unavailable';
-  if (message.includes('temporairement indisponible') || message.includes('ne répond pas'))
-    return 'network_or_timeout';
-  if (message.includes('refusé l’authentification')) return 'upstream_auth';
-  if (message.includes('atteint sa limite')) return 'upstream_rate_limited';
-  if (message.includes('rejeté le format')) return 'upstream_request_rejected';
-  if (message.includes('refusé la requête') || message.includes('redirection'))
-    return 'upstream_rejected';
-  if (message.includes('réponse invalide') || message.includes('pas fourni de réponse'))
-    return 'invalid_upstream_response';
-  if (message.includes('sources vérifiables'))
-    return 'missing_verifiable_sources';
-  if (message.includes('arguments d’outil') || message.includes('identifiant d’outil'))
-    return 'invalid_tool_arguments';
-  if (message.includes('finalisée'))
-    return 'tool_loop';
-  return 'unknown';
 }
 function fail(status: number, message: string): never {
   throw new ApiError(status, message);
@@ -738,6 +716,34 @@ function localGuard(answer: AssistantAnswer) {
     answer.action === 'switch_case'
   );
 }
+async function upstreamFailureDetails(
+  res: Response,
+  signal: AbortSignal,
+): Promise<ProviderErrorDetails> {
+  let upstreamCode: string | null = null;
+  try {
+    const payload = await boundedJson(res, 8192, signal);
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      const error = (payload as Record<string, unknown>).error;
+      if (error && typeof error === 'object' && !Array.isArray(error)) {
+        const record = error as Record<string, unknown>;
+        upstreamCode =
+          sanitizeDiagnosticToken(record.code) ??
+          sanitizeDiagnosticToken(record.type) ??
+          sanitizeDiagnosticToken(record.param);
+      }
+    }
+  } catch {
+    // Raw upstream error bodies are intentionally discarded.
+  }
+  return {
+    stage: 'http',
+    upstreamStatus: res.status,
+    upstreamCode,
+    upstreamRequestId: providerRequestId(res.headers),
+  };
+}
+
 const completionSchema = z.object({
   choices: z
     .array(
@@ -781,7 +787,11 @@ async function generate(
   try {
     settings = modelSettings(env);
   } catch (e) {
-    throw new ApiError(503, e instanceof Error ? e.message : 'Configuration du modèle invalide.');
+    throw new ApiError(
+      503,
+      e instanceof Error ? e.message : 'Configuration du modèle invalide.',
+      { stage: 'configuration' },
+    );
   }
   const mode = settings.provider;
   const expected = demoAnswer(message, c, history, env, knowledge.articles);
@@ -840,11 +850,18 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
     { role: 'user', content: message },
   ];
   let inputTokens = 0,
-    outputTokens = 0;
+    outputTokens = 0,
+    providerCalls = 0,
+    providerLatencyMs = 0,
+    upstreamStatus: number | null = null,
+    upstreamCode: string | null = null,
+    upstreamRequestId: string | null = null;
   // One deadline for the whole tool loop, not three independent long requests.
   const deadline = AbortSignal.timeout(settings.timeoutMs);
   for (let round = 0; round < 3; round++) {
     let res: Response;
+    const providerStartedAt = Date.now();
+    providerCalls++;
     try {
       res = await fetch(base.replace(/\/$/, '') + '/chat/completions', {
         method: 'POST',
@@ -876,35 +893,68 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
         redirect: 'manual',
       });
     } catch {
+      providerLatencyMs += Date.now() - providerStartedAt;
       throw new ApiError(
         503,
         mode === 'ollama'
           ? 'Le modèle local ne répond pas. Vérifiez qu’Ollama tourne sur cet ordinateur. Vos dossiers restent accessibles.'
           : 'Le modèle est temporairement indisponible. Vos dossiers restent accessibles.',
+        { stage: 'network', providerCalls, providerLatencyMs },
       );
     }
+    providerLatencyMs += Date.now() - providerStartedAt;
+    upstreamStatus = res.status;
+    upstreamRequestId = providerRequestId(res.headers);
     if (res.status >= 300 && res.status < 400) {
       void res.body?.cancel().catch(() => {});
-      throw new ApiError(503, 'Le fournisseur IA a renvoyé une redirection non autorisée.');
+      throw new ApiError(503, 'Le fournisseur IA a renvoyé une redirection non autorisée.', {
+        stage: 'http',
+        upstreamStatus,
+        upstreamRequestId,
+        providerCalls,
+        providerLatencyMs,
+      });
     }
     if (!res.ok) {
-      void res.body?.cancel().catch(() => {});
+      const details = await upstreamFailureDetails(res, deadline);
+      upstreamCode = details.upstreamCode ?? null;
+      upstreamRequestId = details.upstreamRequestId ?? upstreamRequestId;
+      const diagnostic = {
+        ...details,
+        providerCalls,
+        providerLatencyMs,
+      };
       if (res.status === 401 || res.status === 403)
-        throw new ApiError(503, 'Le fournisseur IA a refusé l’authentification.');
+        throw new ApiError(503, 'Le fournisseur IA a refusé l’authentification.', diagnostic);
       if (res.status === 429)
-        throw new ApiError(503, 'Le fournisseur IA a atteint sa limite.');
+        throw new ApiError(503, 'Le fournisseur IA a atteint sa limite.', diagnostic);
       if (res.status === 400 || res.status === 422)
-        throw new ApiError(503, 'Le fournisseur IA a rejeté le format de la requête.');
+        throw new ApiError(503, 'Le fournisseur IA a rejeté le format de la requête.', diagnostic);
       if (res.status >= 500)
-        throw new ApiError(503, 'Le fournisseur IA est temporairement indisponible.');
-      throw new ApiError(503, 'Le fournisseur IA a refusé la requête.');
+        throw new ApiError(503, 'Le fournisseur IA est temporairement indisponible.', diagnostic);
+      throw new ApiError(503, 'Le fournisseur IA a refusé la requête.', diagnostic);
     }
     const parsed = completionSchema.safeParse(
       await boundedJson(res, 65536, deadline).catch(() => {
-        throw new ApiError(503, 'Le modèle a renvoyé une réponse invalide.');
+        throw new ApiError(503, 'Le modèle a renvoyé une réponse invalide.', {
+          stage: 'response_parse',
+          upstreamStatus,
+          upstreamCode,
+          upstreamRequestId,
+          providerCalls,
+          providerLatencyMs,
+        });
       }),
     );
-    if (!parsed.success) throw new ApiError(503, 'Réponse du modèle invalide.');
+    if (!parsed.success)
+      throw new ApiError(503, 'Réponse du modèle invalide.', {
+        stage: 'response_validation',
+        upstreamStatus,
+        upstreamCode,
+        upstreamRequestId,
+        providerCalls,
+        providerLatencyMs,
+      });
     const out = parsed.data;
     const m = out.choices[0].message;
     const inputCount = out.usage?.prompt_tokens;
@@ -919,13 +969,27 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
         : 0;
     if (!m.tool_calls?.length) {
       if (typeof m.content !== 'string' || !m.content.trim())
-        throw new ApiError(503, 'Le modèle n’a pas fourni de réponse.');
+        throw new ApiError(503, 'Le modèle n’a pas fourni de réponse.', {
+          stage: 'response_validation',
+          upstreamStatus,
+          upstreamCode,
+          upstreamRequestId,
+          providerCalls,
+          providerLatencyMs,
+        });
       if (
         (expected.tools.includes('get_case') && !trace.includes('get_case')) ||
         (expected.tools.includes('search_knowledge') &&
           (!sources.size || !expected.sources.every(source => sources.has(source.id))))
       )
-        throw new ApiError(503, 'La réponse du modèle manque de sources vérifiables.');
+        throw new ApiError(503, 'La réponse du modèle manque de sources vérifiables.', {
+          stage: 'grounding',
+          upstreamStatus,
+          upstreamCode,
+          upstreamRequestId,
+          providerCalls,
+          providerLatencyMs,
+        });
       // Casual conversation may use model phrasing. Business facts remain
       // server-composed from verified case/document evidence so model inventions
       // never become customer-visible facts.
@@ -940,6 +1004,11 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
           mode,
           inputTokens,
           outputTokens,
+          providerCalls,
+          providerLatencyMs,
+          upstreamStatus,
+          upstreamCode,
+          upstreamRequestId,
         };
 
       const document = [...sources.values()][0];
@@ -965,25 +1034,50 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
                 action: null,
               }
             : expected;
-      return { ...verified, mode, inputTokens, outputTokens };
+      return {
+        ...verified,
+        mode,
+        inputTokens,
+        outputTokens,
+        providerCalls,
+        providerLatencyMs,
+        upstreamStatus,
+        upstreamCode,
+        upstreamRequestId,
+      };
 
     }
-    if (round === 2) throw new ApiError(503, 'La réponse n’a pas pu être finalisée.');
+    if (round === 2)
+      throw new ApiError(503, 'La réponse n’a pas pu être finalisée.', {
+        stage: 'tool_loop',
+        upstreamStatus,
+        upstreamCode,
+        upstreamRequestId,
+        providerCalls,
+        providerLatencyMs,
+      });
     msgs.push(m);
     for (const call of m.tool_calls) {
-      if (callIds.has(call.id)) throw new ApiError(503, 'Identifiant d’outil répété.');
+      if (callIds.has(call.id))
+        throw new ApiError(503, 'Identifiant d’outil répété.', {
+          stage: 'tool_validation', upstreamStatus, upstreamCode, upstreamRequestId, providerCalls, providerLatencyMs,
+        });
       callIds.add(call.id);
       let args: unknown;
       try {
         args = JSON.parse(call.function.arguments);
       } catch {
-        throw new ApiError(503, 'Arguments d’outil invalides.');
+        throw new ApiError(503, 'Arguments d’outil invalides.', {
+          stage: 'tool_validation', upstreamStatus, upstreamCode, upstreamRequestId, providerCalls, providerLatencyMs,
+        });
       }
       let result: unknown;
       trace.push(call.function.name);
       if (call.function.name === 'get_case') {
         if (!z.object({}).strict().safeParse(args).success)
-          throw new ApiError(503, 'Arguments d’outil invalides.');
+          throw new ApiError(503, 'Arguments d’outil invalides.', {
+          stage: 'tool_validation', upstreamStatus, upstreamCode, upstreamRequestId, providerCalls, providerLatencyMs,
+        });
         result = c
           ? safeCase(c)
           : { error: 'Dossier non vérifié. Invitez le client à utiliser le formulaire sécurisé.' };
@@ -993,7 +1087,9 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
           .object({ query: z.string().trim().min(1).max(500) })
           .strict()
           .safeParse(args);
-        if (!a.success) throw new ApiError(503, 'Arguments d’outil invalides.');
+        if (!a.success) throw new ApiError(503, 'Arguments d’outil invalides.', {
+          stage: 'tool_validation', upstreamStatus, upstreamCode, upstreamRequestId, providerCalls, providerLatencyMs,
+        });
         const found = await searchKnowledge(
           env,
           contextualRetrievalQuery(a.data.query, previousUserMessages),
@@ -1004,7 +1100,14 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
       msgs.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
   }
-  throw new ApiError(503, 'La réponse n’a pas pu être finalisée.');
+  throw new ApiError(503, 'La réponse n’a pas pu être finalisée.', {
+    stage: 'tool_loop',
+    upstreamStatus,
+    upstreamCode,
+    upstreamRequestId,
+    providerCalls,
+    providerLatencyMs,
+  });
 }
 
 export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> {
@@ -1017,6 +1120,31 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       if (!db) fail(503, 'Stockage indisponible.');
       await db.prepare('SELECT id FROM spaces LIMIT 1').first();
       return json({ status: 'ok', schemaReady: true, ...config(env) });
+    }
+    if (path === '/api/health/llm' && req.method === 'GET') {
+      if (!db) fail(503, 'Stockage indisponible.');
+      if (clientEdition(env)) fail(404, 'Ressource introuvable.');
+      const healthSpace = await spaceFor(db, req);
+      await reserveQuota(db, 'llm-health-global', 60, HOUR);
+      await reserveQuota(db, 'llm-health:' + (await networkBucket(req)), 10, HOUR);
+      const health = await syntheticModelHealth(env);
+      await audit(
+        db,
+        healthSpace,
+        'llm.health',
+        JSON.stringify({
+          status: health.status,
+          provider: health.provider,
+          model: health.model,
+          cached: health.cached,
+          latencyMs: health.latencyMs,
+          failureReason: health.failureReason,
+          upstreamStatus: health.upstreamStatus,
+          upstreamCode: health.upstreamCode,
+          upstreamRequestId: health.upstreamRequestId,
+        }).slice(0, 4000),
+      );
+      return json(health, health.status === 'unavailable' ? 503 : 200);
     }
     if (path === '/api/knowledge' && req.method === 'GET') return json({ articles });
     if (!db) fail(503, 'Le stockage n’est pas disponible.');
@@ -1281,7 +1409,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
             }
           : null;
       let fallback: 'daily_limit' | 'provider_unavailable' | null = null;
-      let fallbackReason: ProviderFailureReason | 'daily_limit' | null = null;
+      let fallbackReason: ReturnType<typeof providerFailureReason> | 'daily_limit' | null = null;
+      let providerFailureDetails: ProviderErrorDetails | null = null;
       if ((env.LLM_PROVIDER ?? 'demo') !== 'demo' && !guarded) {
         const configured = Number(env.LLM_DAILY_LIMIT ?? 100);
         try {
@@ -1307,11 +1436,13 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         } catch (e) {
           if (!(e instanceof ApiError && e.status === 503)) throw e;
           fallback = 'provider_unavailable';
-          fallbackReason = providerFailureReason(e);
+          providerFailureDetails = e.providerDetails;
+          fallbackReason = providerFailureReason(e.message, e.providerDetails);
           console.warn('Atlas LLM fallback', {
-            provider: env.LLM_PROVIDER ?? 'demo',
-            model: env.LLM_MODEL ?? null,
+            provider: modelConfig.provider,
+            model: modelConfig.model,
             reason: fallbackReason,
+            ...providerFailureDetails,
           });
         }
       }
@@ -1320,6 +1451,11 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         mode: 'demo',
         inputTokens: null,
         outputTokens: null,
+        providerCalls: providerFailureDetails?.providerCalls ?? 0,
+        providerLatencyMs: providerFailureDetails?.providerLatencyMs ?? 0,
+        upstreamStatus: providerFailureDetails?.upstreamStatus ?? null,
+        upstreamCode: providerFailureDetails?.upstreamCode ?? null,
+        upstreamRequestId: providerFailureDetails?.upstreamRequestId ?? null,
       };
       const timestamp = Date.now();
       const metadata = {
@@ -1362,6 +1498,29 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         metadata,
         messages: [userMessage, assistantMessage],
       };
+      const telemetry = {
+        requestId,
+        provider: modelConfig.provider,
+        model: modelConfig.model,
+        route,
+        knowledgeScope: knowledge.scope,
+        tools: answer.tools,
+        mode: answer.mode,
+        fallback,
+        fallbackReason,
+        latencyMs: metadata.latencyMs,
+        providerCalls: answer.providerCalls ?? providerFailureDetails?.providerCalls ?? 0,
+        providerLatencyMs:
+          answer.providerLatencyMs ?? providerFailureDetails?.providerLatencyMs ?? 0,
+        inputTokens: answer.inputTokens,
+        outputTokens: answer.outputTokens,
+        upstreamStatus:
+          answer.upstreamStatus ?? providerFailureDetails?.upstreamStatus ?? null,
+        upstreamCode: answer.upstreamCode ?? providerFailureDetails?.upstreamCode ?? null,
+        upstreamRequestId:
+          answer.upstreamRequestId ?? providerFailureDetails?.upstreamRequestId ?? null,
+      };
+      console.info('Atlas AI telemetry', telemetry);
       await db.batch([
         db
           .prepare(
@@ -1390,7 +1549,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
             uuid(),
             s.id,
             'chat.completed',
-            answer.mode + ' · ' + answer.tools.join(', '),
+            JSON.stringify(telemetry).slice(0, 4000),
             timestamp,
           ),
       ]);
