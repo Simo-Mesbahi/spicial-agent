@@ -138,7 +138,9 @@ try {
         activeCaseId = row.id;
       }
       for (const [index, turn] of scenario.turns.entries()) {
+        const started = performance.now();
         const response = await c.call('chat', { message: turn.message, caseId: activeCaseId });
+        const elapsed = Math.round((performance.now() - started) * 100) / 100;
         const m = response.body.metadata ?? {},
           actual = m.understanding;
         if (m.orchestrator === 'structured') activeCaseId = m.selectedCaseId;
@@ -163,7 +165,8 @@ try {
           inputTokens: m.inputTokens ?? null,
           outputTokens: m.outputTokens ?? null,
           usageComplete: m.usageComplete ?? false,
-          latencyMs: m.latencyMs ?? null,
+          latencyMs: elapsed,
+          serverResponseReadyMs: m.latencyMs ?? null,
           // Synthetic outputs make human review possible; neither prompts nor credentials are logged.
           response: response.body.content ?? null,
         });

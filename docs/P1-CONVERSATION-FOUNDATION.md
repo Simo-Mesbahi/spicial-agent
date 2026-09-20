@@ -23,6 +23,8 @@ This increment implements structured understanding, session state, authorized re
 7. Social/general prose passes a conservative multilingual sensitive-claim guard. A rejection uses server wording without a second paid call. This guard is not a complete semantic proof.
 8. State, messages, audit and idempotent reply commit in one D1 batch. Lost lease/version aborts the entire batch. Successful telemetry follows persistence.
 
+If access, session expiry or persistence fails after a provider call, an error interaction still records measured tokens and calls with a normalized classification. It excludes prompt/reply text, raw session IDs and arbitrary error messages. Successful telemetry includes persistence latency; the live evaluator measures elapsed API time. Concurrent rejected requests record zero calls, avoiding double-counted spend.
+
 The UI follows the authorized server selection and preserves the structured discussion across case changes. Refresh does not automatically restore a rejected case.
 
 ## Session memory

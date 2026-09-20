@@ -639,3 +639,88 @@ test('evaluation is dry by default and enforces a complete-scenario spending bou
     0,
   );
 });
+
+test('paid usage remains observable after access expires, without logging text or credentials', async (t) => {
+  const { c, db } = await fixture(t, () => {
+    db.sql.exec('UPDATE grants SET expires_at=0');
+    return output({ intent: 'case_lookup', reference: 'active', requiresCase: true });
+  });
+  const events = [];
+  t.mock.method(console, 'info', (name, event) => {
+    if (name === 'atlas.ai.interaction') events.push(event);
+  });
+  const row = await verify(c);
+  const reply = await c.call('chat', { message: 'private-customer-message', caseId: row.id });
+  assert.equal(reply.status, 403);
+  assert.equal(events.length, 1);
+  const event = events[0];
+  assert.equal(event.outcome, 'error');
+  assert.equal(event.errorClassification, 'access_denied');
+  assert.equal(event.persisted, false);
+  assert.equal(event.providerTrace.calls, 1);
+  assert.equal(event.providerTrace.inputTokens, 120);
+  assert.equal(event.providerTrace.outputTokens, 80);
+  assert.equal(event.providerTrace.usageComplete, true);
+  assert.notEqual(event.sessionId, c.snapshot.space.id);
+  assert.doesNotMatch(JSON.stringify(event), /private-customer-message|test-secret|code_hash/);
+});
+
+test('persistence failure retains measured usage and never emits a successful interaction', async (t) => {
+  const { c, db } = await fixture(t);
+  const events = [];
+  t.mock.method(console, 'info', (name, event) => {
+    if (name === 'atlas.ai.interaction') events.push(event);
+  });
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(db, 'batch', async () => {
+    throw new Error('private SQL with test-secret');
+  });
+  const reply = await c.call('chat', { message: 'hello' });
+  assert.equal(reply.status, 503);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].errorClassification, 'persistence_failure');
+  assert.equal(events[0].phase, 'persist');
+  assert.equal(events[0].persisted, false);
+  assert.equal(events[0].providerTrace.inputTokens, 120);
+  assert.equal(db.sql.prepare('SELECT count(*) AS n FROM messages').get().n, 0);
+  assert.equal(db.sql.prepare('SELECT lock_until FROM conversation_states').get().lock_until, 0);
+  assert.doesNotMatch(JSON.stringify(events), /private SQL|test-secret/);
+});
+
+test('a concurrent denial records zero calls and successful spend is counted once', async (t) => {
+  let entered, release;
+  const waiting = new Promise((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const { c } = await fixture(t, async () => {
+    entered();
+    await waiting;
+    return output();
+  });
+  const events = [];
+  t.mock.method(console, 'info', (name, event) => {
+    if (name === 'atlas.ai.interaction') events.push(event);
+  });
+  const first = c.call('chat', { message: 'hello', requestId: 'usage-first' });
+  await started;
+  assert.equal(
+    (await c.call('chat', { message: 'another', requestId: 'usage-second' })).status,
+    409,
+  );
+  release();
+  assert.equal((await first).status, 200);
+  assert.equal(events.length, 2);
+  const rejected = events.find((event) => event.outcome === 'error');
+  assert.equal(rejected.errorClassification, 'conversation_busy');
+  assert.equal(rejected.providerTrace.calls, 0);
+  assert.equal(
+    events.reduce((sum, event) => sum + event.providerTrace.inputTokens, 0),
+    120,
+  );
+  const succeeded = events.find((event) => event.persisted);
+  assert.ok(succeeded.persistenceMs > 0);
+  assert.ok(succeeded.latencyMs >= succeeded.persistenceMs);
+});

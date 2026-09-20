@@ -892,6 +892,13 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
 export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> {
   let pendingChat: { db: Database; id: string } | null = null;
   let pendingConversation: { db: Database; lease: ConversationLease } | null = null;
+  // Retain measured spend even if authorization/persistence fails after the model responds.
+  // No user text, generated text, raw session ID or arbitrary error message belongs here.
+  let pendingInteraction: {
+    requestId: string; sessionId: string; started: number; sessionExpiresAt: number;
+    provider: string; model: string | null; trace: ProviderTrace;
+    phase: 'prepare' | 'generate' | 'persist'; route: string | null; language: string | null;
+  } | null = null;
   try {
     const path = new URL(req.url).pathname;
     const db = env.DB;
@@ -1136,6 +1143,11 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       const modelConfig = publicModelConfig(env);
       if (!modelConfig.ready)
         fail(503, modelConfig.blockedReason ?? 'Configuration du modèle invalide.');
+      pendingInteraction = {
+        requestId: traceId, sessionId: (await hash(s.id)).slice(0, 24), started: totalStarted,
+        sessionExpiresAt: s.expires_at, provider: modelConfig.provider, model: modelConfig.model,
+        trace: telemetry, phase: 'prepare', route: null, language: null,
+      };
       if (s.chat_window + HOUR < Date.now())
         await db
           .prepare('UPDATE spaces SET chat_count=0,chat_window=? WHERE id=? AND chat_window=?')
@@ -1160,6 +1172,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         .filter((item) => item.role === 'user')
         .map((item) => item.content);
       let route: string = conversationRoute(message, previousUserMessages);
+      pendingInteraction.route = route;
+      pendingInteraction.language = detectConversationLanguage(message, previousUserMessages);
       const casual = route === 'small_talk';
       const switchCase = route === 'switch_case';
       const retrievalStarted = performance.now();
@@ -1227,8 +1241,11 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       let generated: Awaited<ReturnType<typeof generate>> | null = guarded;
       if (!fallback && !generated) {
         try {
+          pendingInteraction.phase = 'generate';
           if (structured && pendingConversation) {
             const understanding = await understandConversation(env, message, pendingConversation.lease.state, candidates, telemetry);
+            pendingInteraction.route = understanding.intent;
+            pendingInteraction.language = understanding.language;
             conversation = await executeConversation(understanding, pendingConversation.lease.state, candidates, message, {
               readCase: async (caseId) => {
                 // Recheck after upstream latency; a remembered ID is never a grant.
@@ -1308,7 +1325,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           c && answer.content === grounded(c) ? 'case_brief' : 'text',
       };
       const interaction = {
-        schema: 1, requestId: traceId, sessionId: (await hash(s.id)).slice(0, 24),
+        schema: 1, requestId: traceId, sessionId: pendingInteraction.sessionId,
         timestamp: new Date(timestamp).toISOString(), provider: modelConfig.provider,
         model: modelConfig.model, route, language: metadata.language,
         mode: answer.mode, fallback, fallbackReason,
@@ -1340,6 +1357,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         metadata,
         messages: [userMessage, assistantMessage],
       };
+      pendingInteraction.phase = 'persist';
+      const persistenceStarted = performance.now();
       await db.batch([
         ...(pendingConversation ? [commitConversation(db, pendingConversation.lease, conversation?.state ?? pendingConversation.lease.state)] : []),
         db
@@ -1375,11 +1394,31 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       ]);
       pendingChat = null;
       pendingConversation = null;
-      console.info('atlas.ai.interaction', interaction);
+      pendingInteraction = null;
+      console.info('atlas.ai.interaction', {
+        ...interaction,
+        persistenceMs: Math.max(0.01, Math.round((performance.now() - persistenceStarted) * 100) / 100),
+        latencyMs: Math.max(0.01, Math.round((performance.now() - totalStarted) * 100) / 100),
+        persisted: true,
+      });
       return json(reply);
     }
     fail(404, 'Ressource introuvable.');
   } catch (e) {
+    if (pendingInteraction) {
+      const failure = Date.now() >= pendingInteraction.sessionExpiresAt ? 'session_expired'
+        : e instanceof ConversationBusy ? 'conversation_busy'
+        : e instanceof ApiError ? ({ 400: 'invalid_request', 403: 'access_denied', 409: 'request_conflict', 429: 'rate_limit', 503: 'service_unavailable' } as Record<number, string>)[e.status] ?? 'api_failure'
+        : pendingInteraction.phase === 'persist' ? 'persistence_failure' : 'internal_error';
+      console.info('atlas.ai.interaction', {
+        schema: 1, requestId: pendingInteraction.requestId, sessionId: pendingInteraction.sessionId,
+        timestamp: new Date().toISOString(), provider: pendingInteraction.provider,
+        model: pendingInteraction.model, route: pendingInteraction.route, language: pendingInteraction.language,
+        phase: pendingInteraction.phase, outcome: 'error', errorClassification: failure, persisted: false,
+        latencyMs: Math.max(0.01, Math.round((performance.now() - pendingInteraction.started) * 100) / 100),
+        providerTrace: pendingInteraction.trace,
+      });
+    }
     if (pendingConversation) {
       try { await releaseConversation(pendingConversation.db, pendingConversation.lease); }
       catch { console.error('Atlas conversation lease cleanup failed'); }
