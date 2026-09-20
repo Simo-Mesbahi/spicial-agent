@@ -206,3 +206,14 @@ export const conversationStates = sqliteTable('conversation_states', {
   lockId: text('lock_id').notNull(),
   lockUntil: integer('lock_until').notNull(),
 });
+
+// Authorization binding only; production case facts stay in Supabase, never in demo cases.
+export const productionCaseBindings = sqliteTable('production_case_bindings', {
+  sessionHash: text('session_hash').primaryKey(),
+  spaceId: text('space_id')
+    .notNull()
+    .references(() => spaces.id, { onDelete: 'cascade' }),
+  organizationId: text('organization_id').notNull(),
+  caseId: text('case_id').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+});

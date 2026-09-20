@@ -1,6 +1,6 @@
-import type { AtlasEnv, CaseRow } from './api';
+import type { AtlasEnv } from './api';
 import type { ConversationLanguage } from './conversation-intelligence';
-import { localizedProcedureReply, localizedWarrantyReply } from './conversation-intelligence';
+import { localizedProcedureReply } from './conversation-intelligence';
 import { redacted, normalized, type Article } from './domain';
 import { modelSettings } from './model-policy';
 import {
@@ -268,35 +268,31 @@ const canonicalTopics = {
   invoice: 'facture ticket justificatif achat',
   general: '',
 };
-type Dependencies = {
-  readCase: (id: string) => Promise<CaseRow>;
+type Dependencies<C> = {
+  readCase: (id: string) => Promise<C>;
   retrieve: (query: string) => Promise<KnowledgeSearchResult>;
-  renderCase: (c: CaseRow, language: ConversationLanguage) => string;
+  renderCase: (c: C, language: ConversationLanguage) => string;
+  renderWarranty: (c: C, language: ConversationLanguage, procedure: string) => string;
 };
 
-export async function executeConversation(
+export async function executeConversation<C>(
   u: Understanding,
   prior: ConversationState,
   candidates: CaseCandidate[],
   message: string,
-  deps: Dependencies,
+  deps: Dependencies<C>,
   trace: ProviderTrace,
 ) {
   const plan = planConversation(u, prior, candidates);
   const language = u.preferredResponseLanguage ?? prior.preferredResponseLanguage ?? u.language;
   let knowledge: KnowledgeSearchResult = { articles: [], scope: 'not_required' };
-  let currentCase: CaseRow | null = null;
+  let currentCase: C | null = null;
   const tools: string[] = [];
   let retrievalMs = 0;
   let sources: Article[] = [];
   let content = '';
   let action: 'contact' | 'handoff' | 'switch_case' | null = null;
   let groundingFailure = false;
-  if (plan.kind === 'case' || plan.kind === 'case_and_knowledge') {
-    currentCase = await deps.readCase(plan.caseId!);
-    tools.push('get_case');
-    trace.tools.push('get_case');
-  }
   if (plan.kind === 'knowledge' || plan.kind === 'case_and_knowledge') {
     const started = performance.now();
     const query = u.retrievalQuery ?? canonicalTopics[u.topic ?? prior.currentTopic ?? 'general'];
@@ -314,12 +310,18 @@ export async function executeConversation(
     }
     sources = knowledge.articles.slice(0, 1);
   }
+  // Refresh authorization and business facts after retrieval latency, just before rendering.
+  if (plan.kind === 'case' || plan.kind === 'case_and_knowledge') {
+    currentCase = await deps.readCase(plan.caseId!);
+    tools.push('get_case');
+    trace.tools.push('get_case');
+  }
   if (currentCase) {
     content = deps.renderCase(currentCase, language);
     if (u.topic === 'warranty')
-      content = localizedWarrantyReply(
-        language,
+      content = deps.renderWarranty(
         currentCase,
+        language,
         sources[0]?.body ?? safeConversationReply('missing', language),
       );
   } else if (plan.kind === 'knowledge') {

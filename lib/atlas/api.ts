@@ -553,6 +553,37 @@ function grounded(c: CaseRow) {
 function immediateSafetyRequest(message: string) {
   return /fumee|etincelle|brule|incendie/.test(normalized(message));
 }
+export function criticalSafetyAnswer(
+  message: string,
+  hasCase = false,
+  sources: Article[] = [],
+): AssistantAnswer | null {
+  const q = normalized(message);
+  const procedure = () => sources[0];
+  if (
+    /ignore.{0,30}(instruction|regle)|system prompt|mot de passe|cle api|tous les clients|autre client/.test(
+      q,
+    )
+  )
+    return {
+      content:
+        'Je ne peux pas divulguer des informations confidentielles ni contourner les contrôles d’accès. Je peux vous aider sur votre dossier vérifié ou sur les procédures publiques.',
+      sources: [],
+      tools: ['security_guard'],
+      action: null,
+    };
+  if (immediateSafetyRequest(message))
+    return {
+      content: `${procedure()?.body ?? 'Cessez d’utiliser l’appareil et éloignez-vous du danger. En cas de danger immédiat, contactez les secours locaux.'}\n\nAprès la mise en sécurité, cette situation doit être examinée par un professionnel. Je peux préparer le relais sans vous faire répéter votre contexte.`,
+      sources: procedure()
+        ? [procedure()!]
+        : [],
+      tools: ['search_knowledge', hasCase ? 'prepare_handoff' : 'prepare_contact'],
+      action: hasCase ? ('handoff' as const) : ('contact' as const),
+      supportPath: 'human_required' as const,
+    };
+  return null;
+}
 export function demoAnswer(
   message: string,
   c: CaseRow | null,
@@ -570,26 +601,8 @@ export function demoAnswer(
   const procedure = (titleNeedle: string, legacyId: string) =>
     sources.find((source) => normalized(source.title).includes(titleNeedle)) ??
     (knowledgeSources === undefined ? articles.find((source) => source.id === legacyId) : undefined);
-  if (
-    /ignore.{0,30}(instruction|regle)|system prompt|mot de passe|cle api|tous les clients|autre client/.test(
-      q,
-    )
-  )
-    return {
-      content:
-        'Je ne peux pas divulguer des informations confidentielles ni contourner les contrôles d’accès. Je peux vous aider sur votre dossier vérifié ou sur les procédures publiques.',
-      sources: [],
-      tools: ['security_guard'],
-      action: null,
-    };
-  if (immediateSafetyRequest(message))
-    return {
-      content: `${procedure('danger', 'produit-securite')?.body ?? 'Cessez d’utiliser l’appareil et éloignez-vous du danger. En cas de danger immédiat, contactez les secours locaux.'}\n\nAprès la mise en sécurité, cette situation doit être examinée par un professionnel. Je peux préparer le relais sans vous faire répéter votre contexte.`,
-      sources: procedure('danger', 'produit-securite') ? [procedure('danger', 'produit-securite')!] : [],
-      tools: ['search_knowledge', c ? 'prepare_handoff' : 'prepare_contact'],
-      action: c ? ('handoff' as const) : ('contact' as const),
-      supportPath: 'human_required' as const,
-    };
+  const safety = criticalSafetyAnswer(message, Boolean(c), procedure('danger', 'produit-securite') ? [procedure('danger', 'produit-securite')!] : []);
+  if (safety) return safety;
   if (switchCase)
     return {
       content: anotherCaseReply(language, c?.reference),
@@ -1201,7 +1214,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
               outputTokens: 0,
             }
           : null;
-      let conversation: Awaited<ReturnType<typeof executeConversation>> | null = null;
+      let conversation: Awaited<ReturnType<typeof executeConversation<CaseRow>>> | null = null;
       let candidates: CaseCandidate[] = [];
       if (structured) {
         const lease = await acquireConversation(db, s.id, s.expires_at);
@@ -1254,6 +1267,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
               },
               retrieve: query => searchKnowledge(env, query),
               renderCase: (current, language) => language === 'fr' ? grounded(current) : localizedCaseReply(language, current),
+              renderWarranty: (current, language, procedure) => localizedWarrantyReply(language, current, procedure),
             }, telemetry);
             conversationCaseId = conversation.state.activeCaseId;
             if (conversationCaseId) await granted(db, s, conversationCaseId);

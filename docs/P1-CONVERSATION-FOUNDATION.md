@@ -1,5 +1,7 @@
 # P1 conversation foundation — staged rollout
 
+Follow-up: [P1.2 production case adapter](P1-PRODUCTION-CASE-ADAPTER.md) adds the separately gated Supabase chat path. This document records the original #31 scope.
+
 ## Audit and scope
 
 Base: `main` at `ab45442eb00db159a8e0bd8f6812190e9571c123` (PR #30). P0 provider transport, diagnostics, health, quotas and evaluation are reused.

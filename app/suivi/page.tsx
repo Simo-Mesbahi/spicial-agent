@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { ProductionCaseChat } from '@/components/atlas/production-case-chat';
 import Link from 'next/link';
 import { ContactPage } from '@/components/atlas/contact-page';
 import {
@@ -90,6 +91,7 @@ function Brand() {
 
 export default function TrackingPage() {
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [chatEnabled, setChatEnabled] = useState(false);
   const [caseData, setCaseData] = useState<CaseSnapshot | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [reference, setReference] = useState('');
@@ -99,6 +101,15 @@ export default function TrackingPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const requestId = useRef(0);
+  const expireChatAccess = useCallback(() => {
+    requestId.current++;
+    setCaseData(null);
+    setExpiresAt(null);
+    setCode('');
+    setBusy(false);
+    setRefreshing(false);
+    setError('Votre accès a expiré. Saisissez à nouveau votre référence et votre code.');
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,9 +117,12 @@ export default function TrackingPage() {
       requestId.current++;
     };
     let active = true;
-    void request<{ configured: boolean }>('/config', { signal: controller.signal })
+    void request<{ configured: boolean; chatEnabled?: boolean }>('/config', {
+      signal: controller.signal,
+    })
       .then(async (config) => {
         if (!active) return;
+        setChatEnabled(Boolean(config.chatEnabled));
         if (!config.configured) {
           setConfigured(false);
           return;
@@ -511,7 +525,16 @@ export default function TrackingPage() {
               </p>
             </div>
           </div>
-          <details className="tracking-contact">
+          {chatEnabled && (
+            <ProductionCaseChat
+              key={`${caseData.id}:${expiresAt}`}
+              onExpired={expireChatAccess}
+              onChangeCase={() => {
+                void close();
+              }}
+            />
+          )}
+          <details className="tracking-contact" id="tracking-contact">
             <summary>
               Contacter un conseiller à propos de ce dossier <ArrowRight size={17} />
             </summary>

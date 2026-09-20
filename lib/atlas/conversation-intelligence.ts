@@ -566,7 +566,7 @@ export function conversationRoute(
 }
 
 
-const statusLabels: Record<ConversationLanguage, Record<string, string>> = {
+export const statusLabels: Record<ConversationLanguage, Record<string, string>> = {
   fr: {
     deposited: 'Déposé en magasin', received: 'Reçu au SAV', diagnosis: 'Diagnostic en cours',
     waiting_part: 'En attente de pièce', quote_pending: 'Devis à valider', repairing: 'En réparation',
