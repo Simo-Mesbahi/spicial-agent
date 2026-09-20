@@ -801,3 +801,76 @@
   .tracking-intro > p { font-size:16px; }
   .tracking-trust { display:none; }
 }
+
+.production-case-chat {
+  padding: clamp(20px, 3vw, 32px);
+  margin-block: 24px;
+  border: 1px solid var(--tracking-line);
+  border-radius: 20px;
+  background: #fff;
+}
+.production-case-chat h2 {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+.production-case-chat > p {
+  color: #52675d;
+}
+.case-chat-messages {
+  max-height: 480px;
+  overflow-y: auto;
+  margin-block: 20px;
+}
+.case-chat-message {
+  padding: 16px;
+  margin-block: 12px;
+  border-radius: 12px;
+  background: #f0f6f2;
+}
+.case-chat-message.from-user {
+  margin-left: min(8%, 40px);
+  background: #e8f0fb;
+}
+.case-chat-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+.production-case-chat form {
+  display: grid;
+  gap: 10px;
+}
+.production-case-chat textarea {
+  resize: vertical;
+  min-height: 90px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #849b8f;
+  border-radius: 10px;
+}
+.production-case-chat button {
+  justify-self: start;
+  padding: 10px 16px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--tracking-green);
+  cursor: pointer;
+}
+.production-case-chat button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.production-case-chat :focus-visible {
+  outline: 3px solid #176b55;
+  outline-offset: 3px;
+}
+.production-case-chat .case-chat-contact {
+  margin-top: 16px;
+  background: transparent;
+  color: var(--tracking-green);
+  text-decoration: underline;
+}
+.case-chat-error {
+  color: #a42424;
+}

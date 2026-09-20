@@ -1,0 +1,296 @@
+import { z } from 'zod';
+import type { AtlasEnv } from './api';
+import { hash, criticalSafetyAnswer } from './api';
+import { redacted } from './domain';
+import { productionCaseAdapter, CaseAccessError, type CaseFacts } from './case-adapter';
+import { renderCaseFacts } from './case-facts-renderer';
+import {
+  acquireConversation,
+  commitConversation,
+  releaseConversation,
+  ConversationBusy,
+  type ConversationLease,
+} from './conversation-state';
+import { understandConversation, executeConversation } from './structured-conversation';
+import { detectConversationLanguage } from './conversation-intelligence';
+import { providerTrace, ProviderError } from './provider-runtime';
+import { publicModelConfig } from './model-policy';
+import { effectiveEnvironment } from './runtime-settings';
+import { searchKnowledge } from './knowledge-runtime';
+
+export async function productionChat(
+  req: Request,
+  originalEnv: AtlasEnv,
+  token: string,
+  body: unknown,
+  reserveBudget: (env: AtlasEnv) => Promise<void>,
+) {
+  const env = await effectiveEnvironment(originalEnv, req.url);
+  if (env.LLM_ORCHESTRATOR !== 'structured')
+    throw new CaseAccessError(
+      503,
+      'chat_not_enabled',
+      'L’assistant est momentanément indisponible.',
+    );
+  const adapter = await productionCaseAdapter(env, token);
+  const initial = await adapter.read();
+  if (req.method === 'GET') {
+    const rows = (
+      await env.DB.prepare(
+        'SELECT id,role,content,metadata FROM messages WHERE space_id=? ORDER BY created_at DESC,rowid DESC LIMIT 24',
+      )
+        .bind(adapter.spaceId)
+        .all<{ id: string; role: string; content: string; metadata: string }>()
+    ).results.reverse();
+    return {
+      csrf: adapter.csrf,
+      messages: rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata) })),
+    };
+  }
+  if (
+    req.headers.get('origin') !== new URL(req.url).origin ||
+    req.headers.get('x-atlas-csrf') !== adapter.csrf
+  )
+    throw new CaseAccessError(
+      403,
+      'invalid_origin_or_csrf',
+      'Actualisez le dossier avant de réessayer.',
+    );
+  const parsed = z
+    .object({
+      message: z.string().trim().min(1).max(1500),
+      requestId: z.string().regex(/^[a-zA-Z0-9-]{8,80}$/),
+    })
+    .strict()
+    .safeParse(body);
+  if (!parsed.success)
+    throw new CaseAccessError(
+      400,
+      'invalid_chat_request',
+      'La question ou son identifiant est invalide.',
+    );
+  const message = redacted(parsed.data.message),
+    key = `${adapter.spaceId}:${parsed.data.requestId}`;
+  const references = message.match(/(?:SAV|CMD|RET|REM|SC)-\d{4}-\d{4}(?:-\d+)?/gi) ?? [];
+  if (references.some((ref) => ref.toUpperCase() !== initial.reference.toUpperCase()))
+    throw new CaseAccessError(
+      403,
+      'case_access_denied',
+      'Vérifiez cet autre dossier dans le formulaire sécurisé.',
+    );
+  const inputHash = await hash(message);
+  const claim = await env.DB.prepare(
+    'INSERT OR IGNORE INTO chat_requests (id,space_id,input_hash,created_at) VALUES (?,?,?,?)',
+  )
+    .bind(key, adapter.spaceId, inputHash, Date.now())
+    .run();
+  if (!claim.meta.changes) {
+    const previous = await env.DB.prepare(
+      'SELECT input_hash,response FROM chat_requests WHERE id=? AND space_id=?',
+    )
+      .bind(key, adapter.spaceId)
+      .first<{ input_hash: string; response: string | null }>();
+    if (previous?.input_hash !== inputHash || !previous.response)
+      throw new CaseAccessError(
+        409,
+        'request_conflict',
+        'Cette question est déjà en cours ou son identifiant est réutilisé.',
+      );
+    return JSON.parse(previous.response);
+  }
+  const trace = providerTrace(),
+    requestId = crypto.randomUUID(),
+    started = performance.now();
+  const sessionId = (await hash(adapter.spaceId)).slice(0, 24);
+  const config = publicModelConfig(env);
+  let lease: ConversationLease | null = null;
+  let persisted = false;
+  try {
+    lease = await acquireConversation(env.DB, adapter.spaceId, adapter.expiresAt);
+    // A production session authorizes exactly one case. Changing it requires verification.
+    if (!lease.state.pendingCaseSwitch) lease.state.activeCaseId = initial.id;
+    lease.state.previousCaseId = lease.state.previousCaseId === initial.id ? initial.id : null;
+    const candidates = [
+      {
+        id: initial.id,
+        reference: initial.reference,
+        product: (initial.product ?? '').slice(0, 100),
+        kind: initial.kind,
+      },
+    ];
+    let usedCase: CaseFacts | null = null;
+    let conversation: Awaited<ReturnType<typeof executeConversation<CaseFacts>>> | null = null;
+    let fallbackReason: string | null = null;
+    const safety = criticalSafetyAnswer(message, true);
+    if (!safety && (!config.ready || config.provider === 'demo'))
+      throw new CaseAccessError(
+        503,
+        'provider_not_configured',
+        'L’assistant est momentanément indisponible.',
+      );
+    if (!safety) await reserveBudget(env);
+    try {
+      if (!safety) {
+        const understanding = await understandConversation(
+          env,
+          message,
+          lease.state,
+          candidates,
+          trace,
+        );
+        conversation = await executeConversation(
+          understanding,
+          lease.state,
+          candidates,
+          message,
+          {
+            readCase: async (id) => {
+              usedCase = await adapter.read(id);
+              return usedCase;
+            },
+            // A configured production transport must never substitute demonstration documents.
+            retrieve: async (query) => {
+              const result = await searchKnowledge(env, query);
+              return result.scope === 'legacy_demo'
+                ? { articles: [], scope: 'supabase_unavailable' }
+                : result;
+            },
+            renderCase: renderCaseFacts,
+            renderWarranty: (facts, language) => renderCaseFacts(facts, language),
+          },
+          trace,
+        );
+      }
+    } catch (error) {
+      if (!(error instanceof ProviderError)) throw error;
+      fallbackReason = error.reason;
+    }
+    // Social responses and fallbacks also revalidate the case session after provider latency.
+    const finalFacts = usedCase ?? (await adapter.read());
+    const language =
+      conversation?.language ??
+      lease.state.preferredResponseLanguage ??
+      detectConversationLanguage(message);
+    const answer = safety ??
+      conversation?.answer ?? {
+        content: renderCaseFacts(finalFacts, language),
+        sources: [],
+        tools: ['get_case'],
+        action: null,
+      };
+    if (safety) trace.tools.push(...safety.tools);
+    else if (!conversation) trace.tools.push('get_case');
+    const metadata = {
+      orchestrator: 'structured',
+      dataSource: 'supabase',
+      provider: config.provider,
+      model: config.model,
+      mode: conversation ? config.provider : 'deterministic',
+      fallback: fallbackReason ? 'provider_unavailable' : null,
+      fallbackReason,
+      requestId,
+      understanding: conversation?.understanding ?? null,
+      plan: conversation?.plan.kind ?? null,
+      stateVersion: lease.version + 1,
+      groundingFailure: conversation?.groundingFailure ?? false,
+      action: answer.action,
+      selectedCaseId: conversation ? conversation.state.activeCaseId : initial.id,
+      tools: answer.tools,
+      sources: answer.sources.map((s) => ({ id: s.id, version: s.version, title: s.title })),
+      caseEvidence:
+        usedCase || (!conversation && !safety)
+          ? {
+              id: finalFacts.id,
+              version: finalFacts.version,
+              updatedAt: finalFacts.updatedAt,
+              source: finalFacts.source,
+            }
+          : null,
+      providerCalls: trace.calls,
+      inputTokens: trace.usageComplete ? trace.inputTokens : null,
+      outputTokens: trace.usageComplete ? trace.outputTokens : null,
+      usageComplete: trace.usageComplete,
+      latencyMs: Math.round((performance.now() - started) * 100) / 100,
+    };
+    const reply = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: redacted(answer.content),
+      metadata,
+    };
+    const now = Date.now();
+    await env.DB.batch([
+      commitConversation(env.DB, lease, conversation?.state ?? lease.state),
+      env.DB.prepare(
+        "INSERT INTO messages (id,space_id,case_id,role,content,metadata,created_at) VALUES (?,?,?,'user',?,'{}',?)",
+      ).bind(crypto.randomUUID(), adapter.spaceId, initial.id, message, now),
+      env.DB.prepare(
+        "INSERT INTO messages (id,space_id,case_id,role,content,metadata,created_at) VALUES (?,?,?,'assistant',?,?,?)",
+      ).bind(
+        reply.id,
+        adapter.spaceId,
+        initial.id,
+        reply.content,
+        JSON.stringify(metadata),
+        now + 1,
+      ),
+      env.DB.prepare('UPDATE chat_requests SET response=? WHERE id=? AND space_id=?').bind(
+        JSON.stringify(reply),
+        key,
+        adapter.spaceId,
+      ),
+    ]);
+    persisted = true;
+    console.info('atlas.ai.interaction', {
+      schema: 1,
+      requestId,
+      sessionId,
+      dataSource: 'supabase',
+      provider: config.provider,
+      model: config.model,
+      outcome: safety ? 'safety_guard' : fallbackReason ? 'fallback' : 'provider_success',
+      fallbackReason,
+      providerTrace: trace,
+      persisted,
+      latencyMs: performance.now() - started,
+    });
+    return reply;
+  } catch (error) {
+    console.info('atlas.ai.interaction', {
+      schema: 1,
+      requestId,
+      sessionId,
+      dataSource: 'supabase',
+      provider: config.provider,
+      model: config.model,
+      outcome: 'error',
+      errorClassification:
+        error instanceof CaseAccessError
+          ? error.code
+          : error instanceof ConversationBusy
+            ? 'conversation_busy'
+            : 'request_failed',
+      providerTrace: trace,
+      persisted,
+      latencyMs: performance.now() - started,
+    });
+    if (error instanceof ConversationBusy)
+      throw new CaseAccessError(
+        409,
+        'conversation_busy',
+        'Un message est déjà en cours. Attendez sa réponse.',
+      );
+    throw error;
+  } finally {
+    if (!persisted) {
+      try {
+        if (lease) await releaseConversation(env.DB, lease);
+        await env.DB.prepare('DELETE FROM chat_requests WHERE id=? AND response IS NULL')
+          .bind(key)
+          .run();
+      } catch {
+        console.error('atlas.production_chat.cleanup_failed', { requestId });
+      }
+    }
+  }
+}

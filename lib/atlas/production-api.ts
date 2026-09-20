@@ -1,4 +1,15 @@
-import { MfaError, mfaError, mfaUser, mfaScope, cachedEnrollment, enrollMfa, withMfaLock } from './mfa-enrollment';
+import { caseSchema } from './case-schema';
+import { bindProductionCaseSession, caseSessionHash, CaseAccessError } from './case-adapter';
+import { productionChat } from './production-chat';
+import {
+  MfaError,
+  mfaError,
+  mfaUser,
+  mfaScope,
+  cachedEnrollment,
+  enrollMfa,
+  withMfaLock,
+} from './mfa-enrollment';
 import { z } from 'zod';
 import { environmentLabel, type RuntimeEnv } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
@@ -34,47 +45,6 @@ class ProductionApiError extends Error {
   }
 }
 
-const caseSchema = z
-  .object({
-    id: z.string().uuid(),
-    reference: z.string().min(6).max(64),
-    kind: z.string().min(2).max(40),
-    title: z.string().min(2).max(180),
-    description: z.string().max(6000),
-    status: z.string().min(2).max(50),
-    warranty_status: z.string().max(40),
-    warranty_label: z.string().max(240).nullable(),
-    quote_cents: z.number().int().nonnegative().nullable(),
-    refund_cents: z.number().int().nonnegative().nullable(),
-    currency: z.string().length(3),
-    delivery_mode: z.string().max(240).nullable(),
-    estimated_at: z.string().nullable(),
-    version: z.number().int().positive(),
-    updated_at: z.string(),
-    product: z
-      .object({
-        name: z.string().max(240),
-        category: z.string().max(160).nullable(),
-        sku: z.string().max(120).nullable(),
-      })
-      .nullable(),
-    store: z
-      .object({ name: z.string().max(240), city: z.string().max(160).nullable() })
-      .nullable(),
-    events: z
-      .array(
-        z.object({
-          id: z.string().uuid(),
-          status: z.string().max(50),
-          label: z.string().max(240),
-          details: z.record(z.string(), z.unknown()),
-          occurred_at: z.string(),
-        }),
-      )
-      .max(250),
-  })
-  .strict();
-
 const caseSessionSchema = z
   .object({
     access_token: z.string().regex(/^[a-f0-9]{64}$/),
@@ -83,9 +53,7 @@ const caseSessionSchema = z
   })
   .strict();
 
-const currentCaseSchema = z
-  .object({ expires_at: z.string(), case: caseSchema })
-  .strict();
+const currentCaseSchema = z.object({ expires_at: z.string(), case: caseSchema }).strict();
 
 const membershipSchema = z.object({
   organization_id: z.string().uuid(),
@@ -237,6 +205,7 @@ async function networkKey(req: Request, purpose: string) {
 
 async function reserveRate(db: Database | undefined, id: string, limit: number, windowMs: number) {
   if (!db) fail(503, 'Protection anti-abus indisponible.', 'rate_store_unavailable');
+  if (limit <= 0) fail(429, 'Le budget de requêtes est épuisé.', 'rate_limited');
   const now = Date.now();
   const reserved = await db
     .prepare(
@@ -244,8 +213,7 @@ async function reserveRate(db: Database | undefined, id: string, limit: number, 
     )
     .bind(id, now + windowMs, now, now, now + windowMs, limit, now)
     .first();
-  if (!reserved)
-    fail(429, 'Trop de tentatives. Réessayez dans quelques minutes.', 'rate_limited');
+  if (!reserved) fail(429, 'Trop de tentatives. Réessayez dans quelques minutes.', 'rate_limited');
 }
 
 function rpc<T>(
@@ -388,7 +356,12 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
     guardMutation(req);
     const parsed = z
       .object({
-        reference: z.string().trim().min(6).max(64).regex(/^[A-Za-z0-9-]+$/),
+        reference: z
+          .string()
+          .trim()
+          .min(6)
+          .max(64)
+          .regex(/^[A-Za-z0-9-]+$/),
         code: z.string().regex(/^\d{6,12}$/),
       })
       .strict()
@@ -428,15 +401,22 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
       fail(403, 'Référence ou code incorrect.', 'invalid_case_credentials');
     const session = caseSessionSchema.safeParse(result);
     if (!session.success) fail(502, 'Réponse du dossier invalide.', 'invalid_case_response');
+    if (session.data.case.reference.toUpperCase() !== parsed.data.reference.toUpperCase())
+      fail(502, 'Réponse du dossier invalide.', 'invalid_case_response');
+    if (env.LLM_ORCHESTRATOR === 'structured')
+      await bindProductionCaseSession(
+        env,
+        session.data.access_token,
+        session.data.case.id,
+        session.data.expires_at,
+      );
     const expiresAt = Date.parse(session.data.expires_at);
     const maxAge = Number.isFinite(expiresAt)
       ? Math.max(60, Math.min(Math.floor((expiresAt - Date.now()) / 1000), 30 * 60))
       : 30 * 60;
-    return json(
-      { case: session.data.case, expiresAt: session.data.expires_at },
-      200,
-      [sessionCookie(req, CASE_COOKIE, session.data.access_token, maxAge)],
-    );
+    return json({ case: session.data.case, expiresAt: session.data.expires_at }, 200, [
+      sessionCookie(req, CASE_COOKIE, session.data.access_token, maxAge),
+    ]);
   }
   if (path === '/api/production/cases/current' && req.method === 'GET') {
     const accessToken = cookie(req, CASE_COOKIE);
@@ -471,6 +451,10 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
         { p_access_token: accessToken },
         { kind: 'privileged' },
       );
+    if (accessToken)
+      await env.DB.prepare('DELETE FROM spaces WHERE token_hash=?')
+        .bind(await caseSessionHash(settings.organizationId, accessToken))
+        .run();
     return json({ ok: true }, 200, [clearCookie(req, CASE_COOKIE)]);
   }
   return null;
@@ -651,7 +635,12 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
   try {
     const path = new URL(req.url).pathname;
     if (path === '/api/production/config' && req.method === 'GET')
-      return json({ backend: 'supabase', environment: environmentLabel(env, req.url), ...publicSupabaseState(env) });
+      return json({
+        backend: 'supabase',
+        environment: environmentLabel(env, req.url),
+        chatEnabled: env.LLM_ORCHESTRATOR === 'structured',
+        ...publicSupabaseState(env),
+      });
 
     if (path === '/api/production/health' && req.method === 'GET') {
       supabaseSettings(env);
@@ -665,27 +654,58 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
       return json({ status: 'ok', database: 'reachable' });
     }
 
+    if (path === '/api/production/chat' && ['GET', 'POST'].includes(req.method)) {
+      if (req.method === 'POST') guardMutation(req);
+      await reserveRate(env.DB, await networkKey(req, 'production-chat'), 60, FIFTEEN_MINUTES);
+      const body = req.method === 'POST' ? await requestBody(req) : null;
+      return json(
+        await productionChat(req, env, cookie(req, CASE_COOKIE), body, async (activeEnv) => {
+          const value = Number(activeEnv.LLM_DAILY_LIMIT ?? 100);
+          const limit = Number.isFinite(value)
+            ? Math.max(0, Math.min(Math.floor(value), 10000))
+            : 100;
+          await reserveRate(env.DB, 'llm-global', limit, 24 * 60 * 60_000);
+        }),
+      );
+    }
     const caseResponse = await handleCaseRoutes(req, env, path);
     if (caseResponse) return caseResponse;
     const adminResponse = await handleAdminRoutes(req, env, path);
     if (adminResponse) return adminResponse;
     return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404);
   } catch (error) {
+    if (error instanceof CaseAccessError)
+      return json(
+        { error: error.message, code: error.code },
+        error.status,
+        error.status === 401 ? [clearCookie(req, CASE_COOKIE)] : [],
+      );
     if (new URL(req.url).pathname.startsWith('/api/production/admin/mfa/')) {
       // D1 can wrap SQLite errors in Error.cause. Diagnose the absent local
       // migration without returning database messages or sensitive payloads.
       let cause: unknown = error;
       for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
         if (/no such table:\s*mfa_enrollments\b/i.test(cause.message)) {
-          return json({
-            error: 'Le stockage MFA n’est pas initialisé. Le responsable doit appliquer les migrations dans cet environnement avant de reprendre la configuration.',
-            code: 'mfa_storage_not_ready',
-          }, 503);
+          return json(
+            {
+              error:
+                'Le stockage MFA n’est pas initialisé. Le responsable doit appliquer les migrations dans cet environnement avant de reprendre la configuration.',
+              code: 'mfa_storage_not_ready',
+            },
+            503,
+          );
         }
         cause = cause.cause;
       }
-      if (error instanceof SupabaseRequestError) { try { mfaError(error); } catch (mapped) { error = mapped; } }
-      if (error instanceof MfaError) return json({error: error.message, code: error.code}, error.status);
+      if (error instanceof SupabaseRequestError) {
+        try {
+          mfaError(error);
+        } catch (mapped) {
+          error = mapped;
+        }
+      }
+      if (error instanceof MfaError)
+        return json({ error: error.message, code: error.code }, error.status);
     }
     if (error instanceof ProductionApiError)
       return json({ error: error.message, code: error.code }, error.status);

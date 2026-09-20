@@ -247,3 +247,45 @@ test('Cloudflare: structured chat persists bounded state and idempotency atomica
     assert.equal((await db.prepare('SELECT lock_id FROM conversation_states').first()).lock_id, 'new-owner');
   } finally { await mf.dispose(); }
 });
+
+test('Cloudflare: production chat uses authenticated Supabase snapshots and atomically persists its reply', async () => {
+  const token = 'c'.repeat(64), expires_at = new Date(Date.now() + 1800000).toISOString();
+  let calls = 0, revoked = false;
+  const current = { ...snapshot };
+  const mf = await runtime(async req => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith('/customer_open_case_session')) return Response.json({ access_token: token, expires_at, case: current });
+    if (path.endsWith('/customer_case_snapshot')) {
+      assert.equal((await req.json()).p_access_token, token);
+      return revoked ? Response.json({ code: 'P0001', message: 'invalid_case_session' }, { status: 400 }) : Response.json({ expires_at, case: current });
+    }
+    if (path.endsWith('/customer_close_case_session')) { revoked = true; return Response.json(null); }
+    if (path.endsWith('/chat/completions')) {
+      calls++; current.status = 'ready'; current.version = 2;
+      const understanding = { language: 'fr', preferredResponseLanguage: null, intent: 'case_lookup', subIntent: 'status', topic: 'repair', guidance: 'business_direct', guidancePreference: 'keep', reference: 'active', selectedCaseId: null, referencedProduct: null, referencesPreviousTurn: false, conversationRepair: false, requiresCase: true, requiresKnowledge: false, requiresClarification: false, requiresHuman: false, confidence: .95, style: { length: 'keep', emoji: 'keep' }, retrievalQuery: null, response: '' };
+      return Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(understanding) } }], usage: { prompt_tokens: 100, completion_tokens: 70 } });
+    }
+    throw new Error('Unexpected outbound request: ' + path);
+  }, { LLM_ORCHESTRATOR: 'structured', LLM_PROVIDER: 'openai', LLM_BUDGET_MODE: 'approved', OPENAI_MODEL: 'test-model', OPENAI_API_KEY: 'test-key' });
+  try {
+    const verified = await call(mf, '/api/production/cases/verify', { body: { reference: snapshot.reference, code: '123456' } });
+    assert.equal(verified.status, 200);
+    const cookie = verified.headers.get('set-cookie').split(';')[0];
+    const state = await (await call(mf, '/api/production/chat', { cookie })).json();
+    const body = { message: 'Où en est ma réparation ?', requestId: crypto.randomUUID() };
+    const response = await call(mf, '/api/production/chat', { cookie, csrf: state.csrf, body });
+    const reply = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(reply)); assert.match(reply.content, /retrait/);
+    assert.equal(reply.metadata.caseEvidence.version, 2);
+    assert.equal(reply.metadata.fallback, null);
+    assert.equal(reply.metadata.plan, 'case');
+    const replay = await (await call(mf, '/api/production/chat', { cookie, csrf: state.csrf, body })).json();
+    assert.equal(replay.id, reply.id); assert.equal(calls, 1);
+    const db = await mf.getD1Database('DB');
+    assert.equal((await db.prepare('SELECT count(*) n FROM cases').first()).n, 0);
+    assert.equal((await db.prepare('SELECT count(*) n FROM messages').first()).n, 2);
+    assert.equal((await call(mf, '/api/production/cases/current', { method: 'DELETE', cookie })).status, 200);
+    assert.equal((await db.prepare('SELECT count(*) n FROM messages').first()).n, 0);
+    assert.equal((await call(mf, '/api/production/chat', { cookie })).status, 401);
+  } finally { await mf.dispose(); }
+});

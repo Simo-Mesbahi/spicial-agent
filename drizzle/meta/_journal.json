@@ -50,6 +50,13 @@
       "when": 1789857017697,
       "tag": "0006_conversation_state",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789901764432,
+      "tag": "0007_production_case_binding",
+      "breakpoints": true
     }
   ]
 }
