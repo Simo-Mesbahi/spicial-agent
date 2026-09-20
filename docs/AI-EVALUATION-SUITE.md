@@ -4,6 +4,8 @@
 
 This suite is the regression and capability benchmark for SAV SC Assistant AI before and during the P1 conversational-orchestrator refactor.
 
+The staged P1 runtime has an additional [bounded live semantic evaluation](P1-CONVERSATION-FOUNDATION.md#independent-live-evaluation). It runs the actual chat API against these unchanged targets, defaults to a dry run, and does not replace the historical regression gate.
+
 It is intentionally harder than the current implementation. A failed new scenario is a measured capability gap, not an excuse to rewrite the expectation. Historical P0 checks remain comparable because their scenario IDs are preserved.
 
 ## Current corpus contract

@@ -196,3 +196,13 @@ export const providerHealth = sqliteTable('provider_health', {
   lockId: text('lock_id').notNull(),
   lockUntil: integer('lock_until').notNull(),
 });
+
+// One bounded, expiring conversation per session; no business facts or credentials.
+export const conversationStates = sqliteTable('conversation_states', {
+  spaceId: text('space_id').primaryKey().references(() => spaces.id, { onDelete: 'cascade' }),
+  payload: text('payload').notNull(),
+  version: integer('version').notNull().default(0),
+  expiresAt: integer('expires_at').notNull(),
+  lockId: text('lock_id').notNull(),
+  lockUntil: integer('lock_until').notNull(),
+});
