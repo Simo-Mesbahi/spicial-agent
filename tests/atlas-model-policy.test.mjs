@@ -49,9 +49,19 @@ test('Gemini free mode is a narrow allowlist with a separate secret', () => {
     GEMINI_API_KEY: 'gemini-secret',
   });
   assert.equal(settings.base, 'https://generativelanguage.googleapis.com/v1beta/openai');
-  assert.equal(settings.model, 'gemini-2.5-flash');
+  assert.equal(settings.model, 'gemini-3.1-flash-lite');
   assert.equal(settings.key, 'gemini-secret');
   assert.ok(geminiModels.includes('gemini-2.5-flash-lite'));
+  assert.ok(geminiModels.includes('gemini-3.1-flash-lite'));
+  assert.equal(
+    modelSettings({
+      LLM_PROVIDER: 'gemini',
+      LLM_BUDGET_MODE: 'free',
+      GEMINI_MODEL: 'gemini-3.1-flash-lite',
+      GEMINI_API_KEY: 'gemini-secret',
+    }).model,
+    'gemini-3.1-flash-lite',
+  );
   assert.throws(
     () => modelSettings({ LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x' }),
     /mode free ou approved/,
