@@ -72,6 +72,7 @@ else {
   try {
     const results = [];
     for (const scenario of selected) {
+      const trace = providerTrace();
       const fixture = groundingFixture(scenario);
       const diagnostics = await validateNaturalDraft(
         {
@@ -82,7 +83,7 @@ else {
           LLM_VALIDATION_DAILY_LIMIT: String(options.maxCases),
         },
         fixture,
-        providerTrace(),
+        trace,
       );
       results.push({
         id: scenario.id,
@@ -90,6 +91,7 @@ else {
         expectedSupported: scenario.expectedSupported,
         expectedIssue: scenario.expectedIssue,
         diagnostics,
+        providerAttempts: trace.attempts,
       });
     }
     const negatives = results.filter((r) => !r.expectedSupported),
@@ -134,6 +136,13 @@ else {
         status,
         output: options.output,
         calls: results.reduce((n, r) => n + r.diagnostics.calls, 0),
+        failures: results
+          .filter((r) => r.diagnostics.reason !== null)
+          .map((r) => ({
+            id: r.id,
+            reason: r.diagnostics.reason,
+            providerAttempts: r.providerAttempts,
+          })),
       }),
     );
     if (status !== 'requires_human_review') process.exitCode = 1;

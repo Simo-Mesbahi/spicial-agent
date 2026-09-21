@@ -165,3 +165,98 @@ test('usage is retained when a later provider round fails', async (t) => {
   assert.equal(trace.calls, 2);
   assert.equal(trace.usageComplete, false);
 });
+
+for (const array of [false, true])
+  test(`Gemini ${array ? 'array' : 'object'} error preserves HTTP and RPC status without raw data`, async (t) => {
+    const config = {
+      LLM_PROVIDER: 'gemini',
+      LLM_BUDGET_MODE: 'free',
+      GEMINI_MODEL: 'gemini-2.5-flash',
+      GEMINI_API_KEY: 'PRIVATE-GEMINI-KEY',
+    };
+    const error = {
+      error: {
+        code: 404,
+        status: 'NOT_FOUND',
+        message: 'PRIVATE-GEMINI-KEY PRIVATE-CUSTOMER',
+        details: [{ token: 'PRIVATE-TOKEN' }],
+      },
+    };
+    mock(t, async (_url, init) => {
+      assert.equal(JSON.parse(init.body).reasoning_effort, 'none');
+      return Response.json(array ? [error] : error, { status: 404 });
+    });
+    const trace = providerTrace();
+    await assert.rejects(
+      providerCompletion(config, completionPayload(config, []), AbortSignal.timeout(1000), trace),
+      (e) => e.diagnostic.code === 'NOT_FOUND',
+    );
+    assert.equal(trace.calls, 1);
+    assert.equal(trace.attempts[0].provider, 'gemini');
+    assert.equal(trace.attempts[0].model, 'gemini-2.5-flash');
+    assert.deepEqual(trace.attempts[0].diagnostic, {
+      reason: 'upstream_rejected',
+      httpStatus: 404,
+      code: 'NOT_FOUND',
+      parameter: null,
+    });
+    assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
+  });
+for (const code of [
+  'insufficient_quota',
+  'credit_balance_exhausted',
+  'organization_spend_limit_exceeded',
+  'project_spend_limit_exceeded',
+  'organization_usage_limit_exceeded',
+  'rate_limit_exceeded',
+  'slow_down',
+])
+  test(`Safe trace retains quota/rate distinction: ${code}`, async (t) => {
+    mock(t, async () =>
+      Response.json(
+        { error: { code, type: 'insufficient_quota', message: 'PRIVATE' } },
+        { status: 429 },
+      ),
+    );
+    const trace = providerTrace();
+    await assert.rejects(providerCompletion(env, payload, AbortSignal.timeout(1000), trace));
+    assert.equal(trace.attempts[0].diagnostic.code, code);
+    assert.equal(trace.attempts[0].httpStatus, 429);
+    assert.doesNotMatch(JSON.stringify(trace), /PRIVATE|secret-test-key/);
+  });
+test('Unknown codes, Google status fields and error types never leak to trace', async (t) => {
+  mock(t, async () =>
+    Response.json(
+      [
+        {
+          error: {
+            code: 'PRIVATE1',
+            status: 'PRIVATE2',
+            type: 'PRIVATE3',
+            param: 'PRIVATE4',
+            message: 'PRIVATE5',
+          },
+        },
+      ],
+      { status: 404 },
+    ),
+  );
+  const trace = providerTrace();
+  await assert.rejects(providerCompletion(env, payload, AbortSignal.timeout(1000), trace));
+  assert.deepEqual(trace.attempts[0].diagnostic, {
+    reason: 'upstream_rejected',
+    httpStatus: 404,
+    code: null,
+    parameter: null,
+  });
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
+});
+test('A key accidentally placed in the model name is redacted from trace metadata', async (t) => {
+  const config = { ...env, OPENAI_MODEL: 'prefix-' + env.OPENAI_API_KEY };
+  mock(t, async () => Response.json({}, { status: 404 }));
+  const trace = providerTrace();
+  await assert.rejects(
+    providerCompletion(config, completionPayload(config, []), AbortSignal.timeout(1000), trace),
+  );
+  assert.doesNotMatch(JSON.stringify(trace), /secret-test-key/);
+});
