@@ -174,9 +174,16 @@ export function completionPayload(
       : { max_tokens: maxTokens }),
     // A server opt-in avoids imposing an unsupported effort on arbitrary OpenAI models.
     ...(mode === 'openai' && reasoning ? { reasoning_effort: reasoning } : {}),
-    ...(mode === 'ollama' || mode === 'gemini'
+    ...(mode === 'ollama'
       ? { reasoning_effort: 'none', temperature: 0.2 }
-      : {}),
+      : mode === 'gemini'
+        ? {
+            reasoning_effort: settings.model?.startsWith('gemini-3.')
+              ? 'minimal'
+              : 'none',
+            temperature: 0.2,
+          }
+        : {}),
   };
 }
 export async function providerCompletion(

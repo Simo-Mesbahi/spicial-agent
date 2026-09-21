@@ -260,3 +260,25 @@ test('A key accidentally placed in the model name is redacted from trace metadat
   );
   assert.doesNotMatch(JSON.stringify(trace), /secret-test-key/);
 });
+
+test('Gemini reasoning effort follows model generation', () => {
+  const base = {
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_API_KEY: 'gemini-secret',
+  };
+
+  const v25 = completionPayload(
+    { ...base, GEMINI_MODEL: 'gemini-2.5-flash-lite' },
+    [],
+  );
+  assert.equal(v25.reasoning_effort, 'none');
+  assert.equal(v25.temperature, 0.2);
+
+  const v31 = completionPayload(
+    { ...base, GEMINI_MODEL: 'gemini-3.1-flash-lite' },
+    [],
+  );
+  assert.equal(v31.reasoning_effort, 'minimal');
+  assert.equal(v31.temperature, 0.2);
+});
