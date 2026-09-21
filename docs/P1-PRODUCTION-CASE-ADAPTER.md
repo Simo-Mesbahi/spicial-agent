@@ -1,5 +1,7 @@
 # P1.2 — authenticated production case conversations
 
+Follow-up: [P1.3 hybrid retrieval](P1-HYBRID-RETRIEVAL.md) adds a separate retrieval gate; production authorization remains unchanged.
+
 Base: PR #31, main `559150024bbedb87c702a688f15a262cb2a06813`.
 
 ## Boundary and request path

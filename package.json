@@ -17,7 +17,7 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "test:starter": "node --test tests/rendered-html.test.mjs tests/ui-components.test.mjs",
     "typecheck": "tsc --noEmit",
-    "lint:app": "eslint app components/atlas lib/atlas db/schema.ts worker scripts/local-ai.mjs scripts/evaluate-ai.mjs scripts/evaluate-structured-ai.mjs evals/*.mjs tests/atlas-*.test.mjs",
+    "lint:app": "eslint app components/atlas lib/atlas db/schema.ts worker scripts/local-ai.mjs scripts/evaluate-ai.mjs scripts/evaluate-structured-ai.mjs evals/*.mjs tests/atlas-*.test.mjs scripts/index-knowledge.mjs tests/helpers/knowledge-postgres.mjs scripts/evaluate-retrieval.mjs",
     "db:migrate:local": "wrangler d1 migrations apply site-creator-d1 --local --config wrangler.local.jsonc",
     "format": "prettier --write app lib/atlas db/schema.ts worker tests/atlas-api.test.mjs docs README.md SECURITY.md",
     "backend:setup": "node scripts/backend.mjs setup",
@@ -26,7 +26,9 @@
     "admin:grant": "node scripts/backend.mjs admin-grant",
     "eval:ai": "node scripts/evaluate-ai.mjs --baseline evals/baseline-p0.json",
     "ai:probe": "node scripts/probe-provider.mjs",
-    "eval:ai:structured": "node scripts/evaluate-structured-ai.mjs"
+    "eval:ai:structured": "node scripts/evaluate-structured-ai.mjs",
+    "knowledge:index": "node scripts/index-knowledge.mjs",
+    "eval:rag": "node scripts/evaluate-retrieval.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -57,6 +59,8 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.2",
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-pgvector": "0.0.9",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

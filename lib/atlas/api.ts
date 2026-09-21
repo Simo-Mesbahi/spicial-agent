@@ -1,3 +1,4 @@
+import type { HybridSettings } from './knowledge-hybrid';
 import { completionPayload, providerCompletion, providerTrace, ProviderError, type ProviderTrace, type ProviderFailureReason } from './provider-runtime';
 import {
   articles,
@@ -50,7 +51,7 @@ export interface Database {
   prepare(sql: string): Statement;
   batch(statements: Statement[]): Promise<unknown[]>;
 }
-export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment {
+export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSettings {
   DB: Database;
   APP_ENVIRONMENT?: string;
   SUPABASE_ORGANIZATION_ID?: string;
@@ -892,7 +893,7 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
           env,
           contextualRetrievalQuery(a.data.query, previousUserMessages),
         );
-        telemetry.retrievals.push({ durationMs: Math.round((performance.now() - retrievalStarted) * 100) / 100, scope: found.scope, evidence: found.evidence ?? [] });
+        telemetry.retrievals.push({ durationMs: Math.round((performance.now() - retrievalStarted) * 100) / 100, scope: found.scope, evidence: found.evidence ?? [], diagnostics: found.retrieval });
         found.articles.forEach((x) => sources.set(x.id, x));
         result = found.articles;
       }

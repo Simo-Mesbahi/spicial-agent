@@ -76,7 +76,7 @@ export type ProviderTrace = {
   outputTokens: number;
   usageComplete: boolean;
   tools: string[];
-  retrievals: { durationMs: number; scope: string; evidence: KnowledgeSearchResult['evidence'] }[];
+  retrievals: { durationMs: number; scope: string; evidence: KnowledgeSearchResult['evidence']; diagnostics?: KnowledgeSearchResult['retrieval'] }[];
   attempts: {
     round: number;
     latencyMs: number;

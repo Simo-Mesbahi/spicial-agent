@@ -94,7 +94,7 @@ test('neutral Supabase credential denial is returned as a customer-safe 403, not
   }
 });
 
-test('local Supabase migration versions stay aligned with the linked project history', () => {
+test('Supabase migration history stays ordered with reviewed local additions', () => {
   const migrations = readdirSync('supabase/migrations')
     .filter((file) => file.endsWith('.sql'))
     .sort();
@@ -112,6 +112,8 @@ test('local Supabase migration versions stay aligned with the linked project his
     '20260918130553_knowledge_runtime_search_hardening.sql',
     '20260918130956_enable_pg_trgm_for_knowledge.sql',
     '20260918131105_knowledge_search_trigram_ranking.sql',
+    // New local migration: remote application remains an explicit deployment step.
+    '20260920181024_hybrid_knowledge_retrieval.sql',
   ]);
   assert.ok(!migrations.includes('202609030001_production_foundation.sql'));
 });
