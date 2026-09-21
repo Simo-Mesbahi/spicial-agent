@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { redacted } from './domain';
 import type { KnowledgeSearchResult } from './knowledge-runtime';
 import { boundedJson } from './bounded-json';
 import { modelSettings, type ModelEnvironment } from './model-policy';
@@ -79,6 +80,9 @@ export type ProviderTrace = {
   retrievals: { durationMs: number; scope: string; evidence: KnowledgeSearchResult['evidence']; diagnostics?: KnowledgeSearchResult['retrieval'] }[];
   attempts: {
     round: number;
+    provider: ReturnType<typeof modelSettings>['provider'];
+    model: string | null;
+    diagnostic: ProviderDiagnostic | null;
     latencyMs: number;
     httpStatus: number | null;
     inputTokens: number | null;
@@ -110,6 +114,21 @@ const errorCodes = new Set([
   'context_length_exceeded',
   'invalid_value',
   'server_error',
+  'credit_balance_exhausted',
+  'organization_spend_limit_exceeded',
+  'project_spend_limit_exceeded',
+  'organization_usage_limit_exceeded',
+  'slow_down',
+  // Google RPC status names. Never retain arbitrary error messages or details.
+  'INVALID_ARGUMENT',
+  'UNAUTHENTICATED',
+  'PERMISSION_DENIED',
+  'NOT_FOUND',
+  'RESOURCE_EXHAUSTED',
+  'FAILED_PRECONDITION',
+  'UNAVAILABLE',
+  'INTERNAL',
+  'DEADLINE_EXCEEDED',
 ]);
 const errorParameters = new Set([
   'model',
@@ -171,6 +190,13 @@ export async function providerCompletion(
   const started = performance.now();
   const attempt: ProviderTrace['attempts'][number] = {
     round: trace.calls++,
+    provider: settings.provider,
+    model: settings.model
+      ? redacted(
+          settings.key ? settings.model.split(settings.key).join('[secret masked]') : settings.model,
+        ).slice(0, 128)
+      : null,
+    diagnostic: null,
     latencyMs: 0,
     httpStatus: null,
     inputTokens: null,
@@ -208,13 +234,26 @@ export async function providerCompletion(
       } else {
         // Bound both error-body bytes and its deadline. Never persist raw bodies/messages.
         const raw = await boundedJson(response, 8192, signal).catch(() => null);
+        // Google's compatibility endpoint can return one error in an array and a numeric code.
+        const body = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
         const parsed = z
-          .object({ error: z.object({ code: z.string().nullish(), param: z.string().nullish() }) })
-          .safeParse(raw);
+          .object({
+            error: z.object({
+              code: z.unknown().optional(),
+              status: z.unknown().optional(),
+              type: z.unknown().optional(),
+              param: z.unknown().optional(),
+            }),
+          })
+          .safeParse(body);
         if (parsed.success) {
-          const { code, param } = parsed.data.error;
-          diagnostic.code = code && errorCodes.has(code) ? code : null;
-          diagnostic.parameter = param && errorParameters.has(param) ? param : null;
+          const { code, status, type, param } = parsed.data.error;
+          diagnostic.code =
+            [code, status, type].find(
+              (value): value is string => typeof value === 'string' && errorCodes.has(value),
+            ) ?? null;
+          diagnostic.parameter =
+            typeof param === 'string' && errorParameters.has(param) ? param : null;
         }
       }
       throw new ProviderError(reason, diagnostic);
@@ -241,6 +280,7 @@ export async function providerCompletion(
     return parsed.data;
   } catch (error) {
     attempt.error = error instanceof ProviderError ? error.reason : 'unknown';
+    attempt.diagnostic = error instanceof ProviderError ? error.diagnostic : null;
     throw error;
   } finally {
     attempt.latencyMs = Math.max(0.01, Math.round((performance.now() - started) * 100) / 100);
