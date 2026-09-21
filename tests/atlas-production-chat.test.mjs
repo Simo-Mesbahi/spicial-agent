@@ -109,6 +109,20 @@ async function setup(t, overrides = {}) {
       ],
     },
     generationStatus: 200,
+    afterValidation: () => {},
+    validationStatus: 200,
+    validationOutput: {
+      language: 'fr',
+      sentences: [
+        {
+          index: 0,
+          kind: 'factual',
+          verdict: 'unsupported',
+          issues: ['amount', 'action'],
+          citations: [],
+        },
+      ],
+    },
     logs: [],
   };
   t.mock.method(console, 'info', (...args) => {
@@ -144,6 +158,23 @@ async function setup(t, overrides = {}) {
     if (path.endsWith('/chat/completions')) {
       remote.providerCalls++;
       remote.prompts.push(body);
+      if (body.response_format?.json_schema?.name === 'factual_validation') {
+        await remote.afterValidation();
+        if (remote.validationStatus !== 200)
+          return Response.json(
+            { error: { message: 'PRIVATE AUDIT ERROR' } },
+            { status: remote.validationStatus },
+          );
+        return Response.json({
+          choices: [
+            {
+              finish_reason: 'stop',
+              message: { role: 'assistant', content: JSON.stringify(remote.validationOutput) },
+            },
+          ],
+          usage: { prompt_tokens: 90, completion_tokens: 30 },
+        });
+      }
       if (body.response_format?.json_schema?.name === 'natural_response_draft') {
         await remote.afterGeneration();
         if (remote.generationStatus !== 200)
@@ -611,4 +642,86 @@ test('Social, clarification, handoff and unsupported-action turns never request 
     assert.equal(reply.data.metadata.generation, null);
   }
   assert.equal(c.remote.providerCalls, 5);
+});
+
+const auditSettings = {
+  LLM_GENERATION_MODE: 'shadow',
+  LLM_GENERATION_DAILY_LIMIT: '10',
+  LLM_VALIDATION_MODE: 'shadow',
+  LLM_VALIDATION_DAILY_LIMIT: '1',
+};
+test('Production factual audit blocks hallucination, includes bounded usage and replay adds no cost', async (t) => {
+  const c = await setup(t, auditSettings),
+    q = question();
+  const reply = await c.call('chat', q);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(reply.data.metadata.validation, { outcome: 'blocked', released: false });
+  assert.equal(reply.data.metadata.providerCalls, 3);
+  assert.equal(reply.data.metadata.inputTokens, 290);
+  assert.equal(reply.data.metadata.outputTokens, 135);
+  assert.equal(c.remote.logs.at(-1)[1].validation.reason, 'unsupported_claim');
+  assert.doesNotMatch(JSON.stringify(reply.data), /UNVERIFIED|9999 euros/);
+  assert.doesNotMatch(JSON.stringify(c.remote.logs), /UNVERIFIED|9999 euros|PRIVATE AUDIT/);
+  assert.doesNotMatch(
+    JSON.stringify(c.db.sql.prepare('SELECT * FROM messages').all()),
+    /UNVERIFIED|9999 euros/,
+  );
+  assert.deepEqual((await c.call('chat', q)).data, reply.data);
+  assert.equal(c.remote.providerCalls, 3);
+  const next = await c.call('chat', question());
+  assert.equal(next.data.metadata.providerCalls, 2);
+  assert.equal(c.remote.logs.at(-1)[1].validation.reason, 'budget_exhausted');
+});
+test('Case changed before audit skips judge; case changed during audit invalidates verdict', async (t) => {
+  const c = await setup(t, auditSettings);
+  c.remote.afterGeneration = () => {
+    c.remote.case.version++;
+    c.remote.case.status = 'ready';
+  };
+  const first = await c.call('chat', question());
+  assert.equal(first.data.metadata.providerCalls, 2);
+  assert.equal(c.remote.logs.at(-1)[1].validation.reason, 'evidence_changed');
+  c.remote.afterGeneration = () => {};
+  c.remote.afterValidation = () => {
+    c.remote.case.version++;
+    c.remote.case.status = 'repairing';
+  };
+  const second = await c.call('chat', question());
+  assert.equal(second.status, 200);
+  assert.equal(second.data.metadata.providerCalls, 3);
+  assert.equal(second.data.metadata.caseEvidence.version, 3);
+  assert.equal(c.remote.logs.at(-1)[1].validation.reason, 'evidence_changed');
+});
+test('Revocation during audit aborts response and persistence', async (t) => {
+  const c = await setup(t, auditSettings);
+  c.remote.afterValidation = () => {
+    c.remote.revoked = true;
+  };
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 401);
+  assert.equal(c.remote.providerCalls, 3);
+  assert.equal(c.db.sql.prepare('SELECT count(*) n FROM messages').get().n, 0);
+  assert.equal(c.db.sql.prepare('SELECT count(*) n FROM chat_requests').get().n, 0);
+});
+test('Failed verifier and even a false positive verdict preserve server-owned customer response', async (t) => {
+  const c = await setup(t, { ...auditSettings, LLM_VALIDATION_DAILY_LIMIT: '2' });
+  c.remote.validationStatus = 503;
+  const failed = await c.call('chat', question());
+  assert.equal(failed.status, 200);
+  assert.equal(failed.data.metadata.validation.outcome, 'abstained');
+  c.remote.validationStatus = 200;
+  c.remote.validationOutput.sentences[0] = {
+    index: 0,
+    kind: 'factual',
+    verdict: 'supported',
+    issues: [],
+    citations: [{ ref: 'case.refund', quote: 'null' }],
+  };
+  const positive = await c.call('chat', question());
+  assert.equal(positive.status, 200);
+  assert.deepEqual(positive.data.metadata.validation, {
+    outcome: 'supported_candidate',
+    released: false,
+  });
+  assert.doesNotMatch(JSON.stringify(positive.data), /UNVERIFIED|9999 euros/);
 });

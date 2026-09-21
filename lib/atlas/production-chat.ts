@@ -1,3 +1,8 @@
+import {
+  validateNaturalDraft,
+  revalidateFactualResult,
+  type ValidationDiagnostics,
+} from './factual-validation';
 import { generateNaturalDraft, type GenerationDiagnostics } from './natural-generation';
 import {
   buildEvidencePack,
@@ -119,6 +124,7 @@ export async function productionChat(
   let lease: ConversationLease | null = null;
   let persisted = false;
   let generation: GenerationDiagnostics | null = null;
+  let validation: ValidationDiagnostics | null = null;
   try {
     lease = await acquireConversation(env.DB, adapter.spaceId, adapter.expiresAt);
     // A production session authorizes exactly one case. Changing it requires verification.
@@ -196,6 +202,7 @@ export async function productionChat(
       conversation.evidencePack &&
       env.LLM_GENERATION_MODE === 'shadow'
     ) {
+      const generatedFrom = conversation.evidencePack;
       const result = await generateNaturalDraft(
         env,
         {
@@ -222,6 +229,35 @@ export async function productionChat(
           knowledge: conversation.knowledge,
           offerContact: false,
         });
+        if (result.draft && env.LLM_VALIDATION_MODE === 'shadow') {
+          validation = await validateNaturalDraft(
+            env,
+            {
+              draft: result.draft,
+              pack: generatedFrom,
+              currentPack: conversation.evidencePack,
+              context: evidenceContext,
+            },
+            trace,
+          );
+          if (validation.calls > 0) {
+            // The model report is advisory. Refresh authorization and facts after its latency.
+            usedCase = await adapter.read();
+            conversation.evidencePack = await buildEvidencePack({
+              context: evidenceContext,
+              language: conversation.language,
+              caseFacts: usedCase,
+              knowledge: conversation.knowledge,
+              offerContact: false,
+            });
+            validation = await revalidateFactualResult(
+              validation,
+              generatedFrom,
+              conversation.evidencePack,
+              evidenceContext,
+            );
+          }
+        }
         conversation.currentCase = conversation.evidencePack.caseFacts;
         conversation.answer.content = renderCaseFacts(
           conversation.currentCase!,
@@ -260,6 +296,7 @@ export async function productionChat(
       generation: generation
         ? { mode: generation.mode, outcome: generation.outcome, released: false }
         : null,
+      validation: validation ? { outcome: validation.outcome, released: false } : null,
       orchestrator: 'structured',
       dataSource: 'supabase',
       provider: config.provider,
@@ -329,6 +366,7 @@ export async function productionChat(
       model: config.model,
       evidence,
       generation,
+      validation,
       outcome: safety ? 'safety_guard' : fallbackReason ? 'fallback' : 'provider_success',
       fallbackReason,
       providerTrace: trace,
@@ -346,6 +384,7 @@ export async function productionChat(
       model: config.model,
       outcome: 'error',
       generation,
+      validation,
       errorClassification:
         error instanceof CaseAccessError
           ? error.code

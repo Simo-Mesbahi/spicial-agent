@@ -6,7 +6,7 @@ Base: main `e2f7c6edc18f1ec22d813fef38ab61eda0db684b` (Evidence Pack, #34).
 
 This increment implements the generator from the staged roadmap. It deliberately has **no customer-release mode**. The default is off. Explicit shadow mode produces a private candidate, records structure/transport diagnostics, discards the candidate and returns the existing verified server response. A schema-valid sentence with a valid citation can still be false: structural validation must not be represented as factual validation.
 
-P1.6 must supply the factual/safety release gate and independent evaluation before generated business prose can reach customers. Social responses continue through the existing understanding flow and guard. No benchmark expectations or safety/authentication protections are relaxed.
+P1.6 now adds a shadow factual audit (see `P1-FACTUAL-VALIDATION.md`). A reviewed release policy and independent live evaluation are still required before generated business prose can reach customers. Social responses continue through the existing understanding flow and guard. No benchmark expectations or safety/authentication protections are relaxed.
 
 ## Generator contract
 
@@ -29,7 +29,7 @@ LLM_GENERATION_DAILY_LIMIT=0
 
 An operator must explicitly set both `shadow` and a positive quota to make online draft calls. The quota is an atomic D1 reservation per organization per rolling 24 hours, bounded to 0–1,000. It is separate from the existing conversation quota and embedding quota. Reservations are not refunded after transport failure or a late expiry. These are request limits, not monetary billing caps. The existing provider budget policy still applies.
 
-At most one draft completion is made per eligible turn: 900 maximum completion tokens, at most five seconds and never beyond remaining evidence lifetime. No retry, no tool loop, no semantic-judge call. Case-only shadow turns can therefore total two completions (understanding plus draft). Casual, clarification, handoff, unsupported-action and documentary turns do not add a runtime draft call.
+At most one draft completion is made per eligible turn: 900 maximum completion tokens, at most five seconds and never beyond remaining evidence lifetime. No retry or tool loop in generation. The separate P1.6 shadow auditor can optionally add one bounded semantic audit call; it is off by default. Case-only shadow turns can therefore total two completions (understanding plus draft). Casual, clarification, handoff, unsupported-action and documentary turns do not add a runtime draft call.
 
 The limited runtime scope is intentional: case-only answers can reread current case authorization and facts after the new latency. Documentary drafts are available through synthetic evaluation, pending publication revalidation in P1.6. After every attempted runtime draft call, successful or failed, the case adapter rereads access and current facts, builds a fresh pack and renders the verified server answer. Revocation aborts persistence. Idempotent replay adds no provider call.
 

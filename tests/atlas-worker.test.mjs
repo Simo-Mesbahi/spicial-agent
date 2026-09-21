@@ -532,3 +532,125 @@ test('Cloudflare: shadow drafting respects D1 budget, refreshes access and never
     await mf.dispose();
   }
 });
+
+test('Cloudflare: factual audit refreshes after the judge and invalidates changed evidence', async () => {
+  const token = 'e'.repeat(64),
+    expires_at = new Date(Date.now() + 1800000).toISOString();
+  const current = { ...snapshot };
+  let completions = 0;
+  const mf = await runtime(
+    async (req) => {
+      const path = new URL(req.url).pathname;
+      if (path.endsWith('/customer_open_case_session'))
+        return Response.json({ access_token: token, expires_at, case: current });
+      if (path.endsWith('/customer_case_snapshot'))
+        return Response.json({ expires_at, case: current });
+      if (path.endsWith('/chat/completions')) {
+        completions++;
+        const payload = await req.json();
+        let output;
+        if (payload.response_format?.json_schema?.name === 'natural_response_draft') {
+          assert.equal(payload.tools, undefined);
+          assert.equal(payload.max_completion_tokens, 900);
+          output = {
+            language: 'fr',
+            sentences: [
+              {
+                text: 'UNVERIFIED remboursement de 9999 euros effectué.',
+                evidenceRefs: ['case.refund'],
+              },
+            ],
+          };
+        } else if (payload.response_format?.json_schema?.name === 'factual_validation') {
+          assert.equal(payload.max_completion_tokens, 1200);
+          assert.equal(payload.tools, undefined);
+          current.status = 'ready'; current.version = 2;
+          output = { language: 'fr', sentences: [{ index: 0, kind: 'factual', verdict: 'supported', issues: [], citations: [{ ref: 'case.refund', quote: 'null' }] }] };
+        } else
+          output = {
+            language: 'fr',
+            preferredResponseLanguage: null,
+            intent: 'case_lookup',
+            subIntent: 'status',
+            topic: 'repair',
+            guidance: 'business_direct',
+            guidancePreference: 'keep',
+            reference: 'active',
+            selectedCaseId: null,
+            referencedProduct: null,
+            referencesPreviousTurn: false,
+            conversationRepair: false,
+            requiresCase: true,
+            requiresKnowledge: false,
+            requiresClarification: false,
+            requiresHuman: false,
+            confidence: 0.95,
+            style: { length: 'keep', emoji: 'keep' },
+            retrievalQuery: null,
+            response: '',
+          };
+        return Response.json({
+          choices: [
+            {
+              finish_reason: 'stop',
+              message: { role: 'assistant', content: JSON.stringify(output) },
+            },
+          ],
+          usage: { prompt_tokens: 100, completion_tokens: 50 },
+        });
+      }
+      throw new Error('Unexpected request ' + path);
+    },
+    {
+      LLM_ORCHESTRATOR: 'structured',
+      LLM_PROVIDER: 'openai',
+      LLM_BUDGET_MODE: 'approved',
+      OPENAI_MODEL: 'test-model',
+      OPENAI_API_KEY: 'test-key',
+      LLM_GENERATION_MODE: 'shadow',
+      LLM_GENERATION_DAILY_LIMIT: '1',
+      LLM_VALIDATION_MODE: 'shadow',
+      LLM_VALIDATION_DAILY_LIMIT: '1',
+    },
+  );
+  try {
+    const verified = await call(mf, '/api/production/cases/verify', {
+      body: { reference: snapshot.reference, code: '123456' },
+    });
+    assert.equal(verified.status, 200);
+    const cookie = verified.headers.get('set-cookie').split(';')[0];
+    const state = await (await call(mf, '/api/production/chat', { cookie })).json();
+    const body = { message: 'Où en est ma réparation ?', requestId: crypto.randomUUID() };
+    const res = await call(mf, '/api/production/chat', { cookie, csrf: state.csrf, body });
+    const reply = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(reply));
+    assert.match(reply.content, /retrait/);
+    assert.doesNotMatch(JSON.stringify(reply), /UNVERIFIED|9999 euros/);
+    assert.equal(reply.metadata.generation.outcome, 'candidate_generated');
+    assert.equal(reply.metadata.generation.released, false);
+    assert.deepEqual(reply.metadata.validation, { outcome: 'blocked', released: false });
+    assert.equal(reply.metadata.caseEvidence.version, 2);
+    assert.equal(reply.metadata.providerCalls, 3);
+    assert.deepEqual(
+      await (await call(mf, '/api/production/chat', { cookie, csrf: state.csrf, body })).json(),
+      reply,
+    );
+    assert.equal(completions, 3);
+    const db = await mf.getD1Database('DB');
+    assert.equal(
+      (
+        await db
+          .prepare('SELECT count FROM rate_buckets WHERE id=?')
+          .bind('validation:' + organizationId)
+          .first()
+      ).count,
+      1,
+    );
+    assert.doesNotMatch(
+      JSON.stringify(await db.prepare('SELECT content,metadata FROM messages').all()),
+      /UNVERIFIED|9999 euros/,
+    );
+  } finally {
+    await mf.dispose();
+  }
+});
