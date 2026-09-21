@@ -98,8 +98,22 @@ async function setup(t, overrides = {}) {
     prompts: [],
     revoked: false,
     knowledgeRows: [],
+    afterGeneration: () => {},
+    generationOutput: {
+      language: 'fr',
+      sentences: [
+        {
+          text: 'UNVERIFIED remboursement de 9999 euros effectué demain.',
+          evidenceRefs: ['case.refund'],
+        },
+      ],
+    },
+    generationStatus: 200,
+    logs: [],
   };
-  t.mock.method(console, 'info', () => {});
+  t.mock.method(console, 'info', (...args) => {
+    remote.logs.push(args);
+  });
   t.mock.method(console, 'error', () => {});
   t.mock.method(globalThis, 'fetch', async (url, init = {}) => {
     const path = new URL(url instanceof Request ? url.url : url).pathname;
@@ -130,6 +144,23 @@ async function setup(t, overrides = {}) {
     if (path.endsWith('/chat/completions')) {
       remote.providerCalls++;
       remote.prompts.push(body);
+      if (body.response_format?.json_schema?.name === 'natural_response_draft') {
+        await remote.afterGeneration();
+        if (remote.generationStatus !== 200)
+          return Response.json(
+            { error: { message: 'PRIVATE DRAFT ERROR' } },
+            { status: remote.generationStatus },
+          );
+        return Response.json({
+          choices: [
+            {
+              finish_reason: 'stop',
+              message: { role: 'assistant', content: JSON.stringify(remote.generationOutput) },
+            },
+          ],
+          usage: { prompt_tokens: 80, completion_tokens: 25 },
+        });
+      }
       await remote.afterProvider();
       if (remote.providerStatus !== 200)
         return Response.json(
@@ -495,4 +526,89 @@ test('Production evidence stays fresh over ten turns without adding provider cal
     /evidencePack|caseFacts|waiting_part|confirmedEta|quote_cents/,
   );
   assert.doesNotMatch(JSON.stringify(c.remote.prompts), /caseFacts|confirmedEta|quote_cents/);
+});
+
+test('Shadow generation never releases a schema-valid hallucination and refreshes changed case facts', async (t) => {
+  const c = await setup(t, { LLM_GENERATION_MODE: 'shadow', LLM_GENERATION_DAILY_LIMIT: '1' });
+  c.remote.afterGeneration = () => {
+    c.remote.case.status = 'ready';
+    c.remote.case.version = 2;
+  };
+  const q = question();
+  const reply = await c.call('chat', q);
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.match(reply.data.content, /retrait/);
+  assert.equal(reply.data.metadata.caseEvidence.version, 2);
+  assert.deepEqual(reply.data.metadata.generation, {
+    mode: 'shadow',
+    outcome: 'candidate_generated',
+    released: false,
+  });
+  assert.equal(reply.data.metadata.providerCalls, 2);
+  assert.equal(reply.data.metadata.inputTokens, 200);
+  assert.equal(reply.data.metadata.outputTokens, 105);
+  assert.doesNotMatch(JSON.stringify(reply.data), /UNVERIFIED|9999 euros|effectué demain/);
+  assert.doesNotMatch(
+    JSON.stringify(c.db.sql.prepare('SELECT * FROM messages').all()),
+    /UNVERIFIED|9999 euros/,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(c.db.sql.prepare('SELECT * FROM conversation_states').all()),
+    /UNVERIFIED|9999 euros/,
+  );
+  assert.doesNotMatch(JSON.stringify(c.remote.logs), /UNVERIFIED|9999 euros|PRIVATE DRAFT/);
+  assert.equal(c.remote.logs.at(-1)[1].generation.evidenceCaseVersion, 1);
+  assert.deepEqual((await c.call('chat', q)).data, reply.data);
+  assert.equal(c.remote.providerCalls, 2);
+  const next = await c.call('chat', question());
+  assert.equal(next.status, 200);
+  assert.equal(next.data.metadata.providerCalls, 1);
+  assert.equal(c.remote.logs.at(-1)[1].generation.reason, 'budget_exhausted');
+});
+
+test('Revocation during draft generation prevents reply persistence and cleans up the request', async (t) => {
+  const c = await setup(t, { LLM_GENERATION_MODE: 'shadow', LLM_GENERATION_DAILY_LIMIT: '1' });
+  c.remote.afterGeneration = () => {
+    c.remote.revoked = true;
+  };
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 401);
+  assert.equal(c.remote.providerCalls, 2);
+  assert.equal(c.db.sql.prepare('SELECT count(*) n FROM messages').get().n, 0);
+  assert.equal(c.db.sql.prepare('SELECT count(*) n FROM chat_requests').get().n, 0);
+});
+
+for (const generationStatus of [429, 503])
+  test(`Draft HTTP ${generationStatus} preserves verified response without retry`, async (t) => {
+    const c = await setup(t, { LLM_GENERATION_MODE: 'shadow', LLM_GENERATION_DAILY_LIMIT: '1' });
+    c.remote.generationStatus = generationStatus;
+    const reply = await c.call('chat', question());
+    assert.equal(reply.status, 200);
+    assert.equal(reply.data.metadata.providerCalls, 2);
+    assert.equal(reply.data.metadata.generation.outcome, 'failed');
+    assert.match(reply.data.content, /SAV-2026-1042/);
+    assert.doesNotMatch(JSON.stringify(reply.data), /PRIVATE DRAFT/);
+  });
+
+test('Social, clarification, handoff and unsupported-action turns never request a draft', async (t) => {
+  const c = await setup(t, { LLM_GENERATION_MODE: 'shadow', LLM_GENERATION_DAILY_LIMIT: '10' });
+  for (const u of [
+    output(),
+    output({ intent: 'clarification', requiresClarification: true }),
+    output({ intent: 'human_handoff', requiresHuman: true }),
+    output({ intent: 'action' }),
+    output({
+      intent: 'information',
+      requiresKnowledge: true,
+      retrievalQuery: 'retour',
+      response: '',
+    }),
+  ]) {
+    c.remote.output = u;
+    const reply = await c.call('chat', question('Pouvez-vous m’aider ?'));
+    assert.equal(reply.status, 200, JSON.stringify(reply.data));
+    assert.equal(reply.data.metadata.providerCalls, 1);
+    assert.equal(reply.data.metadata.generation, null);
+  }
+  assert.equal(c.remote.providerCalls, 5);
 });

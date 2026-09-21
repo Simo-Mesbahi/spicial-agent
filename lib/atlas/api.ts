@@ -1,3 +1,4 @@
+import type { GenerationSettings } from './natural-generation';
 import type { HybridSettings } from './knowledge-hybrid';
 import { completionPayload, providerCompletion, providerTrace, ProviderError, type ProviderTrace, type ProviderFailureReason } from './provider-runtime';
 import {
@@ -51,7 +52,7 @@ export interface Database {
   prepare(sql: string): Statement;
   batch(statements: Statement[]): Promise<unknown[]>;
 }
-export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSettings {
+export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSettings, GenerationSettings {
   DB: Database;
   APP_ENVIRONMENT?: string;
   SUPABASE_ORGANIZATION_ID?: string;
