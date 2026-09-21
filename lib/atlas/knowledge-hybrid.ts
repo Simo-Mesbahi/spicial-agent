@@ -148,6 +148,12 @@ export async function searchHybridKnowledge(
     if (query.length < 2) {
       result.scope = 'supabase_published';
       telemetry.outcome = 'abstain';
+      result.provenance = {
+        organizationId: env.SUPABASE_ORGANIZATION_ID!,
+        retrievedAt: new Date().toISOString(),
+        locale: env.RAG_CORPUS_LOCALE ?? 'fr-FR',
+        market: env.RAG_MARKET ?? 'GLOBAL',
+      };
       return result;
     }
     const locale = env.RAG_CORPUS_LOCALE ?? 'fr-FR',
@@ -206,6 +212,12 @@ export async function searchHybridKnowledge(
       if (prior && prior !== current) {
         telemetry.outcome = 'conflicting_versions';
         result.scope = 'supabase_published';
+        result.provenance = {
+          organizationId: env.SUPABASE_ORGANIZATION_ID!,
+          retrievedAt: new Date().toISOString(),
+          locale,
+          market,
+        };
         return result;
       }
       revisions.set(row.series_id, current);
@@ -220,6 +232,12 @@ export async function searchHybridKnowledge(
       telemetry.fallbackReason = 'document_instruction_quarantined';
     const selected = fuseCandidates(safeRows, minLexical, minSimilarity).slice(0, limit);
     result.scope = 'supabase_published';
+    result.provenance = {
+      organizationId: env.SUPABASE_ORGANIZATION_ID!,
+      retrievedAt: new Date().toISOString(),
+      locale,
+      market,
+    };
     telemetry.outcome = selected.length ? (vector ? 'hybrid_hit' : 'lexical_hit') : 'abstain';
     result.articles = selected.map(({ row }) => ({
       id: row.document_id,
@@ -239,6 +257,8 @@ export async function searchHybridKnowledge(
         locale: row.locale,
         market: row.market,
         contentHash: row.content_hash,
+        effectiveFrom: row.effective_from,
+        effectiveUntil: row.effective_until,
         channels: [...channels],
         lexicalScore,
         similarity,
