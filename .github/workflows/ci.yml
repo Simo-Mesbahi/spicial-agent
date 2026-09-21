@@ -24,5 +24,6 @@ jobs:
       - run: npm test
       - run: npm run eval:ai
       - run: npm run eval:rag
+      - run: npm run eval:generation
       - run: npm run build
       - run: npm run test:starter

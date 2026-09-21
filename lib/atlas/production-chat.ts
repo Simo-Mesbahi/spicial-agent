@@ -1,3 +1,4 @@
+import { generateNaturalDraft, type GenerationDiagnostics } from './natural-generation';
 import {
   buildEvidencePack,
   assertEvidenceContext,
@@ -117,6 +118,7 @@ export async function productionChat(
   const config = publicModelConfig(env);
   let lease: ConversationLease | null = null;
   let persisted = false;
+  let generation: GenerationDiagnostics | null = null;
   try {
     lease = await acquireConversation(env.DB, adapter.spaceId, adapter.expiresAt);
     // A production session authorizes exactly one case. Changing it requires verification.
@@ -187,6 +189,46 @@ export async function productionChat(
       if (!(error instanceof ProviderError)) throw error;
       fallbackReason = error.reason;
     }
+    // Shadow runtime is limited to case-only answers. Documentary drafts are evaluated
+    // offline until publication can be revalidated after generation (P1.6).
+    if (
+      conversation?.plan.kind === 'case' &&
+      conversation.evidencePack &&
+      env.LLM_GENERATION_MODE === 'shadow'
+    ) {
+      const result = await generateNaturalDraft(
+        env,
+        {
+          pack: conversation.evidencePack,
+          context: evidenceContext,
+          message,
+          guidance: {
+            topic: conversation.state.currentTopic,
+            subIntent: conversation.understanding.subIntent,
+            short: conversation.state.stylePreferences.short,
+            emoji: conversation.state.stylePreferences.emoji,
+          },
+        },
+        trace,
+      );
+      generation = result.diagnostics;
+      if (generation.calls > 0) {
+        // A valid draft can still be false. Never assign result.draft to any response or history.
+        usedCase = await adapter.read();
+        conversation.evidencePack = await buildEvidencePack({
+          context: evidenceContext,
+          language: conversation.language,
+          caseFacts: usedCase,
+          knowledge: conversation.knowledge,
+          offerContact: false,
+        });
+        conversation.currentCase = conversation.evidencePack.caseFacts;
+        conversation.answer.content = renderCaseFacts(
+          conversation.currentCase!,
+          conversation.language,
+        );
+      }
+    }
     // Social responses and fallbacks also revalidate the case session after provider latency.
     const finalFacts = usedCase ?? (await adapter.read());
     const language =
@@ -215,6 +257,9 @@ export async function productionChat(
     const evidence = evidenceSummary(evidencePack);
     const metadata = {
       evidence,
+      generation: generation
+        ? { mode: generation.mode, outcome: generation.outcome, released: false }
+        : null,
       orchestrator: 'structured',
       dataSource: 'supabase',
       provider: config.provider,
@@ -283,6 +328,7 @@ export async function productionChat(
       provider: config.provider,
       model: config.model,
       evidence,
+      generation,
       outcome: safety ? 'safety_guard' : fallbackReason ? 'fallback' : 'provider_success',
       fallbackReason,
       providerTrace: trace,
@@ -299,6 +345,7 @@ export async function productionChat(
       provider: config.provider,
       model: config.model,
       outcome: 'error',
+      generation,
       errorClassification:
         error instanceof CaseAccessError
           ? error.code
