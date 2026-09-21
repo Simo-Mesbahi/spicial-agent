@@ -1,3 +1,5 @@
+import { searchHybridKnowledge, type KnowledgeEnvironment } from './knowledge-hybrid';
+import type { EmbeddingTrace } from './embedding-runtime';
 import { z } from 'zod';
 import { retrieve, type Article } from './domain';
 import {
@@ -24,25 +26,49 @@ const searchRowSchema = z.object({
 
 export type KnowledgeSearchResult = {
   articles: Article[];
-  evidence?: { documentId: string; chunkId: string; version: string; score: number; locale: string; market: string }[];
+  evidence?: {
+    documentId: string;
+    chunkId: string;
+    version: string;
+    score: number;
+    locale: string;
+    market: string;
+    contentHash?: string;
+    channels?: string[];
+    lexicalScore?: number | null;
+    similarity?: number | null;
+    lexicalChunkId?: string | null;
+    vectorChunkId?: string | null;
+    embeddingSpace?: string | null;
+  }[];
+  retrieval?: {
+    mode: 'hybrid';
+    outcome: string;
+    fallbackReason: string | null;
+    candidateCount: number;
+    latencyMs: number;
+    embedding: EmbeddingTrace;
+  };
   scope: 'supabase_published' | 'legacy_demo' | 'supabase_unavailable' | 'not_required';
 };
 
 function configured(env: SupabaseRuntimeEnv) {
   return Boolean(
     env.SUPABASE_URL?.trim() &&
-      env.SUPABASE_SECRET_KEY?.trim() &&
-      env.SUPABASE_ORGANIZATION_ID?.trim(),
+    env.SUPABASE_SECRET_KEY?.trim() &&
+    env.SUPABASE_ORGANIZATION_ID?.trim(),
   );
 }
 
 export async function searchKnowledge(
-  env: SupabaseRuntimeEnv & { RAG_RESULTS?: number; RAG_MIN_ANCHORS?: number },
+  env: KnowledgeEnvironment,
   query: string,
 ): Promise<KnowledgeSearchResult> {
   const limit = Number.isFinite(env.RAG_RESULTS)
     ? Math.max(1, Math.min(Math.floor(env.RAG_RESULTS ?? 3), 8))
     : 3;
+
+  if (env.RAG_MODE === 'hybrid') return searchHybridKnowledge(env, query, limit);
 
   if (!configured(env))
     return {
@@ -51,27 +77,30 @@ export async function searchKnowledge(
     };
 
   try {
-    const raw = await supabaseRequest<unknown>(
-      env,
-      '/rest/v1/rpc/knowledge_search',
-      {
-        mode: { kind: 'privileged' },
-        method: 'POST',
-        timeoutMs: 5000,
-        body: {
-          p_organization_id: env.SUPABASE_ORGANIZATION_ID,
-          p_query: query.slice(0, 500),
-          p_limit: limit,
-          p_locale: 'fr-FR',
-          p_market: null,
-        },
+    const raw = await supabaseRequest<unknown>(env, '/rest/v1/rpc/knowledge_search', {
+      mode: { kind: 'privileged' },
+      method: 'POST',
+      timeoutMs: 5000,
+      body: {
+        p_organization_id: env.SUPABASE_ORGANIZATION_ID,
+        p_query: query.slice(0, 500),
+        p_limit: limit,
+        p_locale: 'fr-FR',
+        p_market: null,
       },
-    );
+    });
     const parsed = z.array(searchRowSchema).max(8).safeParse(raw);
     if (!parsed.success) return { articles: [], scope: 'supabase_unavailable' };
 
     return {
-      evidence: parsed.data.map(row => ({ documentId: row.document_id, chunkId: row.chunk_id, version: row.version, score: row.rank, locale: row.locale, market: row.market })),
+      evidence: parsed.data.map((row) => ({
+        documentId: row.document_id,
+        chunkId: row.chunk_id,
+        version: row.version,
+        score: row.rank,
+        locale: row.locale,
+        market: row.market,
+      })),
       articles: parsed.data.map((row) => ({
         id: row.document_id,
         title: row.title,

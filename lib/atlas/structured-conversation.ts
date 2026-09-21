@@ -306,6 +306,7 @@ export async function executeConversation<C>(
         durationMs: retrievalMs,
         scope: knowledge.scope,
         evidence: knowledge.evidence ?? [],
+        diagnostics: knowledge.retrieval,
       });
     }
     sources = knowledge.articles.slice(0, 1);

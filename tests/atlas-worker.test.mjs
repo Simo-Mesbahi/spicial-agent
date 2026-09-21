@@ -289,3 +289,130 @@ test('Cloudflare: production chat uses authenticated Supabase snapshots and atom
     assert.equal((await call(mf, '/api/production/chat', { cookie })).status, 401);
   } finally { await mf.dispose(); }
 });
+
+test('Cloudflare: authenticated production chat uses hybrid evidence with one completion and one embedding', async () => {
+  const token = 'd'.repeat(64),
+    expires_at = new Date(Date.now() + 1800000).toISOString();
+  const content = 'Le retour doit être examiné selon la procédure publiée.';
+  const contentHash = Array.from(
+    new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content))),
+    (x) => x.toString(16).padStart(2, '0'),
+  ).join('');
+  let completions = 0,
+    embeddings = 0;
+  const mf = await runtime(
+    async (req) => {
+      const path = new URL(req.url).pathname;
+      if (path.endsWith('/customer_open_case_session'))
+        return Response.json({ access_token: token, expires_at, case: snapshot });
+      if (path.endsWith('/customer_case_snapshot'))
+        return Response.json({ expires_at, case: snapshot });
+      if (path.endsWith('/chat/completions')) {
+        completions++;
+        const u = {
+          language: 'fr',
+          preferredResponseLanguage: null,
+          intent: 'information',
+          subIntent: 'procedure',
+          topic: 'return',
+          guidance: 'business_direct',
+          guidancePreference: 'keep',
+          reference: 'none',
+          selectedCaseId: null,
+          referencedProduct: null,
+          referencesPreviousTurn: false,
+          conversationRepair: false,
+          requiresCase: false,
+          requiresKnowledge: true,
+          requiresClarification: false,
+          requiresHuman: false,
+          confidence: 0.95,
+          style: { length: 'keep', emoji: 'keep' },
+          retrievalQuery: 'retour sans emballage',
+          response: '',
+        };
+        return Response.json({
+          choices: [
+            { finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(u) } },
+          ],
+          usage: { prompt_tokens: 100, completion_tokens: 80 },
+        });
+      }
+      if (path.endsWith('/embeddings')) {
+        embeddings++;
+        return Response.json({
+          data: [{ index: 0, embedding: [1, ...Array(767).fill(0)] }],
+          usage: { prompt_tokens: 7 },
+        });
+      }
+      if (path.endsWith('/knowledge_hybrid_candidates')) {
+        const body = await req.json();
+        assert.equal(body.p_organization_id, organizationId);
+        assert.equal(body.p_locale, 'fr-FR');
+        assert.ok(body.p_embedding);
+        return Response.json([
+          {
+            organization_id: organizationId,
+            document_id: '00000000-0000-4000-8000-000000000701',
+            series_id: '00000000-0000-4000-8000-000000000701',
+            revision: 1,
+            status: 'published',
+            chunk_id: '00000000-0000-4000-8000-000000000702',
+            title: 'Politique de retour',
+            category: 'Service client',
+            version: '1',
+            locale: 'fr-FR',
+            market: 'GLOBAL',
+            effective_from: null,
+            effective_until: null,
+            chunk_ordinal: 0,
+            content,
+            content_hash: contentHash,
+            channel: 'vector',
+            rank: 0.95,
+          },
+        ]);
+      }
+      throw new Error('Unexpected request ' + path);
+    },
+    {
+      LLM_ORCHESTRATOR: 'structured',
+      LLM_PROVIDER: 'openai',
+      LLM_BUDGET_MODE: 'approved',
+      OPENAI_MODEL: 'test-model',
+      OPENAI_API_KEY: 'test-key',
+      RAG_MODE: 'hybrid',
+      EMBEDDING_PROVIDER: 'openai',
+      EMBEDDING_MODEL: 'text-embedding-3-small',
+      EMBEDDING_API_KEY: 'embedding-test-key',
+    },
+  );
+  try {
+    const verified = await call(mf, '/api/production/cases/verify', {
+      body: { reference: snapshot.reference, code: '123456' },
+    });
+    assert.equal(verified.status, 200);
+    const cookie = verified.headers.get('set-cookie').split(';')[0];
+    const state = await (await call(mf, '/api/production/chat', { cookie })).json();
+    const body = { message: 'Puis-je retourner sans la boîte ?', requestId: crypto.randomUUID() };
+    const response = await call(mf, '/api/production/chat', { cookie, csrf: state.csrf, body });
+    const reply = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(reply));
+    assert.equal(reply.metadata.fallback, null);
+    assert.equal(reply.metadata.plan, 'knowledge');
+    assert.match(
+      reply.content,
+      /procédure publiée/,
+      JSON.stringify({ reply, embeddings, completions }),
+    );
+    assert.equal(reply.metadata.sources[0].id, '00000000-0000-4000-8000-000000000701');
+    assert.equal(
+      (await call(mf, '/api/production/chat', { cookie, csrf: state.csrf, body })).status,
+      200,
+    );
+    assert.equal(completions, 1);
+    assert.equal(embeddings, 1);
+  } finally {
+    await mf.dispose();
+  }
+});
