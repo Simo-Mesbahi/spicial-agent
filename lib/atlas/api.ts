@@ -1,3 +1,4 @@
+import type { ValidationSettings } from './factual-validation';
 import type { GenerationSettings } from './natural-generation';
 import type { HybridSettings } from './knowledge-hybrid';
 import { completionPayload, providerCompletion, providerTrace, ProviderError, type ProviderTrace, type ProviderFailureReason } from './provider-runtime';
@@ -52,7 +53,7 @@ export interface Database {
   prepare(sql: string): Statement;
   batch(statements: Statement[]): Promise<unknown[]>;
 }
-export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSettings, GenerationSettings {
+export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSettings, GenerationSettings, ValidationSettings {
   DB: Database;
   APP_ENVIRONMENT?: string;
   SUPABASE_ORGANIZATION_ID?: string;
