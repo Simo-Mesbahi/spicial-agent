@@ -1610,3 +1610,43 @@ test('P0 a provider cannot invoke a tool that was not advertised on an open rout
     assert.equal(reply.body.metadata.providerCalls, 1);
   } finally { globalThis.fetch = original; db.sql.close(); }
 });
+
+
+test('Trusted public origin supports a host-rewriting local reverse proxy without weakening origin checks', async () => {
+  const db = database();
+  try {
+    const env = {
+      DB: db,
+      APP_ENVIRONMENT: 'LOCAL',
+      APP_PUBLIC_ORIGIN: 'https://codespace-5173.app.github.dev',
+    };
+
+    const accepted = await handleApi(
+      new Request('http://127.0.0.1:5173/api/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://codespace-5173.app.github.dev',
+        },
+        body: '{}',
+      }),
+      env,
+    );
+    assert.equal(accepted.status, 201);
+
+    const rejected = await handleApi(
+      new Request('http://127.0.0.1:5173/api/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://attacker.example',
+        },
+        body: '{}',
+      }),
+      env,
+    );
+    assert.equal(rejected.status, 403);
+  } finally {
+    db.sql.close();
+  }
+});
