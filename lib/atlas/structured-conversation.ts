@@ -1,3 +1,4 @@
+import type { EvidencePack } from './evidence-pack';
 import type { AtlasEnv } from './api';
 import type { ConversationLanguage } from './conversation-intelligence';
 import { localizedProcedureReply } from './conversation-intelligence';
@@ -269,6 +270,12 @@ const canonicalTopics = {
   general: '',
 };
 type Dependencies<C> = {
+  prepareEvidence?: (input: {
+    currentCase: C | null;
+    knowledge: KnowledgeSearchResult;
+    plan: ConversationPlan;
+    language: ConversationLanguage;
+  }) => Promise<{ pack: EvidencePack; currentCase: C | null }>;
   readCase: (id: string) => Promise<C>;
   retrieve: (query: string) => Promise<KnowledgeSearchResult>;
   renderCase: (c: C, language: ConversationLanguage) => string;
@@ -316,6 +323,24 @@ export async function executeConversation<C>(
     currentCase = await deps.readCase(plan.caseId!);
     tools.push('get_case');
     trace.tools.push('get_case');
+  }
+  const prepared = deps.prepareEvidence
+    ? await deps.prepareEvidence({ currentCase, knowledge, plan, language })
+    : null;
+  const evidencePack = prepared?.pack ?? null;
+  if (prepared) currentCase = prepared.currentCase;
+  if (evidencePack) {
+    // Customer sources must be drawn from the validated pack, never an unbound result.
+    sources = knowledge.articles
+      .filter((article) =>
+        evidencePack.knowledge.sources.some(
+          (source) =>
+            source.documentId === article.id &&
+            source.version === article.version &&
+            source.content === article.body,
+        ),
+      )
+      .slice(0, 1);
   }
   if (currentCase) {
     content = deps.renderCase(currentCase, language);
@@ -404,6 +429,7 @@ export async function executeConversation<C>(
     plan,
     language,
     currentCase,
+    evidencePack,
     knowledge,
     retrievalMs,
     groundingFailure,

@@ -97,6 +97,7 @@ async function setup(t, overrides = {}) {
     afterProvider: () => {},
     prompts: [],
     revoked: false,
+    knowledgeRows: [],
   };
   t.mock.method(console, 'info', () => {});
   t.mock.method(console, 'error', () => {});
@@ -121,6 +122,10 @@ async function setup(t, overrides = {}) {
     if (path.endsWith('/customer_close_case_session')) {
       remote.revoked = true;
       return Response.json(null);
+    }
+    if (path.endsWith('/knowledge_search')) {
+      assert.equal(body.p_organization_id, org);
+      return Response.json(remote.knowledgeRows);
     }
     if (path.endsWith('/chat/completions')) {
       remote.providerCalls++;
@@ -195,6 +200,11 @@ test('Production chat rereads Supabase after understanding, preserves currency a
   assert.match(result.data.content, /123,45/);
   assert.doesNotMatch(result.data.content, /€|démonstration|PRIVATE/);
   assert.equal(result.data.metadata.caseEvidence.version, 2);
+  assert.equal(result.data.metadata.evidence.caseVersion, 2);
+  assert.ok(result.data.metadata.evidence.unknowns.includes('confirmed_eta'));
+  assert.equal(result.data.metadata.evidence.completedActionCount, 0);
+  assert.equal(result.data.evidencePack, undefined);
+  assert.equal(result.data.metadata.evidencePack, undefined);
   assert.equal(result.data.metadata.inputTokens, 120);
   assert.equal(result.data.metadata.outputTokens, 80);
   assert.equal(result.data.metadata.fallback, null);
@@ -422,4 +432,67 @@ test('Production multi-turn preferences survive small talk and fresh case reads'
   assert.equal(data.session.preferredResponseLanguage, 'en');
   assert.equal(data.session.stylePreferences.short, true);
   assert.equal(data.session.recentTurns.length, 2);
+});
+
+test('Production evidence validates documentary dates before storing or displaying an answer', async (t) => {
+  const c = await setup(t);
+  c.remote.output = output({
+    intent: 'information',
+    subIntent: 'procedure',
+    topic: 'return',
+    requiresKnowledge: true,
+    retrievalQuery: 'retour produit',
+    response: '',
+  });
+  c.remote.knowledgeRows = [
+    {
+      document_id: '00000000-0000-4000-8000-000000000701',
+      chunk_id: '00000000-0000-4000-8000-000000000702',
+      title: 'Retour',
+      category: 'SAV',
+      version: '1',
+      locale: 'fr-FR',
+      market: 'GLOBAL',
+      effective_from: null,
+      effective_until: '2000-01-01',
+      chunk_ordinal: 0,
+      content: 'EXPIRED PROCEDURE',
+      rank: 5,
+    },
+  ];
+  const rejected = await c.call('chat', question('Comment retourner un produit ?'));
+  assert.equal(rejected.status, 502);
+  assert.doesNotMatch(JSON.stringify(rejected.data), /EXPIRED PROCEDURE/);
+  assert.equal(c.db.sql.prepare('SELECT count(*) n FROM messages').get().n, 0);
+  assert.equal(c.db.sql.prepare('SELECT count(*) n FROM chat_requests').get().n, 0);
+  c.remote.knowledgeRows[0].effective_until = null;
+  c.remote.knowledgeRows[0].content = 'Consultez la procédure publiée pour un retour.';
+  const accepted = await c.call('chat', question('Comment retourner un produit ?'));
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  assert.equal(accepted.data.metadata.evidence.knowledgeStatus, 'available');
+  assert.equal(accepted.data.metadata.evidence.sourceCount, 1);
+  assert.equal(accepted.data.metadata.evidence.caseVersion, null);
+  assert.equal(accepted.data.metadata.sources.length, 1);
+});
+
+test('Production evidence stays fresh over ten turns without adding provider calls or storing the pack', async (t) => {
+  const c = await setup(t);
+  for (let i = 0; i < 10; i++) {
+    const isCase = i % 2 === 0;
+    c.remote.output = isCase ? lookup() : output();
+    c.remote.case.version = i + 1;
+    c.remote.case.status = i < 5 ? 'waiting_part' : 'ready';
+    const result = await c.call('chat', question(isCase ? 'Et ma télévision ?' : 'Ça va toi ?'));
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+    assert.equal(result.data.metadata.evidence.caseVersion, isCase ? i + 1 : null);
+    assert.equal(result.data.metadata.providerCalls, 1);
+    assert.equal(result.data.metadata.evidence.completedActionCount, 0);
+  }
+  assert.equal(c.remote.providerCalls, 10);
+  const state = c.db.sql.prepare('SELECT payload FROM conversation_states').get();
+  assert.doesNotMatch(
+    JSON.stringify(state),
+    /evidencePack|caseFacts|waiting_part|confirmedEta|quote_cents/,
+  );
+  assert.doesNotMatch(JSON.stringify(c.remote.prompts), /caseFacts|confirmedEta|quote_cents/);
 });

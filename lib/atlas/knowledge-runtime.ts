@@ -1,4 +1,5 @@
 import { searchHybridKnowledge, type KnowledgeEnvironment } from './knowledge-hybrid';
+import { digest } from './embedding-runtime';
 import type { EmbeddingTrace } from './embedding-runtime';
 import { z } from 'zod';
 import { retrieve, type Article } from './domain';
@@ -26,6 +27,12 @@ const searchRowSchema = z.object({
 
 export type KnowledgeSearchResult = {
   articles: Article[];
+  provenance?: {
+    organizationId: string;
+    retrievedAt: string;
+    locale: string;
+    market: string | null;
+  };
   evidence?: {
     documentId: string;
     chunkId: string;
@@ -34,6 +41,8 @@ export type KnowledgeSearchResult = {
     locale: string;
     market: string;
     contentHash?: string;
+    effectiveFrom?: string | null;
+    effectiveUntil?: string | null;
     channels?: string[];
     lexicalScore?: number | null;
     similarity?: number | null;
@@ -93,14 +102,25 @@ export async function searchKnowledge(
     if (!parsed.success) return { articles: [], scope: 'supabase_unavailable' };
 
     return {
-      evidence: parsed.data.map((row) => ({
-        documentId: row.document_id,
-        chunkId: row.chunk_id,
-        version: row.version,
-        score: row.rank,
-        locale: row.locale,
-        market: row.market,
-      })),
+      provenance: {
+        organizationId: env.SUPABASE_ORGANIZATION_ID!,
+        retrievedAt: new Date().toISOString(),
+        locale: 'fr-FR',
+        market: null,
+      },
+      evidence: await Promise.all(
+        parsed.data.map(async (row) => ({
+          documentId: row.document_id,
+          chunkId: row.chunk_id,
+          version: row.version,
+          score: row.rank,
+          locale: row.locale,
+          market: row.market,
+          effectiveFrom: row.effective_from,
+          effectiveUntil: row.effective_until,
+          contentHash: await digest(row.content),
+        })),
+      ),
       articles: parsed.data.map((row) => ({
         id: row.document_id,
         title: row.title,

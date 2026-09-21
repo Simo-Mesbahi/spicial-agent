@@ -1,3 +1,9 @@
+import {
+  buildEvidencePack,
+  assertEvidenceContext,
+  evidenceSummary,
+  EvidencePackError,
+} from './evidence-pack';
 import { z } from 'zod';
 import type { AtlasEnv } from './api';
 import { hash, criticalSafetyAnswer } from './api';
@@ -101,6 +107,12 @@ export async function productionChat(
   const trace = providerTrace(),
     requestId = crypto.randomUUID(),
     started = performance.now();
+  const evidenceContext = {
+    organizationId: adapter.organizationId,
+    authorizedCaseId: adapter.caseId,
+    requestId,
+    sessionExpiresAt: adapter.expiresAt,
+  };
   const sessionId = (await hash(adapter.spaceId)).slice(0, 24);
   const config = publicModelConfig(env);
   let lease: ConversationLease | null = null;
@@ -155,6 +167,16 @@ export async function productionChat(
                 ? { articles: [], scope: 'supabase_unavailable' }
                 : result;
             },
+            prepareEvidence: async ({ currentCase, knowledge, language, plan }) => {
+              const pack = await buildEvidencePack({
+                context: evidenceContext,
+                caseFacts: currentCase,
+                knowledge,
+                language,
+                offerContact: plan.kind === 'handoff',
+              });
+              return { pack, currentCase: pack.caseFacts };
+            },
             renderCase: renderCaseFacts,
             renderWarranty: (facts, language) => renderCaseFacts(facts, language),
           },
@@ -171,16 +193,28 @@ export async function productionChat(
       conversation?.language ??
       lease.state.preferredResponseLanguage ??
       detectConversationLanguage(message);
+    const evidencePack =
+      conversation?.evidencePack ??
+      (await buildEvidencePack({
+        context: evidenceContext,
+        language,
+        caseFacts: safety ? null : finalFacts,
+        knowledge: { articles: [], scope: 'not_required' },
+        offerContact: false,
+      }));
     const answer = safety ??
       conversation?.answer ?? {
-        content: renderCaseFacts(finalFacts, language),
+        content: renderCaseFacts(evidencePack.caseFacts!, language),
         sources: [],
         tools: ['get_case'],
         action: null,
       };
     if (safety) trace.tools.push(...safety.tools);
     else if (!conversation) trace.tools.push('get_case');
+    assertEvidenceContext(evidencePack, evidenceContext);
+    const evidence = evidenceSummary(evidencePack);
     const metadata = {
+      evidence,
       orchestrator: 'structured',
       dataSource: 'supabase',
       provider: config.provider,
@@ -248,6 +282,7 @@ export async function productionChat(
       dataSource: 'supabase',
       provider: config.provider,
       model: config.model,
+      evidence,
       outcome: safety ? 'safety_guard' : fallbackReason ? 'fallback' : 'provider_success',
       fallbackReason,
       providerTrace: trace,
@@ -267,13 +302,21 @@ export async function productionChat(
       errorClassification:
         error instanceof CaseAccessError
           ? error.code
-          : error instanceof ConversationBusy
-            ? 'conversation_busy'
-            : 'request_failed',
+          : error instanceof EvidencePackError
+            ? error.code
+            : error instanceof ConversationBusy
+              ? 'conversation_busy'
+              : 'request_failed',
       providerTrace: trace,
       persisted,
       latencyMs: performance.now() - started,
     });
+    if (error instanceof EvidencePackError)
+      throw new CaseAccessError(
+        502,
+        error.code,
+        'Les informations ne peuvent pas être confirmées. Réessayez dans un instant.',
+      );
     if (error instanceof ConversationBusy)
       throw new CaseAccessError(
         409,
