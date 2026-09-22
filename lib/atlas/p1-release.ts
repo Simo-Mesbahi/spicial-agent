@@ -1,6 +1,11 @@
 import type { AtlasEnv } from './api';
 import { redacted } from './domain';
-import { digest, embeddingSettings } from './embedding-runtime';
+import {
+  digest,
+  embeddingSettings,
+  type EmbeddingEnv,
+} from './embedding-runtime';
+import { modelSettings, type ModelEnvironment } from './model-policy';
 import {
   assertValidationEvidence,
   type ValidationDiagnostics,
@@ -13,22 +18,16 @@ import {
 } from './natural-generation';
 import { safeConversationalDraft, type ConversationPlan } from './structured-conversation';
 
-export type ReleaseSettings = {
-  P1_RELEASE_MODE?: string;
-  P1_CANARY_PERCENT?: string;
-  P1_CANARY_SALT?: string;
-  LLM_GENERATION_MODE?: string;
-  LLM_VALIDATION_MODE?: string;
-  LLM_ORCHESTRATOR?: string;
-  RAG_MODE?: string;
-  EMBEDDING_PROVIDER?: string;
-  EMBEDDING_MODEL?: string;
-  EMBEDDING_BASE_URL?: string;
-  EMBEDDING_API_KEY?: string;
-  EMBEDDING_REVISION?: string;
-  EMBEDDING_SEND_DIMENSIONS?: string;
-  LLM_BUDGET_MODE?: string;
-};
+export type ReleaseSettings = ModelEnvironment &
+  EmbeddingEnv & {
+    P1_RELEASE_MODE?: string;
+    P1_CANARY_PERCENT?: string;
+    P1_CANARY_SALT?: string;
+    LLM_GENERATION_MODE?: string;
+    LLM_VALIDATION_MODE?: string;
+    LLM_ORCHESTRATOR?: string;
+    RAG_MODE?: string;
+  };
 
 export type P1ReleaseMode = 'off' | 'shadow' | 'canary' | 'on';
 
@@ -103,6 +102,7 @@ export type ReleaseConfigurationState = {
   releaseReady: boolean;
   canaryPercent: number;
   canarySaltConfigured: boolean;
+  modelConfigured: boolean;
   embeddingConfigured: boolean;
   issues: string[];
 };
@@ -134,6 +134,14 @@ export function releaseConfigurationState(
   }
 
   const canarySaltConfigured = (env.P1_CANARY_SALT?.trim().length ?? 0) >= 16;
+  let modelConfigured = false;
+  try {
+    const model = modelSettings(env);
+    modelConfigured = model.provider !== 'demo' && Boolean(model.model) && Boolean(model.base);
+  } catch {
+    modelConfigured = false;
+  }
+
   let embeddingConfigured = false;
   try {
     embeddingSettings(env);
@@ -151,6 +159,7 @@ export function releaseConfigurationState(
     if (env.LLM_ORCHESTRATOR !== 'structured')
       issues.push('structured_orchestrator_required');
     if (env.RAG_MODE !== 'hybrid') issues.push('hybrid_rag_required');
+    if (!modelConfigured) issues.push('generation_provider_required');
     if (!embeddingConfigured) issues.push('embedding_configuration_required');
     if (env.LLM_GENERATION_MODE !== 'release')
       issues.push('generation_release_mode_required');
@@ -165,6 +174,7 @@ export function releaseConfigurationState(
       issues.length === 0 && (mode === 'canary' || mode === 'on'),
     canaryPercent,
     canarySaltConfigured,
+    modelConfigured,
     embeddingConfigured,
     issues,
   };
