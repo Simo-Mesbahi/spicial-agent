@@ -79,7 +79,7 @@ for (const provider of ['openai', 'gemini', 'compatible', 'ollama'])
     const cfg = {
       ...env,
       EMBEDDING_PROVIDER: provider,
-      EMBEDDING_MODEL: provider === 'gemini' ? 'gemini-embedding-001' : 'multilingual-fixture',
+      EMBEDDING_MODEL: provider === 'gemini' ? 'gemini-embedding-2' : 'multilingual-fixture',
       EMBEDDING_BASE_URL:
         provider === 'ollama' ? 'http://127.0.0.1:11434/v1' : 'https://embedding.example/v1',
     };
