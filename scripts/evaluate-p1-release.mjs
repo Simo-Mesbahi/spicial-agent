@@ -16,7 +16,17 @@ if (live && finalizeExisting)
   throw new Error('Choose either --live or --finalize-existing, never both.');
 
 const structuredTurns = Number(value('--structured-turns', String(contract.structured.minimumTurns)));
-const output = resolve(value('--output', 'outputs/p1-live/release-qualification.json'));
+const qualificationReportPath = resolve(
+  value('--qualification-report', 'outputs/p1-live/release-qualification.json'),
+);
+const output = resolve(
+  value(
+    '--output',
+    finalizeExisting
+      ? 'outputs/p1-live/release-final.json'
+      : 'outputs/p1-live/release-qualification.json',
+  ),
+);
 const humanReviewPath = value('--human-review', null);
 const confirmation = value('--confirm', '');
 
@@ -91,6 +101,10 @@ if (live && confirmation !== 'P1_RELEASE')
 if (finalizeExisting && !humanReviewPath)
   throw new Error(
     '--finalize-existing requires --human-review and reuses existing qualification reports without provider calls.',
+  );
+if (finalizeExisting && output === qualificationReportPath)
+  throw new Error(
+    'Finalization output must not overwrite the original live qualification report.',
   );
 
 await mkdir(dirname(output), { recursive: true });
