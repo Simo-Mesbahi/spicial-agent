@@ -189,7 +189,10 @@ async function setup() {
       throw new Error('Clé Gemini invalide.');
     values.LLM_PROVIDER = 'gemini';
     values.LLM_BUDGET_MODE = 'free';
-    values.LLM_MODEL = 'gemini-2.5-flash';
+    values.GEMINI_MODEL = 'gemini-3.1-flash-lite';
+    // Keep the legacy active-provider override empty so GEMINI_MODEL remains
+    // authoritative and cannot silently pin an obsolete Gemini identifier.
+    values.LLM_MODEL = '';
     values.LLM_DAILY_LIMIT = '100';
     console.log(
       'Gemini configuré pour la démonstration. Les quotas dépendent de Google ; la limite applicative n’est pas un plafond de facturation.',
@@ -197,6 +200,7 @@ async function setup() {
   } else {
     values.LLM_PROVIDER = previous.LLM_PROVIDER || 'demo';
     values.LLM_BUDGET_MODE = previous.LLM_BUDGET_MODE || 'zero';
+    values.GEMINI_MODEL = previous.GEMINI_MODEL || 'gemini-3.1-flash-lite';
     values.LLM_MODEL = previous.LLM_MODEL || '';
   }
   await saveConfiguration(values);
