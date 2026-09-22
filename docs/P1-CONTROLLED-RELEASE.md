@@ -144,8 +144,31 @@ npm run eval:p1:finalize -- \
 
 The final report is written separately to
 `outputs/p1-live/release-final.json`; the original live qualification report is never
-overwritten. Finalization fails closed if the source tree, any artifact, contract, reviewed candidate,
-candidate hash, language, rubric, reviewer metadata or qualification ID has changed.
+overwritten. Finalization fails closed if the source tree, organization scope, any
+artifact, contract, reviewed candidate, candidate hash, language, rubric, reviewer
+metadata or qualification ID has changed.
+
+After—and only after—a successful finalization, create the short-lived signed release
+attestation:
+
+```bash
+P1_RELEASE_ATTESTATION_KEY='<server-only secret>' \
+npm run eval:p1:attest -- \
+  --final-report outputs/p1-live/release-final.json \
+  --expires-hours 168
+```
+
+The signing command independently rechecks the final report, every named automated
+gate, human approval, qualification identity, organization scope and source-tree
+identity. It writes `outputs/p1-live/release-attestation.json` containing the
+non-secret attestation token and the exact qualified source-tree SHA. The HMAC key is
+never written to the artifact.
+
+At runtime, `canary` and `on` are rejected unless the HMAC signature is valid, the
+attestation is unexpired, its organization matches `SUPABASE_ORGANIZATION_ID`, and
+its qualified source tree exactly matches `P1_DEPLOYED_SOURCE_TREE_SHA`. This makes
+qualification/human review a technical release prerequisite rather than documentation
+alone.
 
 ## P1.7B — Documentary freshness gate
 
@@ -213,6 +236,9 @@ LLM_VALIDATION_MODE=release
 P1_RELEASE_MODE=canary
 P1_CANARY_PERCENT=1
 P1_CANARY_SALT=<server-side high-entropy value>
+P1_DEPLOYED_SOURCE_TREE_SHA=<exact qualified Git tree SHA>
+P1_RELEASE_ATTESTATION=<signed token from eval:p1:attest>
+P1_RELEASE_ATTESTATION_KEY=<server-only HMAC secret>
 ```
 
 Recommended rollout after qualification:
@@ -269,6 +295,9 @@ EMBEDDING_API_KEY=<server secret>
 LLM_GENERATION_MODE=release
 LLM_VALIDATION_MODE=release
 P1_RELEASE_MODE=on
+P1_DEPLOYED_SOURCE_TREE_SHA=<exact qualified Git tree SHA>
+P1_RELEASE_ATTESTATION=<signed token from eval:p1:attest>
+P1_RELEASE_ATTESTATION_KEY=<server-only HMAC secret>
 ```
 
 The release controller refuses to arm `canary` or `on` if any required layer is not enabled or if the active generation provider / multilingual embedding provider is not validly configured.
@@ -281,6 +310,8 @@ The release controller refuses to arm `canary` or `on` if any required layer is 
 - whether a salt is configured;
 - whether the active generation provider is configured;
 - whether the embedding provider is configured;
+- whether a release attestation is configured and cryptographically verified;
+- attestation expiry;
 - configuration issue codes.
 
 The salt itself is never exposed.
