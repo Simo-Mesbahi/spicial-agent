@@ -14,6 +14,9 @@ test('P1.7 live qualification workflow is manual-only and explicitly acknowledge
   assert.match(source, /inputs\.confirm/);
   assert.match(source, /"P1_RELEASE"/);
   assert.match(source, /refs\/heads\/main/);
+  assert.match(source, /qualification_environment:/);
+  assert.match(source, /type: environment/);
+  assert.match(source, /environment: \$\{\{ inputs\.qualification_environment \}\}/);
   assert.match(source, /cancel-in-progress: false/);
 });
 
