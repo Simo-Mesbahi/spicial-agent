@@ -4,8 +4,8 @@ const args = process.argv.slice(2),
   live = args.includes('--live');
 const at = args.indexOf('--max-chunks'),
   maxChunks = at >= 0 ? Number(args[at + 1]) : 8;
-if (!Number.isInteger(maxChunks) || maxChunks < 1 || maxChunks > 16)
-  throw new Error('--max-chunks must be between 1 and 16');
+if (!Number.isInteger(maxChunks) || maxChunks < 1 || maxChunks > 32)
+  throw new Error('--max-chunks must be between 1 and 32');
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--max-chunks') {
     i++;
