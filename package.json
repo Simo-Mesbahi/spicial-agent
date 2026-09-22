@@ -33,7 +33,8 @@
     "eval:generation": "node scripts/evaluate-generation.mjs",
     "eval:grounding": "node scripts/evaluate-grounding.mjs",
     "eval:p1:release": "node scripts/evaluate-p1-release.mjs",
-    "eval:p1:review-template": "node scripts/create-p1-human-review.mjs"
+    "eval:p1:review-template": "node scripts/create-p1-human-review.mjs",
+    "eval:p1:finalize": "node scripts/evaluate-p1-release.mjs --finalize-existing"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
