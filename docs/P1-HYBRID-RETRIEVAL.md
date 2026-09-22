@@ -12,6 +12,8 @@ The pipeline uses the structured understanding's standalone retrieval query (sep
 
 The embedding provider is configured separately from the chat provider. OpenAI, Gemini's native embedding API, OpenAI-compatible endpoints and local Ollama-compatible embeddings are supported. A deployment must select a multilingual model that supports **768 dimensions**, matching the existing pgvector column. Provider support and semantic quality require live verification; API compatibility does not establish model intelligence.
 
+For the September 2026 qualification baseline, use **`gemini-embedding-2`** with explicit 768-dimensional output. It is the stable Gemini embedding generation selected for this rollout. Changing the model or `EMBEDDING_REVISION` changes the embedding-space digest and therefore requires a controlled re-index before hybrid release.
+
 Configuration lives only in server environment variables:
 
 - `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_API_KEY` (a dedicated key; no automatic reuse of a chat key).
