@@ -214,8 +214,11 @@ jobs:
           NODE
 
       - name: Generate fail-closed human review template
-        run: |
-          npm run eval:p1:review-template --             --qualification-report outputs/p1-live/release-qualification.json             --generation outputs/p1-live/generation.json             --output outputs/p1-live/human-review.json
+        run: >-
+          npm run eval:p1:review-template --
+          --qualification-report outputs/p1-live/release-qualification.json
+          --generation outputs/p1-live/generation.json
+          --output outputs/p1-live/human-review.json
 
       - name: Upload qualification evidence
         if: always()
