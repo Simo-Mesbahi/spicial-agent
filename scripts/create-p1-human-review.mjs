@@ -25,6 +25,15 @@ const generationRaw = await readFile(generationPath, 'utf8');
 const generationSha256 = createHash('sha256').update(generationRaw).digest('hex');
 const qualificationRaw = await readFile(qualificationPath, 'utf8');
 const qualification = JSON.parse(qualificationRaw);
+const qualificationArtifacts =
+  qualification?.artifacts && typeof qualification.artifacts === 'object'
+    ? qualification.artifacts
+    : null;
+const computedQualificationId = qualificationArtifacts
+  ? createHash('sha256')
+      .update(JSON.stringify(qualificationArtifacts))
+      .digest('hex')
+  : null;
 
 if (
   qualification?.schema !== 1 ||
@@ -33,7 +42,14 @@ if (
   qualification?.automatedPassed !== true ||
   typeof qualification?.qualificationId !== 'string' ||
   !/^[a-f0-9]{64}$/.test(qualification.qualificationId) ||
-  qualification?.artifacts?.generationSha256 !== generationSha256
+  computedQualificationId !== qualification.qualificationId ||
+  typeof qualificationArtifacts?.contractSha256 !== 'string' ||
+  typeof qualificationArtifacts?.structuredSha256 !== 'string' ||
+  typeof qualificationArtifacts?.retrievalSha256 !== 'string' ||
+  typeof qualificationArtifacts?.generationSha256 !== 'string' ||
+  !Array.isArray(qualificationArtifacts?.groundingSha256) ||
+  qualificationArtifacts.groundingSha256.length !== 4 ||
+  qualificationArtifacts.generationSha256 !== generationSha256
 )
   fail('Qualification report is not a valid automated-passed source for this generation artifact.');
 
