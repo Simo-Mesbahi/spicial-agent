@@ -7,7 +7,7 @@ import { generationFixture, generationScenarios } from '../evals/generation.mjs'
 const compiled = await build({
   stdin: {
     contents:
-      "export {releaseCohort,releaseNaturalResponse,shouldEvaluateNaturalResponse,releaseConfigurationState} from './lib/atlas/p1-release';",
+      "export {releaseCohort,releaseNaturalResponse,shouldEvaluateNaturalResponse,releaseConfigurationState} from './lib/atlas/p1-release'; export {createReleaseAttestation} from './lib/atlas/p1-release-attestation';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -20,10 +20,38 @@ const {
   releaseNaturalResponse,
   shouldEvaluateNaturalResponse,
   releaseConfigurationState,
+  createReleaseAttestation,
 } = await import(
   'data:text/javascript;base64,' +
     Buffer.from(compiled.outputFiles[0].text).toString('base64')
 );
+
+const RELEASE_ORG = '00000000-0000-4000-8000-000000000001';
+const RELEASE_TREE = 'a'.repeat(40);
+const RELEASE_SECRET = 'test-release-attestation-key-32-bytes-minimum';
+
+async function approvedReleaseEnv(overrides = {}) {
+  const now = Date.now();
+  const token = await createReleaseAttestation(
+    {
+      schema: 1,
+      qualificationId: 'b'.repeat(64),
+      sourceTreeSha: RELEASE_TREE,
+      organizationId: RELEASE_ORG,
+      approvedAt: new Date(now - 60_000).toISOString(),
+      expiresAt: new Date(now + 24 * 60 * 60_000).toISOString(),
+    },
+    RELEASE_SECRET,
+    now,
+  );
+  return {
+    P1_RELEASE_ATTESTATION: token,
+    P1_RELEASE_ATTESTATION_KEY: RELEASE_SECRET,
+    P1_DEPLOYED_SOURCE_TREE_SHA: RELEASE_TREE,
+    SUPABASE_ORGANIZATION_ID: RELEASE_ORG,
+    ...overrides,
+  };
+}
 
 function diagnostics() {
   return {
@@ -80,7 +108,7 @@ test('legacy shadow configuration remains shadow-only without a new release flag
 });
 
 test('canary cohort assignment is stable, secret-salted and bounded', async () => {
-  const env = {
+  const env = await approvedReleaseEnv({
     P1_RELEASE_MODE: 'canary',
     P1_CANARY_PERCENT: '17',
     P1_CANARY_SALT: 'server-only-canary-salt-2026',
@@ -95,7 +123,7 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
     EMBEDDING_PROVIDER: 'gemini',
     EMBEDDING_MODEL: 'gemini-embedding-001',
     EMBEDDING_API_KEY: 'test-embedding-key',
-  };
+  });
   const input = {
     organizationId: '00000000-0000-4000-8000-000000000001',
     authorizedCaseId: '00000000-0000-4000-8000-000000000002',
@@ -117,7 +145,7 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
   assert.equal(first.selected, first.bucket < 17);
 
   const invalid = await releaseCohort(
-    {
+    await approvedReleaseEnv({
       P1_RELEASE_MODE: 'canary',
       P1_CANARY_PERCENT: '10',
       P1_CANARY_SALT: 'short',
@@ -125,11 +153,14 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
       RAG_MODE: 'hybrid',
       LLM_GENERATION_MODE: 'release',
       LLM_VALIDATION_MODE: 'release',
+      LLM_PROVIDER: 'gemini',
+      GEMINI_MODEL: 'gemini-3.1-flash-lite',
+      GEMINI_API_KEY: 'test-generation-key',
       LLM_BUDGET_MODE: 'approved',
       EMBEDDING_PROVIDER: 'gemini',
       EMBEDDING_MODEL: 'gemini-embedding-001',
       EMBEDDING_API_KEY: 'test-embedding-key',
-    },
+    }),
     input,
   );
   assert.equal(invalid.configurationValid, false);
@@ -350,8 +381,8 @@ test('documentary release requires a successful hybrid evidence path even when e
   assert.equal(result.diagnostics.reason, 'hybrid_unavailable');
 });
 
-test('release readiness fails closed unless structured, hybrid, generation and validation are all armed', () => {
-  const base = {
+test('release readiness fails closed unless structured, hybrid, generation, validation and signed qualification are all armed', async () => {
+  const base = await approvedReleaseEnv({
     P1_RELEASE_MODE: 'on',
     LLM_ORCHESTRATOR: 'structured',
     RAG_MODE: 'hybrid',
@@ -364,8 +395,8 @@ test('release readiness fails closed unless structured, hybrid, generation and v
     EMBEDDING_PROVIDER: 'gemini',
     EMBEDDING_MODEL: 'gemini-embedding-001',
     EMBEDDING_API_KEY: 'test-embedding-key',
-  };
-  assert.equal(releaseConfigurationState(base).releaseReady, true);
+  });
+  assert.equal((await releaseConfigurationState(base)).releaseReady, true);
 
   for (const [key, value] of [
     ['LLM_ORCHESTRATOR', 'legacy'],
@@ -374,8 +405,11 @@ test('release readiness fails closed unless structured, hybrid, generation and v
     ['LLM_VALIDATION_MODE', 'shadow'],
     ['GEMINI_API_KEY', ''],
     ['EMBEDDING_API_KEY', ''],
+    ['P1_RELEASE_ATTESTATION', ''],
+    ['P1_RELEASE_ATTESTATION_KEY', ''],
+    ['P1_DEPLOYED_SOURCE_TREE_SHA', 'f'.repeat(40)],
   ]) {
-    const state = releaseConfigurationState({ ...base, [key]: value });
+    const state = await releaseConfigurationState({ ...base, [key]: value });
     assert.equal(state.releaseReady, false, key);
     assert.ok(state.issues.length > 0, key);
   }
