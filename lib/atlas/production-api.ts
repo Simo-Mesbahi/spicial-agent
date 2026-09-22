@@ -103,6 +103,118 @@ const authSessionSchema = z.object({
     .passthrough(),
 });
 
+const p1ReleaseMetricsSchema = z
+  .object({
+    generated_at: z.string(),
+    period_hours: z.number().int().min(1).max(168),
+    events: z.number().int().nonnegative(),
+    release_modes: z.record(z.string(), z.number().int().nonnegative()),
+    canary: z
+      .object({
+        selected: z.number().int().nonnegative(),
+        attempted: z.number().int().nonnegative(),
+        released: z.number().int().nonnegative(),
+        blocked: z.number().int().nonnegative(),
+        release_rate: z.number().min(0).max(100).nullable(),
+      })
+      .strict(),
+    quality: z
+      .object({
+        invariant_violations: z.number().int().nonnegative(),
+        generation_failed: z.number().int().nonnegative(),
+        validation_failed: z.number().int().nonnegative(),
+        evidence_invalidated: z.number().int().nonnegative(),
+        invalid_candidate: z.number().int().nonnegative(),
+        configuration_blocked: z.number().int().nonnegative(),
+      })
+      .strict(),
+    latency: z
+      .object({
+        p50_ms: z.number().nonnegative().nullable(),
+        p95_ms: z.number().nonnegative().nullable(),
+      })
+      .strict(),
+    usage: z
+      .object({
+        provider_calls: z.number().int().nonnegative(),
+        input_tokens: z.number().int().nonnegative().nullable(),
+        output_tokens: z.number().int().nonnegative().nullable(),
+      })
+      .strict(),
+    by_reason: z.record(z.string(), z.number().int().nonnegative()),
+    by_plan: z.record(z.string(), z.number().int().nonnegative()),
+  })
+  .strict();
+
+const releaseTelemetryResponseSchema = z
+  .object({
+    metadata: z
+      .object({
+        requestId: z.string().uuid(),
+        provider: z.string().min(1).max(40),
+        model: z.string().min(1).max(160).nullable(),
+        providerCalls: z.number().int().min(0).max(10),
+        inputTokens: z.number().int().min(0).max(1_000_000).nullable(),
+        outputTokens: z.number().int().min(0).max(1_000_000).nullable(),
+        latencyMs: z.number().min(0).max(300_000),
+        generation: z
+          .object({
+            outcome: z.enum(['skipped', 'candidate_generated', 'failed']),
+          })
+          .passthrough()
+          .nullable(),
+        validation: z
+          .object({
+            outcome: z.enum(['skipped', 'supported_candidate', 'blocked', 'abstained']),
+          })
+          .passthrough()
+          .nullable(),
+        release: z
+          .object({
+            mode: z.enum(['off', 'shadow', 'canary', 'on']),
+            cohort: z.boolean(),
+            cohortBucket: z.number().int().min(0).max(99).nullable(),
+            canaryPercent: z.number().int().min(0).max(100),
+            attempted: z.boolean(),
+            released: z.boolean(),
+            reason: z
+              .enum([
+                'disabled',
+                'shadow_only',
+                'not_in_canary',
+                'ineligible_plan',
+                'configuration',
+                'generation_failed',
+                'validation_failed',
+                'evidence_changed',
+                'knowledge_unavailable',
+                'hybrid_unavailable',
+                'grounding_failure',
+                'invalid_candidate',
+              ])
+              .nullable(),
+            plan: z
+              .enum([
+                'respond',
+                'clarify',
+                'case',
+                'knowledge',
+                'case_and_knowledge',
+                'handoff',
+                'unsupported_action',
+              ])
+              .nullable(),
+            // Parsed to lock the internal response contract, deliberately NOT persisted.
+            evidenceCaseVersion: z.number().int().positive().nullable(),
+            knowledgeSourceCount: z.number().int().min(0).max(3),
+          })
+          .strict()
+          .nullable(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 const dashboardSchema = z
   .object({
     generated_at: z.string(),
@@ -606,6 +718,47 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
     return json({ dashboard: dashboard.data }, 200, session.cookies);
   }
 
+  if (path === '/api/production/admin/p1-release' && req.method === 'GET') {
+    const session = await requireAdmin(req, env);
+    const params = new URL(req.url).searchParams;
+    const organizationId = params.get('organizationId') ?? '';
+    if (!session.me.memberships.some((membership) => membership.organization_id === organizationId))
+      fail(403, 'Organisation non autorisée.', 'organization_denied');
+
+    const requestedHours = Number(params.get('hours') ?? 24);
+    const hours = Number.isInteger(requestedHours)
+      ? Math.max(1, Math.min(requestedHours, 168))
+      : 24;
+    const result = await rpc<unknown>(
+      env,
+      'admin_p1_release_metrics',
+      { p_organization_id: organizationId, p_hours: hours },
+      { kind: 'user', accessToken: session.accessToken },
+    );
+    const metrics = p1ReleaseMetricsSchema.safeParse(result);
+    if (!metrics.success)
+      fail(502, 'Mesures de déploiement IA invalides.', 'invalid_p1_release_metrics');
+
+    const effective = await effectiveEnvironment(env, req.url);
+    const release = releaseConfigurationState(effective);
+    return json(
+      {
+        metrics: metrics.data,
+        configuration: {
+          environment: environmentLabel(effective, req.url),
+          mode: release.mode,
+          ready: release.releaseReady,
+          canaryPercent: release.canaryPercent,
+          modelConfigured: release.modelConfigured,
+          embeddingConfigured: release.embeddingConfigured,
+          issues: release.issues,
+        },
+      },
+      200,
+      session.cookies,
+    );
+  }
+
   if (path === '/api/production/admin/cases' && req.method === 'GET') {
     const session = await requireAdmin(req, env);
     const params = new URL(req.url).searchParams;
@@ -752,6 +905,51 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
       );
     console.error('production_api_unhandled', error instanceof Error ? error.name : 'unknown');
     return json({ error: 'Une erreur interne est survenue.', code: 'internal_error' }, 500);
+  }
+}
+
+export async function recordProductionReleaseEvent(
+  env: ProductionEnv,
+  route: string,
+  response: Response,
+) {
+  if (route !== '/api/production/chat' || !response.ok) return;
+  try {
+    const payload = await boundedJson(response.clone(), 128 * 1024);
+    const parsed = releaseTelemetryResponseSchema.safeParse(payload);
+    if (!parsed.success) return;
+
+    const settings = supabaseSettings(env);
+    const metadata = parsed.data.metadata;
+    const release = metadata.release;
+    if (!release) return;
+    await supabaseRequest(env, '/rest/v1/rpc/record_p1_release_event', {
+      mode: { kind: 'privileged' },
+      method: 'POST',
+      timeoutMs: 3_000,
+      body: {
+        p_organization_id: settings.organizationId,
+        p_request_id: metadata.requestId,
+        p_release_mode: release.mode,
+        p_cohort: release.cohort,
+        p_cohort_bucket: release.cohortBucket,
+        p_canary_percent: release.canaryPercent,
+        p_attempted: release.attempted,
+        p_released: release.released,
+        p_reason: release.reason,
+        p_plan: release.plan,
+        p_generation_outcome: metadata.generation?.outcome ?? null,
+        p_validation_outcome: metadata.validation?.outcome ?? null,
+        p_provider: metadata.provider,
+        p_model: metadata.model,
+        p_provider_calls: metadata.providerCalls,
+        p_input_tokens: metadata.inputTokens,
+        p_output_tokens: metadata.outputTokens,
+        p_latency_ms: Math.round(metadata.latencyMs),
+      },
+    });
+  } catch {
+    // Rollout telemetry is best-effort and must never delay or break a customer response.
   }
 }
 

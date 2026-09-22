@@ -9,6 +9,29 @@ type Settings = { effectiveProvider: string; providerWarning: string | null; env
   providers: {provider: string; model: string; label: string; available: boolean; reason: string | null}[];
   history: {revision: number; actor: string; createdAt: number; config: RuntimeConfig}[] };
 type Overview = { generated_at: string; performance: {requests_24h: number; error_rate_24h: number | null; p95_latency_ms_24h: number | null; rate_limited_24h: number}; routes: {route: string; requests: number; errors: number; avg_ms: number | null}[] };
+type ReleaseOverview = {
+  metrics: {
+    generated_at: string;
+    period_hours: number;
+    events: number;
+    release_modes: Record<string, number>;
+    canary: { selected: number; attempted: number; released: number; blocked: number; release_rate: number | null };
+    quality: { invariant_violations: number; generation_failed: number; validation_failed: number; evidence_invalidated: number; invalid_candidate: number; configuration_blocked: number };
+    latency: { p50_ms: number | null; p95_ms: number | null };
+    usage: { provider_calls: number; input_tokens: number | null; output_tokens: number | null };
+    by_reason: Record<string, number>;
+    by_plan: Record<string, number>;
+  };
+  configuration: {
+    environment: string;
+    mode: 'off' | 'shadow' | 'canary' | 'on';
+    ready: boolean;
+    canaryPercent: number;
+    modelConfigured: boolean;
+    embeddingConfigured: boolean;
+    issues: string[];
+  };
+};
 type Document = { id: string; title: string; body: string; version: string; effective: string };
 
 export default function PerformancePage() {
@@ -16,6 +39,7 @@ export default function PerformancePage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<RuntimeConfig | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [releaseOverview, setReleaseOverview] = useState<ReleaseOverview | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(true);
@@ -27,20 +51,22 @@ export default function PerformancePage() {
   const [documents, setDocuments] = useState<Document[] | null>(null);
   const dirty = !!settings && !!draft && JSON.stringify(draft) !== JSON.stringify(settings.config);
   const handleError = useCallback((cause: unknown) => {
-    if (cause instanceof ProductionRequestError && (cause.status === 401 || cause.code === 'mfa_required')) { setNeedsLogin(true); setSettings(null); setDraft(null); setOverview(null); }
+    if (cause instanceof ProductionRequestError && (cause.status === 401 || cause.code === 'mfa_required')) { setNeedsLogin(true); setSettings(null); setDraft(null); setOverview(null); setReleaseOverview(null); }
     setError(cause instanceof Error ? cause.message : 'Le service est indisponible. Réessayez.');
   }, []);
   const load = useCallback(async (org: string) => {
     const suffix = `?organizationId=${encodeURIComponent(org)}`;
-    const [configResult, metricsResult] = await Promise.allSettled([
+    const [configResult, metricsResult, releaseResult] = await Promise.allSettled([
       request<Settings>(`/admin/operations/settings${suffix}`),
       request<{overview: Overview}>(`/admin/operations/overview${suffix}`),
+      request<ReleaseOverview>(`/admin/p1-release${suffix}&hours=24`),
     ]);
     // An authentication failure must clear all data, including fulfilled siblings.
-    const denied = [configResult, metricsResult].find(result => result.status === 'rejected' && result.reason instanceof ProductionRequestError && (result.reason.status === 401 || result.reason.code === 'mfa_required'));
+    const denied = [configResult, metricsResult, releaseResult].find(result => result.status === 'rejected' && result.reason instanceof ProductionRequestError && (result.reason.status === 401 || result.reason.code === 'mfa_required'));
     if (denied?.status === 'rejected') throw denied.reason;
     if (configResult.status === 'fulfilled') { setSettings(configResult.value); setDraft(configResult.value.config); setConfirmation(false); } else handleError(configResult.reason);
     if (metricsResult.status === 'fulfilled') setOverview(metricsResult.value.overview); else handleError(metricsResult.reason);
+    if (releaseResult.status === 'fulfilled') setReleaseOverview(releaseResult.value); else handleError(releaseResult.reason);
   }, [handleError]);
   useEffect(() => { let active = true; void (async () => {
     try {
@@ -82,6 +108,30 @@ export default function PerformancePage() {
         ['Requêtes observées', overview?.performance.requests_24h], ['Latence P95', overview?.performance.p95_latency_ms_24h, ' ms'],
         ['Taux d’erreur', overview?.performance.error_rate_24h, ' %'], ['Requêtes limitées', overview?.performance.rate_limited_24h],
       ].map(([label,value,suffix]) => <article className="admin-control-card" key={String(label)}><span>{label}</span><strong>{value == null ? '—' : `${value}${suffix ?? ''}`}</strong><small>24 dernières heures</small></article>)}</section>
+      <section className="admin-control-card">
+        <h2><ShieldCheck size={19}/>Déploiement P1.7</h2>
+        <p>
+          Mode runtime : <strong>{releaseOverview?.configuration.mode.toUpperCase() ?? '—'}</strong>
+          {releaseOverview?.configuration.mode === 'canary' ? ` · ${releaseOverview.configuration.canaryPercent}%` : ''}
+          {' · '}Configuration runtime : <strong>{releaseOverview?.configuration.ready ? 'complète' : 'non armée'}</strong>
+        </p>
+        <p>Ces indicateurs ne contiennent ni message client, ni réponse générée, ni identifiant de dossier. La progression du canary reste manuelle et la qualification live/humaine reste obligatoire.</p>
+        <section className="admin-control-metrics" aria-label="Observabilité du déploiement P1.7">{[
+          ['Échantillon canary', releaseOverview?.metrics.canary.selected],
+          ['Tentatives naturelles', releaseOverview?.metrics.canary.attempted],
+          ['Réponses libérées', releaseOverview?.metrics.canary.released],
+          ['Violations d’invariant', releaseOverview?.metrics.quality.invariant_violations],
+        ].map(([label,value]) => <article className="admin-control-card" key={String(label)}><span>{label}</span><strong>{value == null ? '—' : String(value)}</strong><small>{releaseOverview ? `${releaseOverview.metrics.period_hours} dernières heures` : '24 dernières heures'}</small></article>)}</section>
+        <div className="admin-control-table"><table><thead><tr><th>Signal</th><th>Valeur</th></tr></thead><tbody>
+          <tr><th>Taux de libération canary</th><td>{releaseOverview?.metrics.canary.release_rate == null ? '—' : `${releaseOverview.metrics.canary.release_rate} %`}</td></tr>
+          <tr><th>Replis après validation</th><td>{releaseOverview?.metrics.quality.validation_failed ?? '—'}</td></tr>
+          <tr><th>Preuves invalidées / indisponibles</th><td>{releaseOverview?.metrics.quality.evidence_invalidated ?? '—'}</td></tr>
+          <tr><th>Échecs de génération</th><td>{releaseOverview?.metrics.quality.generation_failed ?? '—'}</td></tr>
+          <tr><th>Latence P95 observée</th><td>{releaseOverview?.metrics.latency.p95_ms == null ? '—' : `${releaseOverview.metrics.latency.p95_ms} ms`}</td></tr>
+          <tr><th>Appels fournisseur</th><td>{releaseOverview?.metrics.usage.provider_calls ?? '—'}</td></tr>
+        </tbody></table></div>
+        {!!releaseOverview?.configuration.issues.length && <details><summary>Configuration à compléter</summary>{releaseOverview.configuration.issues.map(issue=><p key={issue}>{issue}</p>)}</details>}
+      </section>
       <section className="admin-control-card"><h2><Activity size={19}/>Performance par service</h2><p>{overview ? `Actualisé le ${new Date(overview.generated_at).toLocaleString('fr-FR')}` : 'Aucune mesure disponible.'}</p><div className="admin-control-table"><table><thead><tr><th>Service</th><th>Requêtes</th><th>Erreurs</th><th>Latence moyenne</th></tr></thead><tbody>{overview?.routes.map(route=><tr key={route.route}><th>{route.route}</th><td>{route.requests}</td><td>{route.errors}</td><td>{route.avg_ms == null ? '—' : `${route.avg_ms} ms`}</td></tr>)}</tbody></table></div>{!overview?.routes.length && <p>Aucune requête mesurée sur cette période. Les valeurs apparaîtront avec l’activité.</p>}</section>
     </> : settings && draft ? <>
       <section className="admin-control-scope"><ShieldCheck size={20}/><div><strong>{settings.scope}</strong><p>Ces réglages ne connectent pas le chat aux dossiers Supabase. Les clés et la politique de budget restent gérées côté serveur.</p></div><span>Budget : {settings.budget}</span></section>
