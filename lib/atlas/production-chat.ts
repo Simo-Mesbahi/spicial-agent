@@ -158,6 +158,7 @@ export async function productionChat(
     let usedCase: CaseFacts | null = null;
     let conversation: Awaited<ReturnType<typeof executeConversation<CaseFacts>>> | null = null;
     let fallbackReason: string | null = null;
+    let hybridEvidenceReady = false;
     const safety = criticalSafetyAnswer(message, true);
     if (!safety && (!config.ready || config.provider === 'demo'))
       throw new CaseAccessError(
@@ -188,6 +189,12 @@ export async function productionChat(
             // A configured production transport must never substitute demonstration documents.
             retrieve: async (query) => {
               const result = await searchKnowledge(env, query);
+              hybridEvidenceReady =
+                result.scope === 'supabase_published' &&
+                result.retrieval?.mode === 'hybrid' &&
+                result.retrieval.outcome === 'hybrid_hit' &&
+                result.retrieval.embedding.calls === 1 &&
+                result.retrieval.embedding.error === null;
               return result.scope === 'legacy_demo'
                 ? { articles: [], scope: 'supabase_unavailable' }
                 : result;
@@ -321,6 +328,7 @@ export async function productionChat(
         context: evidenceContext,
         groundingFailure: conversation.groundingFailure,
         freshnessFailure,
+        hybridEvidenceReady,
         allowEmoji: conversation.state.stylePreferences.emoji,
       });
       release = released.diagnostics;
