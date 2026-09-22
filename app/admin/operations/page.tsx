@@ -152,6 +152,13 @@ type ProductSummary = {
   category: string | null;
   serial_number: string | null;
 };
+type CustomerLookup = CustomerSummary & {
+  display_name: string;
+  rank: number;
+};
+type ProductLookup = ProductSummary & {
+  rank: number;
+};
 type StoreSummary = {
   id: string;
   code: string;
@@ -434,6 +441,16 @@ export default function AdminOperationsPage() {
   const [noteVisible, setNoteVisible] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(() => createDraftForRole(undefined));
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerLookup | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductLookup | null>(null);
+  const [customerLookupQuery, setCustomerLookupQuery] = useState('');
+  const [productLookupQuery, setProductLookupQuery] = useState('');
+  const [customerLookupResults, setCustomerLookupResults] = useState<CustomerLookup[]>([]);
+  const [productLookupResults, setProductLookupResults] = useState<ProductLookup[]>([]);
+  const [customerLookupBusy, setCustomerLookupBusy] = useState(false);
+  const [productLookupBusy, setProductLookupBusy] = useState(false);
+  const [customerLookupError, setCustomerLookupError] = useState('');
+  const [productLookupError, setProductLookupError] = useState('');
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [transitionStatus, setTransitionStatus] = useState<CaseStatus | ''>('');
@@ -517,6 +534,114 @@ export default function AdminOperationsPage() {
     );
     setFormOptions(result);
   }, []);
+
+  const lookupEntity = useCallback(
+    async <T extends CustomerLookup | ProductLookup>(
+      orgId: string,
+      type: 'customer' | 'product',
+      query: string,
+      signal: AbortSignal,
+    ) => {
+      const params = new URLSearchParams({
+        organizationId: orgId,
+        type,
+        q: query,
+      });
+      return request<{ entity_type: typeof type; query: string; items: T[] }>(
+        `/api/production/admin/operations/case/entities?${params}`,
+        { signal },
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!showCreate || selectedCustomer || customerLookupQuery.trim().length < 3) {
+      setCustomerLookupResults([]);
+      setCustomerLookupBusy(false);
+      setCustomerLookupError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setCustomerLookupBusy(true);
+      setCustomerLookupError('');
+      void lookupEntity<CustomerLookup>(
+        organizationId,
+        'customer',
+        customerLookupQuery.trim(),
+        controller.signal,
+      )
+        .then((result) => setCustomerLookupResults(result.items))
+        .catch((cause) => {
+          if (controller.signal.aborted) return;
+          if (!handleAuthError(cause))
+            setCustomerLookupError(
+              cause instanceof Error ? cause.message : 'Recherche client indisponible.',
+            );
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setCustomerLookupBusy(false);
+        });
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    customerLookupQuery,
+    handleAuthError,
+    lookupEntity,
+    organizationId,
+    selectedCustomer,
+    showCreate,
+  ]);
+
+  useEffect(() => {
+    if (!showCreate || selectedProduct || productLookupQuery.trim().length < 3) {
+      setProductLookupResults([]);
+      setProductLookupBusy(false);
+      setProductLookupError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setProductLookupBusy(true);
+      setProductLookupError('');
+      void lookupEntity<ProductLookup>(
+        organizationId,
+        'product',
+        productLookupQuery.trim(),
+        controller.signal,
+      )
+        .then((result) => setProductLookupResults(result.items))
+        .catch((cause) => {
+          if (controller.signal.aborted) return;
+          if (!handleAuthError(cause))
+            setProductLookupError(
+              cause instanceof Error ? cause.message : 'Recherche produit indisponible.',
+            );
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setProductLookupBusy(false);
+        });
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    handleAuthError,
+    lookupEntity,
+    organizationId,
+    productLookupQuery,
+    selectedProduct,
+    showCreate,
+  ]);
 
   const loadCaseList = useCallback(
     async (orgId: string, filters: CaseListFilters) => {
@@ -678,6 +803,14 @@ export default function AdminOperationsPage() {
     setSuccess('');
     setOneTimeCode(null);
     setCreateDraft(createDraftForRole(membership.role));
+    setSelectedCustomer(null);
+    setSelectedProduct(null);
+    setCustomerLookupQuery('');
+    setProductLookupQuery('');
+    setCustomerLookupResults([]);
+    setProductLookupResults([]);
+    setCustomerLookupError('');
+    setProductLookupError('');
     try {
       if (!formOptions.stores.length) await loadFormOptions(organizationId);
       setShowCreate(true);
@@ -695,11 +828,13 @@ export default function AdminOperationsPage() {
     setSuccess('');
     try {
       const customer =
+        !selectedCustomer && (
         createDraft.customerExternalId ||
         createDraft.customerFirstName ||
         createDraft.customerLastName ||
         createDraft.customerEmail ||
         createDraft.customerPhone
+        )
           ? {
               externalId: createDraft.customerExternalId || null,
               firstName: createDraft.customerFirstName || null,
@@ -708,7 +843,7 @@ export default function AdminOperationsPage() {
               phone: createDraft.customerPhone || null,
             }
           : null;
-      const product = createDraft.productName
+      const product = !selectedProduct && createDraft.productName
         ? {
             externalId: createDraft.productExternalId || null,
             sku: createDraft.productSku || null,
@@ -727,9 +862,9 @@ export default function AdminOperationsPage() {
             kind: createDraft.kind,
             title: createDraft.title,
             description: createDraft.description,
-            customerId: null,
+            customerId: selectedCustomer?.id ?? null,
             customer,
-            productId: null,
+            productId: selectedProduct?.id ?? null,
             product,
             storeId: createDraft.storeId || null,
             warrantyStatus: createDraft.warrantyStatus,
