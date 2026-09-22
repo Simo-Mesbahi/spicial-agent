@@ -67,6 +67,10 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
     P1_RELEASE_MODE: 'canary',
     P1_CANARY_PERCENT: '17',
     P1_CANARY_SALT: 'server-only-canary-salt-2026',
+    LLM_ORCHESTRATOR: 'structured',
+    RAG_MODE: 'hybrid',
+    LLM_GENERATION_MODE: 'release',
+    LLM_VALIDATION_MODE: 'release',
   };
   const input = {
     organizationId: '00000000-0000-4000-8000-000000000001',
@@ -85,6 +89,10 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
       P1_RELEASE_MODE: 'canary',
       P1_CANARY_PERCENT: '10',
       P1_CANARY_SALT: 'short',
+      LLM_ORCHESTRATOR: 'structured',
+      RAG_MODE: 'hybrid',
+      LLM_GENERATION_MODE: 'release',
+      LLM_VALIDATION_MODE: 'release',
     },
     input,
   );
