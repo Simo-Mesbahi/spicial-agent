@@ -138,6 +138,10 @@ jobs:
 
           case "${EMBEDDING_PROVIDER}" in
             gemini)
+              [[ "${EMBEDDING_MODEL}" == "gemini-embedding-2" ]] || {
+                echo "Gemini P1.7 qualification requires EMBEDDING_MODEL=gemini-embedding-2." >&2
+                exit 2
+              }
               if [[ -z "${EMBEDDING_API_KEY:-}" ]]; then
                 [[ -n "${GEMINI_API_KEY:-}" ]] || { echo "Missing embedding/Gemini API key." >&2; exit 2; }
                 printf 'EMBEDDING_API_KEY=%s\n' "${GEMINI_API_KEY}" >> "${GITHUB_ENV}"
