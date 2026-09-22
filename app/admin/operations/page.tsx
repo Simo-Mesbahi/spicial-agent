@@ -225,6 +225,12 @@ type MutationResult = {
   version: number;
 };
 
+type CaseListFilters = {
+  search: string;
+  service: '' | CaseServiceType;
+  archive: 'active' | 'archived' | 'all';
+};
+
 type CreateDraft = {
   serviceType: CaseServiceType;
   kind: CaseKind;
@@ -511,22 +517,14 @@ export default function AdminOperationsPage() {
   }, []);
 
   const loadCaseList = useCallback(
-    async (
-      orgId: string,
-      values: {
-        search?: string;
-        service?: '' | CaseServiceType;
-        archive?: 'active' | 'archived' | 'all';
-      } = {},
-    ) => {
+    async (orgId: string, filters: CaseListFilters) => {
       const params = new URLSearchParams({
         organizationId: orgId,
-        search: values.search ?? search,
+        search: filters.search,
         limit: '30',
-        archive: values.archive ?? archiveFilter,
+        archive: filters.archive,
       });
-      const service = values.service ?? serviceFilter;
-      if (service) params.set('serviceType', service);
+      if (filters.service) params.set('serviceType', filters.service);
       const result = await request<{ items: AdminCase[]; total: number }>(
         `/api/production/admin/cases?${params}`,
       );
@@ -534,35 +532,40 @@ export default function AdminOperationsPage() {
       setCaseTotal(result.total);
       return result;
     },
-    [archiveFilter, search, serviceFilter],
+    [],
   );
 
   const loadAll = useCallback(
-    async (orgId: string, role?: Role) => {
+    async (orgId: string, role: Role | undefined, filters: CaseListFilters) => {
       if (!orgId) return;
       setBusy(true);
       setError('');
       try {
         const params = new URLSearchParams({ organizationId: orgId });
-        const [overviewResult, queueResult] = await Promise.all([
-          request<{ overview: Overview }>(
-            `/api/production/admin/operations/overview?${params}`,
-          ),
-          request<{ queue: Queue }>(
-            `/api/production/admin/operations/queue?${params}`,
-          ),
+        const overviewPromise = request<{ overview: Overview }>(
+          `/api/production/admin/operations/overview?${params}`,
+        );
+        const queuePromise = request<{ queue: Queue }>(
+          `/api/production/admin/operations/queue?${params}`,
+        );
+        const listPromise = loadCaseList(orgId, filters);
+        const auditPromise =
+          role === 'super_admin' || role === 'analyst'
+            ? request<{ audit: Audit }>(
+                `/api/production/admin/operations/audit?${params}`,
+              )
+            : Promise.resolve(null);
+
+        const [overviewResult, queueResult, , auditResult] = await Promise.all([
+          overviewPromise,
+          queuePromise,
+          listPromise,
+          auditPromise,
         ]);
-        await loadCaseList(orgId);
+
         setOverview(overviewResult.overview);
         setQueue(queueResult.queue);
-        if (role === 'super_admin' || role === 'analyst') {
-          const auditResult = await request<{ audit: Audit }>(
-            `/api/production/admin/operations/audit?${params}`,
-          );
-          setAudit(auditResult.audit);
-        } else {
-          setAudit(null);
-        }
+        setAudit(auditResult?.audit ?? null);
       } catch (cause) {
         if (!handleAuthError(cause))
           setError(
@@ -590,7 +593,11 @@ export default function AdminOperationsPage() {
         setAdmin(result.admin);
         setOrganizationId(first.organizationId);
         setCreateDraft(createDraftForRole(first.role));
-        await loadAll(first.organizationId, first.role);
+        await loadAll(first.organizationId, first.role, {
+          search: '',
+          service: '',
+          archive: 'active',
+        });
       })
       .catch((cause) => {
         if (active && !handleAuthError(cause))
@@ -626,7 +633,11 @@ export default function AdminOperationsPage() {
     setBusy(true);
     setError('');
     try {
-      await loadCaseList(organizationId);
+      await loadCaseList(organizationId, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
       setSelectedCase(null);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -646,6 +657,7 @@ export default function AdminOperationsPage() {
     setError('');
     try {
       await loadCaseList(organizationId, {
+        search,
         service: nextService,
         archive: nextArchive,
       });
@@ -733,7 +745,11 @@ export default function AdminOperationsPage() {
         setOneTimeCode({ reference: result.reference, code: result.access_code });
       setShowCreate(false);
       setSuccess(`Dossier ${result.reference} créé, sécurisé et audité.`);
-      await loadAll(organizationId, membership.role);
+      await loadAll(organizationId, membership.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
       await loadCase(result.id, organizationId);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -785,7 +801,11 @@ export default function AdminOperationsPage() {
       );
       setSuccess(`Dossier ${result.reference} mis à jour et audité.`);
       setEditing(false);
-      await loadAll(organizationId, membership.role);
+      await loadAll(organizationId, membership.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
       await loadCase(caseId, organizationId);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -821,7 +841,11 @@ export default function AdminOperationsPage() {
       setSuccess(
         `${result.reference} : statut « ${caseStatusLabels[result.status]} » enregistré.`,
       );
-      await loadAll(organizationId, membership.role);
+      await loadAll(organizationId, membership.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
       await loadCase(caseId, organizationId);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -858,7 +882,11 @@ export default function AdminOperationsPage() {
           'La rotation avait déjà été enregistrée. Générez un nouveau code si vous devez l’afficher.',
         );
       setRotationReady(false);
-      await loadAll(organizationId, membership.role);
+      await loadAll(organizationId, membership.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
       await loadCase(caseId, organizationId);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -903,7 +931,11 @@ export default function AdminOperationsPage() {
       setSuccess(
         `Dossier ${result.reference} archivé. Les accès client actifs ont été révoqués.`,
       );
-      await loadAll(organizationId, membership.role);
+      await loadAll(organizationId, membership.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
     } catch (cause) {
       if (!handleAuthError(cause))
         setError(cause instanceof Error ? cause.message : 'Archivage impossible.');
@@ -937,7 +969,11 @@ export default function AdminOperationsPage() {
           ? 'Message client enregistré et audité.'
           : 'Note interne enregistrée et auditée.',
       );
-      await loadAll(organizationId, membership?.role);
+      await loadAll(organizationId, membership?.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
       await loadCase(caseId, organizationId);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -962,7 +998,11 @@ export default function AdminOperationsPage() {
         }),
       });
       setSuccess(status === 'assigned' ? 'Relais pris en charge.' : 'Relais clôturé.');
-      await loadAll(organizationId, membership?.role);
+      await loadAll(organizationId, membership?.role, {
+        search,
+        service: serviceFilter,
+        archive: archiveFilter,
+      });
     } catch (cause) {
       if (!handleAuthError(cause))
         setError(cause instanceof Error ? cause.message : 'Mise à jour du relais impossible.');
@@ -1014,7 +1054,13 @@ export default function AdminOperationsPage() {
           {admin && (
             <button
               disabled={busy}
-              onClick={() => void loadAll(organizationId, membership?.role)}
+              onClick={() =>
+                void loadAll(organizationId, membership?.role, {
+                  search,
+                  service: serviceFilter,
+                  archive: archiveFilter,
+                })
+              }
             >
               Réessayer
             </button>
@@ -1047,7 +1093,11 @@ export default function AdminOperationsPage() {
                 setShowCreate(false);
                 setOneTimeCode(null);
                 setCreateDraft(createDraftForRole(next?.role));
-                void loadAll(value, next?.role);
+                void loadAll(value, next?.role, {
+                  search: '',
+                  service: '',
+                  archive: 'active',
+                });
               }}
             >
               {admin.memberships.map((item) => (
@@ -1064,7 +1114,13 @@ export default function AdminOperationsPage() {
           )}
           <button
             disabled={busy}
-            onClick={() => void loadAll(organizationId, membership?.role)}
+            onClick={() =>
+              void loadAll(organizationId, membership?.role, {
+                search,
+                service: serviceFilter,
+                archive: archiveFilter,
+              })
+            }
           >
             <RefreshCw className={busy ? 'spin' : ''} size={16} /> Actualiser
           </button>
