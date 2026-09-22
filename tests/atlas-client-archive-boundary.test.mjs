@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migrationPath =
-  'supabase/migrations/20260922080430_archive_customer_boundary.sql';
+  'supabase/migrations/20260922081258_archive_customer_boundary.sql';
 
 test('archived cases are rejected independently from access-code revocation', () => {
   const sql = readFileSync(migrationPath, 'utf8');
