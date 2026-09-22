@@ -98,6 +98,8 @@ if (live && confirmation !== 'P1_RELEASE')
     'Live qualification is cost-bearing. Re-run with --live --confirm P1_RELEASE after reviewing the planned call budget.',
   );
 
+const source = sourceTreeState();
+
 if (finalizeExisting && !humanReviewPath)
   throw new Error(
     '--finalize-existing requires --human-review and reuses existing qualification reports without provider calls.',
@@ -140,6 +142,31 @@ function valueSha256(value) {
 
 function textSha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function git(args) {
+  const result = spawnSync('git', args, {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0)
+    throw new Error(
+      `git ${args.join(' ')} failed: ${(result.stderr ?? '').trim() || 'unknown error'}`,
+    );
+  return (result.stdout ?? '').trim();
+}
+
+function sourceTreeState() {
+  const treeSha = git(['rev-parse', 'HEAD^{tree}']);
+  const trackedChanges = git(['status', '--porcelain', '--untracked-files=no']);
+  if (!/^[a-f0-9]{40,64}$/.test(treeSha))
+    throw new Error('Unable to resolve a valid Git source tree SHA.');
+  if (trackedChanges)
+    throw new Error(
+      'Tracked working-tree changes detected. Commit or revert them before live qualification/finalization.',
+    );
+  return { treeSha };
 }
 
 const executions = [];
@@ -247,6 +274,7 @@ let qualificationId = null;
 if (readFailures.length === 0) {
   try {
     artifacts = {
+      sourceTreeSha: source.treeSha,
       contractSha256: valueSha256(contract),
       structuredSha256: await fileSha256(paths.structured),
       retrievalSha256: await fileSha256(paths.retrieval),
@@ -283,7 +311,8 @@ if (finalizeExisting) {
       artifacts &&
       JSON.stringify(prior.artifacts) === JSON.stringify(artifacts) &&
       prior?.qualificationId === qualificationId &&
-      prior?.artifacts?.contractSha256 === valueSha256(contract);
+      prior?.artifacts?.contractSha256 === valueSha256(contract) &&
+      prior?.artifacts?.sourceTreeSha === source.treeSha;
 
     qualificationAnchor = {
       required: true,
@@ -531,6 +560,7 @@ const report = {
   releaseAllowed,
   automatedPassed,
   contract,
+  source,
   artifacts,
   qualificationAnchor,
   plannedCalls,
