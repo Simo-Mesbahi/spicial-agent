@@ -86,6 +86,14 @@ create index if not exists p1_release_events_org_released_time_idx
 
 alter table public.p1_release_events enable row level security;
 
+drop policy if exists p1_release_events_deny_direct on public.p1_release_events;
+create policy p1_release_events_deny_direct
+  on public.p1_release_events
+  for all
+  to authenticated
+  using (false)
+  with check (false);
+
 revoke all on public.p1_release_events
   from public, anon, authenticated, service_role;
 revoke all on sequence public.p1_release_events_id_seq
