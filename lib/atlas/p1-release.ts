@@ -17,6 +17,8 @@ export type ReleaseSettings = {
   P1_RELEASE_MODE?: string;
   P1_CANARY_PERCENT?: string;
   P1_CANARY_SALT?: string;
+  LLM_GENERATION_MODE?: string;
+  LLM_VALIDATION_MODE?: string;
 };
 
 export type P1ReleaseMode = 'off' | 'shadow' | 'canary' | 'on';
@@ -61,8 +63,17 @@ const releasablePlans = new Set<ConversationPlan['kind']>([
   'case_and_knowledge',
 ]);
 
-function parseMode(value: string | undefined): P1ReleaseMode {
-  const normalized = value?.trim() || 'off';
+function parseMode(
+  value: string | undefined,
+  generationMode?: string,
+  validationMode?: string,
+): P1ReleaseMode {
+  const explicit = value?.trim();
+  const normalized =
+    explicit ||
+    (generationMode === 'shadow' || validationMode === 'shadow'
+      ? 'shadow'
+      : 'off');
   if (!['off', 'shadow', 'canary', 'on'].includes(normalized))
     throw new Error('invalid_p1_release_mode');
   return normalized as P1ReleaseMode;
@@ -92,7 +103,11 @@ export async function releaseCohort(
   let mode: P1ReleaseMode;
   let percent: number;
   try {
-    mode = parseMode(env.P1_RELEASE_MODE);
+    mode = parseMode(
+      env.P1_RELEASE_MODE,
+      env.LLM_GENERATION_MODE,
+      env.LLM_VALIDATION_MODE,
+    );
     percent = parsePercent(env.P1_CANARY_PERCENT);
   } catch {
     return {
