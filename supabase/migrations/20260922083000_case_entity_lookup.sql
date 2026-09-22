@@ -137,7 +137,7 @@ begin
                 coalesce(c.last_name,'') || ' ' ||
                 coalesce(c.email,'') || ' ' ||
                 coalesce(c.phone,'')
-              ) operator(extensions.%) v_normalized
+              ) operator(extensions.%>) v_normalized
             )
           order by rank desc,display_name,c.id
           limit v_limit
@@ -205,7 +205,7 @@ begin
               coalesce(p.name,'') || ' ' ||
               coalesce(p.category,'') || ' ' ||
               coalesce(p.serial_number,'')
-            ) operator(extensions.%) v_normalized
+            ) operator(extensions.%>) v_normalized
           )
         order by rank desc,p.name,p.id
         limit v_limit
