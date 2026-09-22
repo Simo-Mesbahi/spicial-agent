@@ -102,7 +102,7 @@ Le premier vérifie l’installation ; le second demande aussi une courte géné
 
 Le lanceur utilise le port **11435** et `OLLAMA_NO_CLOUD=1`. Il conserve le serveur Ollama habituel éventuel sur 11434 et ne le modifie pas. L’API n’envoie aucune clé à Ollama et refuse les redirections HTTP.
 
-`gemini` est le seul fournisseur hébergé autorisé par `LLM_BUDGET_MODE=free`. Il utilise exclusivement `gemini-2.5-flash` ou `gemini-2.5-flash-lite`, l’endpoint officiel compatible OpenAI et `GEMINI_API_KEY` stockée comme secret serveur. Aucun modèle ni endpoint payant ne peut être choisi via l’application. L’offre gratuite dépend des quotas et conditions Google : elle convient à cette démo fictive, pas à une production avec des données clients réelles. Les connecteurs historiques `openai` / `compatible` restent bloqués tant que la politique n’est pas `approved`.
+`gemini` est le seul fournisseur hébergé autorisé par `LLM_BUDGET_MODE=free`. Le modèle par défaut validé pour ce projet est `gemini-3.1-flash-lite`; les identifiants Gemini 2.5 restent dans l’allowlist pour compatibilité explicite. Le connecteur utilise l’endpoint officiel compatible OpenAI et `GEMINI_API_KEY` stockée comme secret serveur. Aucun modèle ni endpoint payant ne peut être choisi via l’application. L’offre gratuite dépend des quotas et conditions Google : elle convient à cette démo fictive, pas à une production avec des données clients réelles. Les connecteurs historiques `openai` / `compatible` restent bloqués tant que la politique n’est pas `approved`.
 
 Créer une clé ne l’ajoute pas à l’hébergement. Le [guide Gemini sur téléphone](docs/GEMINI-FREE.md) décrit l’enregistrement sécurisé, l’activation et les limites de gratuité. Un quota SAV SC Assistant AI n’est pas un plafond financier garanti par Google.
 
@@ -128,7 +128,7 @@ Les sources et les configurations de test sont incluses dans la livraison ; aucu
 - Recherche lexicale ; embeddings, recherche hybride et reranking restent des évolutions à évaluer.
 - Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. La page Contact prépare localement un email contextualisé vers `mohammed.elmesbahi31@gmail.com`, puis laisse choisir l’application par défaut, Gmail ou Outlook. Le visiteur relit et confirme l’envoi dans sa messagerie ; le destinataire, l’objet et le corps peuvent être copiés séparément si nécessaire.
 - Les fonctions de simulation et les vues internes sont désactivées dans la publication client.
-- L’appel réel aux modèles n’a pas été validé sans identifiants de fournisseur.
+- Le transport Gemini 3.1 Flash-Lite a été validé en appel réel de développement ; chaque hébergement doit encore valider sa propre clé, ses quotas et sa connectivité avant activation.
 - Les tests ne constituent pas un audit de sécurité indépendant ni une certification de production.
 
 Projet réalisé pour Simo Mesbahi. Aucune affiliation à une enseigne réelle.

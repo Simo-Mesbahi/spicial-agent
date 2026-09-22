@@ -27,6 +27,7 @@ import { understandConversation, executeConversation } from './structured-conver
 import { detectConversationLanguage } from './conversation-intelligence';
 import { providerTrace, ProviderError } from './provider-runtime';
 import { publicModelConfig } from './model-policy';
+import { mutationOriginAllowed } from './request-security';
 import { effectiveEnvironment } from './runtime-settings';
 import { searchKnowledge } from './knowledge-runtime';
 
@@ -60,7 +61,7 @@ export async function productionChat(
     };
   }
   if (
-    req.headers.get('origin') !== new URL(req.url).origin ||
+    !mutationOriginAllowed(req, env) ||
     req.headers.get('x-atlas-csrf') !== adapter.csrf
   )
     throw new CaseAccessError(
