@@ -67,3 +67,18 @@ test('entity lookup RPC is authenticated-only and uses security invoker', () => 
     /grant execute on function public\.admin_case_entity_search\([\s\S]*to authenticated/,
   );
 });
+
+
+test('admin case creation reuses selected entity ids with cancellable debounced lookup', () => {
+  const page = readFileSync('app/admin/operations/page.tsx', 'utf8');
+
+  assert.match(page, /new AbortController\(\)/);
+  assert.match(page, /window\.setTimeout\(\(\) => \{/);
+  assert.match(page, /\}, 280\)/);
+  assert.match(page, /customerId: selectedCustomer\?\.id \?\? null/);
+  assert.match(page, /productId: selectedProduct\?\.id \?\? null/);
+  assert.match(page, /!selectedCustomer && \(/);
+  assert.match(page, /!selectedProduct && createDraft\.productName/);
+  assert.match(page, /setSelectedCustomer\(null\)/);
+  assert.match(page, /setSelectedProduct\(null\)/);
+});
