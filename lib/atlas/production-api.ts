@@ -654,6 +654,7 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
           ready: release.releaseReady,
           canaryPercent: release.canaryPercent,
           canarySaltConfigured: release.canarySaltConfigured,
+          embeddingConfigured: release.embeddingConfigured,
           issues: release.issues,
         },
         ...publicSupabaseState(env),
