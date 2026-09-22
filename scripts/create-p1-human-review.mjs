@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const args = process.argv.slice(2);
 const value = (flag, fallback) =>
@@ -17,7 +18,9 @@ function fail(message) {
   throw new Error(message);
 }
 
-const report = JSON.parse(await readFile(generationPath, 'utf8'));
+const generationRaw = await readFile(generationPath, 'utf8');
+const generationSha256 = createHash('sha256').update(generationRaw).digest('hex');
+const report = JSON.parse(generationRaw);
 const results = Array.isArray(report.results) ? report.results : [];
 if (!results.length) fail('Generation report has no reviewable results.');
 
@@ -59,6 +62,7 @@ const template = {
   source: {
     kind: 'p1-generation-evaluation',
     generationReport: generationPath,
+    generationSha256,
     scenarioCount: items.length,
   },
   instructions: {
