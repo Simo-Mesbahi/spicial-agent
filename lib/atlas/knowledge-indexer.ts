@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { supabaseRequest, supabaseSettings } from './supabase';
 import { embedTexts, embeddingSpace, embeddingTrace, digest } from './embedding-runtime';
 import type { KnowledgeEnvironment } from './knowledge-hybrid';
-/** Operator-only batch, at most 16 chunks / one embedding request. No publication changes. */
+/** Operator-only batch, at most 32 chunks / one embedding request. No publication changes. */
 export async function indexKnowledgeBatch(env: KnowledgeEnvironment, maxChunks: number) {
-  if (!Number.isInteger(maxChunks) || maxChunks < 1 || maxChunks > 16)
+  if (!Number.isInteger(maxChunks) || maxChunks < 1 || maxChunks > 32)
     throw new Error('invalid_index_limit');
   const organizationId = supabaseSettings(env).organizationId,
     space = await embeddingSpace(env),
@@ -30,7 +30,8 @@ export async function indexKnowledgeBatch(env: KnowledgeEnvironment, maxChunks: 
     throw new Error('invalid_index_batch');
   for (const row of parsed)
     if (row.checksum !== (await digest(row.content))) throw new Error('invalid_index_checksum');
-  if (!parsed.length) return { indexed: 0, embeddingSpace: space, trace };
+  if (!parsed.length)
+    return { indexed: 0, embeddingSpace: space, remainingAfterBatch: false, trace };
   const vectors = await embedTexts(
     env,
     parsed.map((r) => r.content),
@@ -52,5 +53,32 @@ export async function indexKnowledgeBatch(env: KnowledgeEnvironment, maxChunks: 
     },
   });
   if (written !== parsed.length) throw new Error('invalid_index_count');
-  return { indexed: written, embeddingSpace: space, trace };
+
+  // Readiness is fail-closed: after the single bounded provider batch, ask
+  // Supabase whether at least one stale/missing published chunk still exists.
+  // This second RPC performs no model call and never returns customer-facing data.
+  const remaining = await supabaseRequest(env, '/rest/v1/rpc/knowledge_embedding_batch', {
+    mode: { kind: 'privileged' },
+    method: 'POST',
+    body: { p_organization_id: organizationId, p_embedding_space: space, p_limit: 1 },
+  });
+  const remainingParsed = z
+    .array(
+      z
+        .object({
+          chunk_id: z.string().uuid(),
+          content: z.string().min(1).max(4000),
+          checksum: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .strict(),
+    )
+    .max(1)
+    .parse(remaining);
+
+  return {
+    indexed: written,
+    embeddingSpace: space,
+    remainingAfterBatch: remainingParsed.length > 0,
+    trace,
+  };
 }

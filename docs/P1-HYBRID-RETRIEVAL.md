@@ -54,14 +54,14 @@ npm run knowledge:index
 npm run eval:rag
 
 # Secrets remain in the ignored .dev.vars. One operator batch; no endless loop.
-node --env-file=.dev.vars scripts/index-knowledge.mjs --live --max-chunks 8
+node --env-file=.dev.vars scripts/index-knowledge.mjs --live --max-chunks 32
 
 # Five independent multilingual retrieval questions; at most five embeddings,
 # zero completions. Each compares filtered lexical-only versus hybrid retrieval.
 node --env-file=.dev.vars scripts/evaluate-retrieval.mjs --live --max-queries 5
 ```
 
-Indexing accepts 1–16 chunks per invocation and makes at most one provider batch. Only stale/missing published chunks are selected. Source checksums are checked again in the transactional write RPC; a changed/missing source aborts the whole batch. Repeating indexing skips completed chunks. An explicit operator indexing batch has its own maximum and does not use the online D1 daily bucket. No publication status or business action is changed.
+Indexing accepts 1–32 chunks per invocation and makes at most one provider batch. Only stale/missing published chunks are selected. After that provider batch, a no-model Supabase readiness read checks whether any stale/missing published chunk remains in the exact embedding space; live P1.7 qualification fails closed if the corpus is still incomplete. Source checksums are checked again in the transactional write RPC; a changed/missing source aborts the whole batch. Repeating indexing skips completed chunks. An explicit operator indexing batch has its own maximum and does not use the online D1 daily bucket. No publication status or business action is changed.
 
 `evals/retrieval.mjs` provides 20 authored questions across FR/EN/DE/ES/AR and four procedures from the repository's seed corpus. The runner records precision@K, recall@K, per-query latency, selected evidence and embedding diagnostics. Deployments with a different corpus need reviewed gold labels. Transport failures are reported as incomplete, not a passing evaluation. Gold labels never enter the provider request.
 
