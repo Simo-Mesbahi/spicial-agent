@@ -28,6 +28,9 @@ function candidate(id, language, text) {
 }
 
 async function writeQualification(path, generationRaw, overrides = {}) {
+  const scope = overrides.scope ?? {
+    organizationId: '00000000-0000-4000-8000-000000000001',
+  };
   const artifacts = overrides.artifacts ?? {
     sourceTreeSha: 'a'.repeat(40),
     contractSha256: 'c'.repeat(64),
@@ -37,7 +40,7 @@ async function writeQualification(path, generationRaw, overrides = {}) {
     groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
   };
   const qualificationId =
-    overrides.qualificationId ?? sha256(JSON.stringify(artifacts));
+    overrides.qualificationId ?? sha256(JSON.stringify({ scope, artifacts }));
   await writeFile(
     path,
     JSON.stringify({
@@ -46,6 +49,7 @@ async function writeQualification(path, generationRaw, overrides = {}) {
       runMode: 'live',
       automatedPassed: true,
       qualificationId,
+      scope,
       artifacts,
       ...overrides,
     }),
@@ -194,6 +198,8 @@ test('release finalizer is no-spend, preserves the live report and verifies exac
     /qualificationArtifactIntegrity: qualificationAnchor\.valid/,
   );
   assert.match(source, /sourceTreeSha: source\.treeSha/);
+  assert.match(source, /scope: qualificationScope/);
+  assert.match(source, /valueSha256\(\{ scope: qualificationScope, artifacts \}\)/);
   assert.match(source, /tracked working-tree changes detected/i);
   assert.match(source, /prior\?\.artifacts\?\.sourceTreeSha === source\.treeSha/);
   assert.match(
