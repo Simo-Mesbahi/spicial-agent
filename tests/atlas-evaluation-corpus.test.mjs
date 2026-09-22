@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scenarios, evaluationContract } from '../evals/conversations.mjs';
+import { p1ReleaseQualificationContract } from '../evals/p1-release-contract.mjs';
 
 test('enterprise AI evaluation corpus keeps its coverage contract', () => {
   const ids = scenarios.map((scenario) => scenario.id);
@@ -235,4 +236,54 @@ test('Pre-P1 contract explicitly covers guidance restraint and conversation repa
   assert.ok(targets.some((target) => target.conversationRepair === true));
   assert.ok(targets.some((target) => target.requiresCase === true));
   assert.ok(targets.some((target) => target.requiresCase === false));
+});
+
+
+test('P1.7 live structured qualification is multilingual, critical-family and budget bounded', () => {
+  const contract = p1ReleaseQualificationContract;
+  const preP1 = scenarios.filter((scenario) => scenario.suite === 'pre-p1-conversation-contract');
+  const selected = preP1.filter((scenario) =>
+    contract.structured.requiredFamilies.includes(scenario.matrixFamily),
+  );
+
+  const expectedScenarioCount =
+    contract.structured.requiredFamilies.length * contract.supportedLanguages.length;
+  assert.equal(selected.length, expectedScenarioCount);
+
+  const selectedIds = new Set(selected.map((scenario) => scenario.id));
+  for (const family of contract.structured.requiredFamilies) {
+    for (const language of contract.supportedLanguages) {
+      assert.ok(
+        selectedIds.has(`pre-p1-${family}-${language}`),
+        `missing P1.7 live scenario ${family}/${language}`,
+      );
+    }
+  }
+
+  const turns = selected.reduce((total, scenario) => total + scenario.turns.length, 0);
+  assert.equal(turns, contract.structured.minimumTurns);
+  assert.equal(turns, contract.structured.maximumTurns);
+
+  for (const language of contract.supportedLanguages) {
+    const languageTurns = selected
+      .filter((scenario) => scenario.matrixLanguage === language)
+      .reduce((total, scenario) => total + scenario.turns.length, 0);
+    assert.ok(
+      languageTurns >= contract.structured.minimumTurnsPerLanguage,
+      `${language}: P1.7 live turn coverage below contract`,
+    );
+  }
+
+  const completionCalls =
+    contract.structured.minimumTurns +
+    contract.generation.requiredScenarios +
+    contract.grounding.requiredScenarios;
+  assert.ok(
+    completionCalls <= contract.liveBudget.maximumTotalCompletionCalls,
+    'P1.7 live qualification exceeds completion-call budget',
+  );
+  assert.ok(
+    contract.retrieval.requiredQueries <= contract.liveBudget.maximumEmbeddingCalls,
+    'P1.7 live qualification exceeds embedding-call budget',
+  );
 });
