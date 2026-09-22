@@ -1,0 +1,201 @@
+name: P1.7 live qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type P1_RELEASE to acknowledge the bounded live-call budget'
+        required: true
+        type: string
+      llm_provider:
+        description: 'Hosted provider used for structured/generation/grounding qualification'
+        required: true
+        default: gemini
+        type: choice
+        options:
+          - gemini
+          - openai
+      llm_model:
+        description: 'Exact approved model identifier'
+        required: true
+        default: gemini-3.1-flash-lite
+        type: string
+      embedding_provider:
+        description: 'Provider used for 768-dimensional retrieval embeddings'
+        required: true
+        default: gemini
+        type: choice
+        options:
+          - gemini
+          - openai
+      embedding_model:
+        description: 'Exact approved 768-dimensional multilingual embedding model'
+        required: true
+        type: string
+      budget_mode:
+        description: 'Hosted-provider budget policy'
+        required: true
+        default: free
+        type: choice
+        options:
+          - free
+          - approved
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p1-live-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: bounded live qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_ORGANIZATION_ID: ${{ secrets.SUPABASE_ORGANIZATION_ID }}
+      LLM_PROVIDER: ${{ inputs.llm_provider }}
+      LLM_MODEL: ${{ inputs.llm_model }}
+      LLM_BUDGET_MODE: ${{ inputs.budget_mode }}
+      LLM_DAILY_LIMIT: '100'
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      EMBEDDING_PROVIDER: ${{ inputs.embedding_provider }}
+      EMBEDDING_MODEL: ${{ inputs.embedding_model }}
+      EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+      EMBEDDING_REVISION: '1'
+      EMBEDDING_SEND_DIMENSIONS: 'false'
+      RAG_MODE: hybrid
+      LLM_ORCHESTRATOR: structured
+      LLM_GENERATION_MODE: shadow
+      LLM_VALIDATION_MODE: shadow
+      P1_RELEASE_MODE: off
+
+    steps:
+      - name: Validate manual release acknowledgement
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirm }}" != "P1_RELEASE" ]]; then
+            echo "Refusing live qualification: confirmation must equal P1_RELEASE." >&2
+            exit 2
+          fi
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Refusing live qualification outside main." >&2
+            exit 2
+          fi
+
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate server-owned configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(SUPABASE_URL SUPABASE_PUBLISHABLE_KEY SUPABASE_SECRET_KEY SUPABASE_ORGANIZATION_ID EMBEDDING_API_KEY)
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing required GitHub secret: ${key}" >&2
+              exit 2
+            fi
+          done
+
+          case "${LLM_PROVIDER}" in
+            gemini)
+              [[ -n "${GEMINI_API_KEY:-}" ]] || { echo "Missing GEMINI_API_KEY." >&2; exit 2; }
+              ;;
+            openai)
+              [[ "${LLM_BUDGET_MODE}" == "approved" ]] || {
+                echo "OpenAI qualification requires budget_mode=approved." >&2
+                exit 2
+              }
+              [[ -n "${OPENAI_API_KEY:-}" ]] || { echo "Missing OPENAI_API_KEY." >&2; exit 2; }
+              ;;
+            *)
+              echo "Unsupported live qualification provider." >&2
+              exit 2
+              ;;
+          esac
+
+          if [[ "${EMBEDDING_PROVIDER}" == "openai" && "${LLM_BUDGET_MODE}" != "approved" ]]; then
+            echo "OpenAI embeddings require budget_mode=approved." >&2
+            exit 2
+          fi
+
+          node - <<'NODE'
+          const uuid = process.env.SUPABASE_ORGANIZATION_ID ?? '';
+          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
+            throw new Error('SUPABASE_ORGANIZATION_ID is not a valid UUID.');
+          }
+          if (!(process.env.LLM_MODEL ?? '').trim()) throw new Error('LLM model is empty.');
+          if (!(process.env.EMBEDDING_MODEL ?? '').trim()) throw new Error('Embedding model is empty.');
+          NODE
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify source before spending provider budget
+        run: |
+          npm run typecheck
+          npm run lint:app
+          npm test
+          npm run eval:p1:release
+
+      - name: Run bounded live qualification
+        id: live
+        continue-on-error: true
+        run: npm run eval:p1:release -- --live --confirm P1_RELEASE
+
+      - name: Verify automated qualification gate
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'outputs/p1-live/release-qualification.json';
+          if (!fs.existsSync(path)) throw new Error('Live qualification report was not created.');
+          const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (report.runMode !== 'live') throw new Error('Unexpected qualification run mode.');
+          if (report.releaseAllowed !== false) {
+            throw new Error('Live automated phase must not authorize release before human review.');
+          }
+          if (report.automatedPassed !== true) {
+            console.error(JSON.stringify({ gates: report.gates, failures: report.failures }, null, 2));
+            throw new Error('Automated P1.7 qualification failed.');
+          }
+          if (!/^[a-f0-9]{64}$/.test(report.qualificationId ?? '')) {
+            throw new Error('Qualification ID is missing or invalid.');
+          }
+          if (!/^[a-f0-9]{40,64}$/.test(report.artifacts?.sourceTreeSha ?? '')) {
+            throw new Error('Qualified source tree identity is missing.');
+          }
+          console.log(JSON.stringify({
+            status: 'human_review_required',
+            qualificationId: report.qualificationId,
+            sourceTreeSha: report.artifacts.sourceTreeSha,
+          }, null, 2));
+          NODE
+
+      - name: Generate fail-closed human review template
+        run: |
+          npm run eval:p1:review-template --             --qualification-report outputs/p1-live/release-qualification.json             --generation outputs/p1-live/generation.json             --output outputs/p1-live/human-review.json
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-live-qualification-${{ github.sha }}
+          path: outputs/p1-live/
+          if-no-files-found: error
+          retention-days: 7
