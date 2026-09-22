@@ -11,6 +11,7 @@ import {
   validateBackend,
   provisionAdmin,
   grantAdmin,
+  hostedGeminiConfiguration,
 } from '../scripts/backend.mjs';
 
 const config = {
@@ -33,6 +34,15 @@ test('Granting an existing administrator neither recreates the user nor changes 
     p_email: 'owner@example.invalid', p_role: 'super_admin', p_display_name: 'Responsable',
   });
   await assert.rejects(() => grantAdmin(config, { email: 'invalid', displayName: 'Name' }), /email invalide/);
+});
+test('Hosted Gemini setup uses the validated 3.1 model without a legacy override', () => {
+  assert.deepEqual(hostedGeminiConfiguration(), {
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_MODEL: 'gemini-3.1-flash-lite',
+    LLM_MODEL: '',
+    LLM_DAILY_LIMIT: '100',
+  });
 });
 test('Backend configuration preserves unrelated values and replaces duplicate definitions', () => {
   const next = mergeConfiguration(
