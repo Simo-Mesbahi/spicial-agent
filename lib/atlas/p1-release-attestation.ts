@@ -61,7 +61,7 @@ function normalizedKey(value: string | undefined) {
   return key;
 }
 
-async function hmacKey(key: string, usage: KeyUsage) {
+async function hmacKey(key: string, usage: 'sign' | 'verify') {
   return crypto.subtle.importKey(
     'raw',
     textBytes(key),
