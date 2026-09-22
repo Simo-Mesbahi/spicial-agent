@@ -138,6 +138,10 @@ function valueSha256(value) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+function textSha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 const executions = [];
 
 if (live) {
@@ -433,7 +437,7 @@ if (humanReviewPath) {
           row.id,
           {
             candidate,
-            candidateSha256: valueSha256(candidate),
+            candidateSha256: textSha256(candidate),
             expectedLanguage: row.language ?? row.draft?.language ?? null,
             rubric: Array.isArray(row.rubric) ? row.rubric : [],
           },
