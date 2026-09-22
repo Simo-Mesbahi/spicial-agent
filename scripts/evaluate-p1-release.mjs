@@ -99,6 +99,36 @@ if (live && confirmation !== 'P1_RELEASE')
   );
 
 const source = sourceTreeState();
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+let qualificationScope = { organizationId: null };
+let priorQualification = null;
+let priorQualificationError = null;
+
+if (live) {
+  const organizationId = process.env.SUPABASE_ORGANIZATION_ID?.trim() ?? '';
+  if (!UUID.test(organizationId))
+    throw new Error(
+      'SUPABASE_ORGANIZATION_ID must be a valid UUID before live qualification.',
+    );
+  qualificationScope = { organizationId };
+}
+
+if (finalizeExisting) {
+  try {
+    priorQualification = await readJson(qualificationReportPath);
+    const organizationId = priorQualification?.scope?.organizationId ?? '';
+    if (!UUID.test(organizationId))
+      throw new Error('Source qualification has no valid organization scope.');
+    const configuredOrganizationId = process.env.SUPABASE_ORGANIZATION_ID?.trim();
+    if (configuredOrganizationId && configuredOrganizationId !== organizationId)
+      throw new Error('Configured organization does not match the source qualification.');
+    qualificationScope = { organizationId };
+  } catch (error) {
+    priorQualificationError =
+      error instanceof Error ? error.message : String(error);
+  }
+}
 
 if (finalizeExisting && !humanReviewPath)
   throw new Error(
@@ -281,7 +311,7 @@ if (readFailures.length === 0) {
       generationSha256: await fileSha256(paths.generation),
       groundingSha256: await Promise.all(paths.grounding.map((path) => fileSha256(path))),
     };
-    qualificationId = valueSha256(artifacts);
+    qualificationId = valueSha256({ scope: qualificationScope, artifacts });
   } catch (error) {
     readFailures.push({
       name: 'artifact_hashing',
@@ -300,37 +330,31 @@ let qualificationAnchor = {
 };
 
 if (finalizeExisting) {
-  try {
-    const prior = await readJson(qualificationReportPath);
-    const valid =
-      prior?.schema === 1 &&
-      prior?.kind === 'p1-live-release-qualification' &&
-      prior?.runMode === 'live' &&
-      prior?.automatedPassed === true &&
-      prior?.artifacts &&
-      artifacts &&
-      JSON.stringify(prior.artifacts) === JSON.stringify(artifacts) &&
-      prior?.qualificationId === qualificationId &&
-      prior?.artifacts?.contractSha256 === valueSha256(contract) &&
-      prior?.artifacts?.sourceTreeSha === source.treeSha;
+  const prior = priorQualification;
+  const valid =
+    !priorQualificationError &&
+    prior?.schema === 1 &&
+    prior?.kind === 'p1-live-release-qualification' &&
+    prior?.runMode === 'live' &&
+    prior?.automatedPassed === true &&
+    prior?.scope?.organizationId === qualificationScope.organizationId &&
+    prior?.artifacts &&
+    artifacts &&
+    JSON.stringify(prior.artifacts) === JSON.stringify(artifacts) &&
+    prior?.qualificationId === qualificationId &&
+    prior?.artifacts?.contractSha256 === valueSha256(contract) &&
+    prior?.artifacts?.sourceTreeSha === source.treeSha;
 
-    qualificationAnchor = {
-      required: true,
-      valid,
-      path: qualificationReportPath,
-      reason: valid ? null : 'artifact_or_contract_mismatch',
-      sourceQualificationId:
-        typeof prior?.qualificationId === 'string' ? prior.qualificationId : null,
-    };
-  } catch (error) {
-    qualificationAnchor = {
-      required: true,
-      valid: false,
-      path: qualificationReportPath,
-      reason: error instanceof Error ? error.message : String(error),
-      sourceQualificationId: null,
-    };
-  }
+  qualificationAnchor = {
+    required: true,
+    valid: Boolean(valid),
+    path: qualificationReportPath,
+    reason: valid
+      ? null
+      : priorQualificationError || 'artifact_contract_or_scope_mismatch',
+    sourceQualificationId:
+      typeof prior?.qualificationId === 'string' ? prior.qualificationId : null,
+  };
 }
 
 const structuredMetrics = structured?.metrics ?? {};
@@ -560,6 +584,7 @@ const report = {
   releaseAllowed,
   automatedPassed,
   contract,
+  scope: qualificationScope,
   source,
   artifacts,
   qualificationAnchor,
