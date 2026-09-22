@@ -172,6 +172,56 @@ test('cross-site note mutation is refused before the note RPC', async () => {
   }
 });
 
+test('admin mutations accept only the exact configured public origin behind a rewriting proxy', async () => {
+  const previousFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (input) => {
+    calls += 1;
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me')) return Response.json(adminIdentity('adviser'));
+    if (url.endsWith('/rest/v1/rpc/admin_add_note'))
+      return Response.json({
+        ok: true,
+        version: 2,
+        event_id: '00000000-0000-4000-8000-000000000777',
+      });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  try {
+    const env = {
+      ...environment(),
+      APP_ENVIRONMENT: 'LOCAL',
+      APP_PUBLIC_ORIGIN: 'https://support.example.com',
+    };
+    const response = await handleAdminOperationsApi(
+      new Request('http://127.0.0.1:5173/api/production/admin/operations/case/note', {
+        method: 'POST',
+        headers: {
+          Cookie: 'savsc_admin_access=test-access-token',
+          'Content-Type': 'application/json',
+          Origin: 'https://support.example.com',
+          'Sec-Fetch-Site': 'same-origin',
+        },
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          caseId: CASE_ID,
+          version: 1,
+          note: 'Le client a été rappelé.',
+          visible: false,
+          requestId: '12345678-1234-4234-8234-123456789012',
+        }),
+      }),
+      env,
+    );
+
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('optimistic concurrency conflicts are exposed as a safe 409', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
