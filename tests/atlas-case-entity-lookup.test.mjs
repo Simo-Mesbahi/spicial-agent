@@ -47,7 +47,7 @@ test('entity lookup uses trigram indexes and literal-safe wildcard handling', ()
   assert.match(source, /extensions\.gin_trgm_ops/g);
   assert.match(source, /replace\([\s\S]*'%','!%'[\s\S]*'_','!_'/);
   assert.match(source, /escape '!'/g);
-  assert.match(source, /operator\(extensions\.%\)/g);
+  assert.match(source, /operator\(extensions\.%>\)/g);
 });
 
 test('entity lookup RPC is authenticated-only and uses security invoker', () => {
