@@ -83,5 +83,7 @@ test('P1.7 workflow supports separate embedding credentials with same-provider f
   assert.match(source, /GEMINI_API_KEY/);
   assert.match(source, /OPENAI_API_KEY/);
   assert.match(source, /GITHUB_ENV/);
+  assert.match(source, /gemini-embedding-2/);
+  assert.match(source, /Gemini P1\.7 qualification requires EMBEDDING_MODEL=gemini-embedding-2/);
   assert.match(source, /OpenAI embeddings require budget_mode=approved/);
 });
