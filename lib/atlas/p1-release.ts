@@ -19,6 +19,8 @@ export type ReleaseSettings = {
   P1_CANARY_SALT?: string;
   LLM_GENERATION_MODE?: string;
   LLM_VALIDATION_MODE?: string;
+  LLM_ORCHESTRATOR?: string;
+  RAG_MODE?: string;
 };
 
 export type P1ReleaseMode = 'off' | 'shadow' | 'canary' | 'on';
@@ -87,6 +89,68 @@ function parsePercent(value: string | undefined) {
   return percent;
 }
 
+export type ReleaseConfigurationState = {
+  mode: P1ReleaseMode;
+  valid: boolean;
+  releaseReady: boolean;
+  canaryPercent: number;
+  canarySaltConfigured: boolean;
+  issues: string[];
+};
+
+export function releaseConfigurationState(
+  env: ReleaseSettings,
+): ReleaseConfigurationState {
+  const issues: string[] = [];
+  let mode: P1ReleaseMode = 'off';
+  try {
+    mode = parseMode(
+      env.P1_RELEASE_MODE,
+      env.LLM_GENERATION_MODE,
+      env.LLM_VALIDATION_MODE,
+    );
+  } catch {
+    issues.push('invalid_release_mode');
+  }
+
+  let canaryPercent = 0;
+  if (mode === 'canary') {
+    try {
+      canaryPercent = parsePercent(env.P1_CANARY_PERCENT);
+    } catch {
+      issues.push('invalid_canary_percent');
+    }
+  } else if (mode === 'on') {
+    canaryPercent = 100;
+  }
+
+  const canarySaltConfigured = (env.P1_CANARY_SALT?.trim().length ?? 0) >= 16;
+  if (mode === 'canary') {
+    if (canaryPercent < 1) issues.push('canary_percent_must_be_positive');
+    if (!canarySaltConfigured) issues.push('canary_salt_missing');
+  }
+
+  if (mode === 'canary' || mode === 'on') {
+    if (env.LLM_ORCHESTRATOR !== 'structured')
+      issues.push('structured_orchestrator_required');
+    if (env.RAG_MODE !== 'hybrid') issues.push('hybrid_rag_required');
+    if (env.LLM_GENERATION_MODE !== 'release')
+      issues.push('generation_release_mode_required');
+    if (env.LLM_VALIDATION_MODE !== 'release')
+      issues.push('validation_release_mode_required');
+  }
+
+  return {
+    mode,
+    valid: issues.length === 0,
+    releaseReady:
+      issues.length === 0 && (mode === 'canary' || mode === 'on'),
+    canaryPercent,
+    canarySaltConfigured,
+    issues,
+  };
+}
+
 function stableBucket(hexDigest: string) {
   const value = Number.parseInt(hexDigest.slice(0, 8), 16);
   return Math.min(99, Math.floor((value / 0x1_0000_0000) * 100));
@@ -100,26 +164,20 @@ export async function releaseCohort(
     sessionId: string;
   },
 ): Promise<ReleaseCohort> {
-  let mode: P1ReleaseMode;
-  let percent: number;
-  try {
-    mode = parseMode(
-      env.P1_RELEASE_MODE,
-      env.LLM_GENERATION_MODE,
-      env.LLM_VALIDATION_MODE,
-    );
-    percent = parsePercent(env.P1_CANARY_PERCENT);
-  } catch {
+  const state = releaseConfigurationState(env);
+  const mode = state.mode;
+  const percent = state.canaryPercent;
+
+  if (!state.valid)
     return {
-      mode: 'off',
+      mode,
       selected: false,
       bucket: null,
-      percent: 0,
+      percent,
       configurationValid: false,
     };
-  }
 
-  if (mode === 'off')
+  if (mode === 'off' || mode === 'shadow')
     return {
       mode,
       selected: false,
@@ -128,13 +186,13 @@ export async function releaseCohort(
       configurationValid: true,
     };
 
-  if (mode === 'shadow')
+  if (!state.releaseReady)
     return {
       mode,
       selected: false,
       bucket: null,
       percent,
-      configurationValid: true,
+      configurationValid: false,
     };
 
   if (mode === 'on')
@@ -146,16 +204,7 @@ export async function releaseCohort(
       configurationValid: true,
     };
 
-  const salt = env.P1_CANARY_SALT?.trim() ?? '';
-  if (salt.length < 16 || percent < 1)
-    return {
-      mode,
-      selected: false,
-      bucket: null,
-      percent,
-      configurationValid: false,
-    };
-
+  const salt = env.P1_CANARY_SALT!.trim();
   const bucket = stableBucket(
     await digest(
       [
