@@ -193,6 +193,37 @@ Recommended rollout after qualification:
 
 Expansion is an operational decision based on observed telemetry. There is no automatic percentage increase.
 
+Canary observability is recorded asynchronously after the customer response is ready.
+The telemetry path stores only bounded technical diagnostics:
+
+- release mode and cohort membership;
+- whether a natural response was attempted or released;
+- normalized release-block reason;
+- plan, generation and validation outcomes;
+- provider/model identifiers;
+- bounded token counts, provider-call count and latency.
+
+It **never stores** the customer message, generated prose, Evidence Pack content,
+case ID, customer ID or session ID. The insert is idempotent by
+`organization_id + request_id` and is kept off the response critical path.
+
+Administrators can inspect aggregate 1–168 hour rollout metrics from
+`/admin/performance`, including:
+
+- canary sample size;
+- attempted and released responses;
+- controlled fallback counts;
+- evidence/freshness invalidations;
+- generation and validation failures;
+- P50/P95 latency;
+- provider calls/tokens;
+- release invariant violations.
+
+The database never returns per-customer telemetry rows to the admin UI. Direct table
+access is deny-all; the application writes through a server-only RPC and reads only
+through an MFA-backed aggregate RPC. Retention can be enforced with the server-only
+`purge_p1_release_events` helper and is capped by the organization retention policy.
+
 At every percentage the deterministic fallback remains available.
 
 ## P1.7E — Full activation
