@@ -18,6 +18,7 @@ import {
 import {
   handleProductionApi,
   recordProductionPerformance,
+  recordProductionReleaseEvent,
   type ProductionEnv,
 } from '../lib/atlas/production-api';
 /** Cloudflare Worker entry point for the vinext-starter template. */
@@ -135,7 +136,15 @@ const worker = {
         ? await protectedAdminResponse(request, env, url.pathname)
         : await productionResponse(request, env, url.pathname);
       ctx.waitUntil(
-        recordProductionPerformance(env, url.pathname, response.status, Date.now() - startedAt),
+        Promise.all([
+          recordProductionPerformance(
+            env,
+            url.pathname,
+            response.status,
+            Date.now() - startedAt,
+          ),
+          recordProductionReleaseEvent(env, url.pathname, response),
+        ]).then(() => undefined),
       );
       return response;
     }
