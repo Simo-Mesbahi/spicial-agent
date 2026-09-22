@@ -267,29 +267,34 @@ export async function productionChat(
             const refreshed = await refreshReleaseEvidence(generatedFrom);
             currentPack = refreshed.pack;
             usedCase = refreshed.authorizedFacts;
-            validation = await validateNaturalDraft(
-              env,
-              {
-                draft,
-                pack: generatedFrom,
-                currentPack,
-                context: evidenceContext,
-              },
-              trace,
-            );
-
-            if (validation.calls > 0) {
-              // No provider result can cross the gate without a second post-validation
-              // authorization + publication refresh.
-              const finalRefresh = await refreshReleaseEvidence(generatedFrom);
-              currentPack = finalRefresh.pack;
-              usedCase = finalRefresh.authorizedFacts;
-              validation = await revalidateFactualResult(
-                validation,
-                generatedFrom,
-                currentPack,
-                evidenceContext,
+            if (
+              env.LLM_VALIDATION_MODE === 'shadow' ||
+              env.LLM_VALIDATION_MODE === 'release'
+            ) {
+              validation = await validateNaturalDraft(
+                env,
+                {
+                  draft,
+                  pack: generatedFrom,
+                  currentPack,
+                  context: evidenceContext,
+                },
+                trace,
               );
+
+              if (validation.calls > 0) {
+                // No provider result can cross the gate without a second post-validation
+                // authorization + publication refresh.
+                const finalRefresh = await refreshReleaseEvidence(generatedFrom);
+                currentPack = finalRefresh.pack;
+                usedCase = finalRefresh.authorizedFacts;
+                validation = await revalidateFactualResult(
+                  validation,
+                  generatedFrom,
+                  currentPack,
+                  evidenceContext,
+                );
+              }
             }
           } catch (error) {
             if (error instanceof KnowledgeFreshnessError)
