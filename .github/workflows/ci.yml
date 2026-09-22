@@ -27,5 +27,6 @@ jobs:
       - run: npm run eval:rag
       - run: npm run eval:generation
       - run: npm run eval:grounding
+      - run: npm run eval:p1:release
       - run: npm run build
       - run: npm run test:starter
