@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { p1ReleaseQualificationContract as contract } from '../evals/p1-release-contract.mjs';
 
@@ -10,8 +11,22 @@ const value = (flag, fallback = null) =>
   args.includes(flag) ? args[args.indexOf(flag) + 1] : fallback;
 
 const live = args.includes('--live');
+const finalizeExisting = args.includes('--finalize-existing');
+if (live && finalizeExisting)
+  throw new Error('Choose either --live or --finalize-existing, never both.');
+
 const structuredTurns = Number(value('--structured-turns', String(contract.structured.minimumTurns)));
-const output = resolve(value('--output', 'outputs/p1-live/release-qualification.json'));
+const qualificationReportPath = resolve(
+  value('--qualification-report', 'outputs/p1-live/release-qualification.json'),
+);
+const output = resolve(
+  value(
+    '--output',
+    finalizeExisting
+      ? 'outputs/p1-live/release-final.json'
+      : 'outputs/p1-live/release-qualification.json',
+  ),
+);
 const humanReviewPath = value('--human-review', null);
 const confirmation = value('--confirm', '');
 
@@ -53,7 +68,7 @@ if (
 )
   throw new Error('Qualification plan exceeds the governed live-call budget.');
 
-if (!live) {
+if (!live && !finalizeExisting) {
   console.log(
     JSON.stringify(
       {
@@ -78,9 +93,18 @@ if (!live) {
   process.exit(0);
 }
 
-if (confirmation !== 'P1_RELEASE')
+if (live && confirmation !== 'P1_RELEASE')
   throw new Error(
     'Live qualification is cost-bearing. Re-run with --live --confirm P1_RELEASE after reviewing the planned call budget.',
+  );
+
+if (finalizeExisting && !humanReviewPath)
+  throw new Error(
+    '--finalize-existing requires --human-review and reuses existing qualification reports without provider calls.',
+  );
+if (finalizeExisting && output === qualificationReportPath)
+  throw new Error(
+    'Finalization output must not overwrite the original live qualification report.',
   );
 
 await mkdir(dirname(output), { recursive: true });
@@ -105,59 +129,74 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, 'utf8'));
 }
 
+async function fileSha256(path) {
+  const raw = await readFile(path, 'utf8');
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+function valueSha256(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function textSha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 const executions = [];
 
-executions.push(
-  runNode('scripts/evaluate-structured-ai.mjs', [
-    '--live',
-    '--mode',
-    'structured',
-    '--max-turns',
-    String(structuredTurns),
-    '--languages',
-    contract.supportedLanguages.join(','),
-    '--families',
-    contract.structured.requiredFamilies.join(','),
-    '--output',
-    paths.structured,
-  ]),
-);
-
-executions.push(
-  runNode('scripts/evaluate-retrieval.mjs', [
-    '--live',
-    '--max-queries',
-    String(contract.retrieval.requiredQueries),
-    '--output',
-    paths.retrieval,
-  ]),
-);
-
-executions.push(
-  runNode('scripts/evaluate-generation.mjs', [
-    '--live',
-    '--max-cases',
-    String(contract.generation.requiredScenarios),
-    '--output',
-    paths.generation,
-  ]),
-);
-
-for (const [index, offset] of [0, 20, 40, 60].entries()) {
-  const remaining = contract.grounding.requiredScenarios - offset;
-  const maxCases = Math.min(20, remaining);
-  if (maxCases <= 0) continue;
+if (live) {
   executions.push(
-    runNode('scripts/evaluate-grounding.mjs', [
+    runNode('scripts/evaluate-structured-ai.mjs', [
       '--live',
-      '--offset',
-      String(offset),
-      '--max-cases',
-      String(maxCases),
+      '--mode',
+      'structured',
+      '--max-turns',
+      String(structuredTurns),
+      '--languages',
+      contract.supportedLanguages.join(','),
+      '--families',
+      contract.structured.requiredFamilies.join(','),
       '--output',
-      paths.grounding[index],
+      paths.structured,
     ]),
   );
+
+  executions.push(
+    runNode('scripts/evaluate-retrieval.mjs', [
+      '--live',
+      '--max-queries',
+      String(contract.retrieval.requiredQueries),
+      '--output',
+      paths.retrieval,
+    ]),
+  );
+
+  executions.push(
+    runNode('scripts/evaluate-generation.mjs', [
+      '--live',
+      '--max-cases',
+      String(contract.generation.requiredScenarios),
+      '--output',
+      paths.generation,
+    ]),
+  );
+
+  for (const [index, offset] of [0, 20, 40, 60].entries()) {
+    const remaining = contract.grounding.requiredScenarios - offset;
+    const maxCases = Math.min(20, remaining);
+    if (maxCases <= 0) continue;
+    executions.push(
+      runNode('scripts/evaluate-grounding.mjs', [
+        '--live',
+        '--offset',
+        String(offset),
+        '--max-cases',
+        String(maxCases),
+        '--output',
+        paths.grounding[index],
+      ]),
+    );
+  }
 }
 
 const subprocessFailures = executions
@@ -200,6 +239,68 @@ for (const path of paths.grounding) {
       path,
       error: error instanceof Error ? error.message : String(error),
     });
+  }
+}
+
+let artifacts = null;
+let qualificationId = null;
+if (readFailures.length === 0) {
+  try {
+    artifacts = {
+      contractSha256: valueSha256(contract),
+      structuredSha256: await fileSha256(paths.structured),
+      retrievalSha256: await fileSha256(paths.retrieval),
+      generationSha256: await fileSha256(paths.generation),
+      groundingSha256: await Promise.all(paths.grounding.map((path) => fileSha256(path))),
+    };
+    qualificationId = valueSha256(artifacts);
+  } catch (error) {
+    readFailures.push({
+      name: 'artifact_hashing',
+      path: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+let qualificationAnchor = {
+  required: finalizeExisting,
+  valid: !finalizeExisting,
+  path: finalizeExisting ? qualificationReportPath : null,
+  reason: finalizeExisting ? 'not_checked' : null,
+  sourceQualificationId: null,
+};
+
+if (finalizeExisting) {
+  try {
+    const prior = await readJson(qualificationReportPath);
+    const valid =
+      prior?.schema === 1 &&
+      prior?.kind === 'p1-live-release-qualification' &&
+      prior?.runMode === 'live' &&
+      prior?.automatedPassed === true &&
+      prior?.artifacts &&
+      artifacts &&
+      JSON.stringify(prior.artifacts) === JSON.stringify(artifacts) &&
+      prior?.qualificationId === qualificationId &&
+      prior?.artifacts?.contractSha256 === valueSha256(contract);
+
+    qualificationAnchor = {
+      required: true,
+      valid,
+      path: qualificationReportPath,
+      reason: valid ? null : 'artifact_or_contract_mismatch',
+      sourceQualificationId:
+        typeof prior?.qualificationId === 'string' ? prior.qualificationId : null,
+    };
+  } catch (error) {
+    qualificationAnchor = {
+      required: true,
+      valid: false,
+      path: qualificationReportPath,
+      reason: error instanceof Error ? error.message : String(error),
+      sourceQualificationId: null,
+    };
   }
 }
 
@@ -324,33 +425,74 @@ let humanReview = {
 if (humanReviewPath) {
   try {
     const review = await readJson(resolve(humanReviewPath));
-    const expectedIds = new Set(generationRows.map((row) => row.id));
+    const expectedReviewItems = new Map(
+      generationRows.map((row) => {
+        const candidate = Array.isArray(row.draft?.sentences)
+          ? row.draft.sentences
+              .map((sentence) => sentence?.text)
+              .filter(Boolean)
+              .join(' ')
+          : '';
+        return [
+          row.id,
+          {
+            candidate,
+            candidateSha256: textSha256(candidate),
+            expectedLanguage: row.language ?? row.draft?.language ?? null,
+            rubric: Array.isArray(row.rubric) ? row.rubric : [],
+          },
+        ];
+      }),
+    );
+    const expectedIds = new Set(expectedReviewItems.keys());
     const items = Array.isArray(review.items) ? review.items : [];
+    const reviewedAt = Date.parse(review.reviewedAt);
+    const generationCreatedAt = Date.parse(generation?.createdAt ?? '');
+    const validReviewTime =
+      Number.isFinite(reviewedAt) &&
+      reviewedAt <= Date.now() + 5 * 60_000 &&
+      (!Number.isFinite(generationCreatedAt) || reviewedAt >= generationCreatedAt);
+
     const validItems =
       review.schema === 1 &&
       typeof review.reviewer === 'string' &&
       review.reviewer.trim().length >= 2 &&
+      review.reviewer.trim().length <= 160 &&
       typeof review.reviewedAt === 'string' &&
-      !Number.isNaN(Date.parse(review.reviewedAt)) &&
+      validReviewTime &&
+      review.source?.qualificationId === qualificationId &&
+      review.source?.generationSha256 === artifacts?.generationSha256 &&
+      review.source?.scenarioCount === expectedIds.size &&
       items.length === expectedIds.size &&
-      items.every(
-        (item) =>
-          expectedIds.has(item.id) &&
+      items.every((item) => {
+        const expected = expectedReviewItems.get(item.id);
+        return (
+          expected &&
           item.approved === true &&
+          item.candidate === expected.candidate &&
+          item.candidateSha256 === expected.candidateSha256 &&
+          item.expectedLanguage === expected.expectedLanguage &&
+          JSON.stringify(item.rubric) === JSON.stringify(expected.rubric) &&
+          (typeof item.notes === 'string' ? item.notes.length <= 2000 : item.notes === undefined) &&
           contract.generation.humanReviewDimensions.every(
             (dimension) => item[dimension] === 'pass',
-          ),
-      ) &&
+          )
+        );
+      }) &&
       new Set(items.map((item) => item.id)).size === items.length;
 
     humanReview = {
       provided: true,
-      valid: validItems,
-      approved: validItems,
+      valid: Boolean(validItems),
+      approved: Boolean(validItems),
       path: resolve(humanReviewPath),
       reason: validItems ? null : 'invalid_or_incomplete',
       reviewer: typeof review.reviewer === 'string' ? review.reviewer : null,
       reviewedAt: typeof review.reviewedAt === 'string' ? review.reviewedAt : null,
+      qualificationId:
+        typeof review.source?.qualificationId === 'string'
+          ? review.source.qualificationId
+          : null,
     };
   } catch (error) {
     humanReview = {
@@ -366,6 +508,7 @@ if (humanReviewPath) {
 const automatedGates = {
   subprocesses: subprocessFailures.length === 0,
   reportsReadable: readFailures.length === 0,
+  qualificationArtifactIntegrity: qualificationAnchor.valid,
   structured: structuredGate,
   retrieval: retrievalGate,
   generation: generationGate,
@@ -379,10 +522,17 @@ const releaseAllowed =
 const report = {
   schema: 1,
   kind: 'p1-live-release-qualification',
+  runMode: live ? 'live' : 'finalize_existing',
   createdAt: new Date().toISOString(),
+  qualificationId,
+  parentQualificationId: finalizeExisting
+    ? qualificationAnchor.sourceQualificationId
+    : null,
   releaseAllowed,
   automatedPassed,
   contract,
+  artifacts,
+  qualificationAnchor,
   plannedCalls,
   executions,
   failures: {
@@ -434,6 +584,8 @@ console.log(
       automatedPassed,
       gates: automatedGates,
       grounding: groundingMetrics,
+      qualificationId,
+      qualificationAnchor,
       humanReview,
       output,
     },
