@@ -10,6 +10,26 @@ import {
   type SupabaseRuntimeEnv,
 } from './supabase';
 
+const revalidationRowSchema = z
+  .object({
+    document_id: z.string().uuid(),
+    chunk_id: z.string().uuid(),
+    version: z.string().min(1).max(80),
+    revision: z.number().int().positive(),
+    locale: z.string().min(2).max(12),
+    market: z.string().min(2).max(16),
+    effective_from: z.string().nullable(),
+    effective_until: z.string().nullable(),
+    content: z.string().min(1).max(4000),
+  })
+  .strict();
+
+export class KnowledgeFreshnessError extends Error {
+  constructor(public reason: 'knowledge_changed' | 'knowledge_unavailable') {
+    super(reason);
+  }
+}
+
 const searchRowSchema = z.object({
   document_id: z.string().uuid(),
   chunk_id: z.string().uuid(),
@@ -67,6 +87,145 @@ function configured(env: SupabaseRuntimeEnv) {
     env.SUPABASE_SECRET_KEY?.trim() &&
     env.SUPABASE_ORGANIZATION_ID?.trim(),
   );
+}
+
+export async function revalidateKnowledgeEvidence(
+  env: KnowledgeEnvironment,
+  pack: {
+    scope: { organizationId: string };
+    knowledge: {
+      status: 'not_requested' | 'available' | 'no_match' | 'unavailable';
+      sources: Array<{
+        documentId: string;
+        chunkId: string;
+        version: string;
+        title: string;
+        content: string;
+        contentHash: string;
+        locale: string;
+        market: string;
+        effectiveFrom: string | null;
+        effectiveUntil: string | null;
+        score: number;
+      }>;
+    };
+  },
+): Promise<KnowledgeSearchResult> {
+  const sources = pack.knowledge.sources;
+  if (!sources.length) {
+    if (pack.knowledge.status === 'unavailable')
+      throw new KnowledgeFreshnessError('knowledge_unavailable');
+    return { articles: [], scope: 'not_required' };
+  }
+  if (
+    !configured(env) ||
+    env.SUPABASE_ORGANIZATION_ID !== pack.scope.organizationId ||
+    sources.length > 3
+  )
+    throw new KnowledgeFreshnessError('knowledge_unavailable');
+
+  let raw: unknown;
+  try {
+    raw = await supabaseRequest<unknown>(
+      env,
+      '/rest/v1/rpc/knowledge_revalidate_sources',
+      {
+        mode: { kind: 'privileged' },
+        method: 'POST',
+        timeoutMs: 3000,
+        body: {
+          p_organization_id: pack.scope.organizationId,
+          p_sources: sources.map((source) => ({
+            document_id: source.documentId,
+            chunk_id: source.chunkId,
+            version: source.version,
+            locale: source.locale,
+            market: source.market,
+          })),
+        },
+      },
+    );
+  } catch (error) {
+    if (error instanceof SupabaseConfigError || error instanceof SupabaseRequestError)
+      throw new KnowledgeFreshnessError('knowledge_unavailable');
+    throw error;
+  }
+
+  const parsed = z.array(revalidationRowSchema).max(3).safeParse(raw);
+  if (!parsed.success || parsed.data.length !== sources.length)
+    throw new KnowledgeFreshnessError('knowledge_changed');
+
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const originalByKey = new Map(
+    sources.map((source) => [
+      `${source.documentId}:${source.chunkId}`,
+      source,
+    ]),
+  );
+  const seen = new Set<string>();
+
+  for (const row of parsed.data) {
+    const key = `${row.document_id}:${row.chunk_id}`;
+    const source = originalByKey.get(key);
+    if (
+      !source ||
+      seen.has(key) ||
+      row.version !== source.version ||
+      row.locale !== source.locale ||
+      row.market !== source.market ||
+      row.effective_from !== source.effectiveFrom ||
+      row.effective_until !== source.effectiveUntil ||
+      row.content !== source.content ||
+      (row.effective_from && row.effective_from > today) ||
+      (row.effective_until && row.effective_until < today) ||
+      (await digest(row.content)) !== source.contentHash
+    )
+      throw new KnowledgeFreshnessError('knowledge_changed');
+    seen.add(key);
+  }
+
+  if (seen.size !== sources.length)
+    throw new KnowledgeFreshnessError('knowledge_changed');
+
+  const rowsByKey = new Map(
+    parsed.data.map((row) => [
+      `${row.document_id}:${row.chunk_id}`,
+      row,
+    ]),
+  );
+  return {
+    provenance: {
+      organizationId: pack.scope.organizationId,
+      retrievedAt: new Date(now).toISOString(),
+      locale: sources[0].locale,
+      market: null,
+    },
+    evidence: sources.map((source) => {
+      const row = rowsByKey.get(`${source.documentId}:${source.chunkId}`)!;
+      return {
+        documentId: source.documentId,
+        chunkId: source.chunkId,
+        version: source.version,
+        score: source.score,
+        locale: source.locale,
+        market: source.market,
+        effectiveFrom: row.effective_from,
+        effectiveUntil: row.effective_until,
+        contentHash: source.contentHash,
+      };
+    }),
+    articles: sources.map((source) => ({
+      id: source.documentId,
+      title: source.title,
+      category: 'verified',
+      version: source.version,
+      effective: source.effectiveFrom ?? '',
+      tags: '',
+      body: source.content,
+    })),
+    scope: 'supabase_published',
+  };
 }
 
 export async function searchKnowledge(
