@@ -9,6 +9,7 @@ import {
   assertEvidenceContext,
   evidenceSummary,
   EvidencePackError,
+  type EvidencePack,
 } from './evidence-pack';
 import { z } from 'zod';
 import type { AtlasEnv } from './api';
@@ -213,9 +214,7 @@ export async function productionChat(
       sessionId,
     });
 
-    async function refreshReleaseEvidence(
-      generatedFrom: NonNullable<typeof conversation>['evidencePack'] & {},
-    ) {
+    async function refreshReleaseEvidence(generatedFrom: EvidencePack) {
       if (!generatedFrom) throw new EvidencePackError('invalid_evidence');
       // Revalidate the customer session after all upstream latency. A fresh case read is
       // required even for knowledge-only turns because authorization is session-bound.
@@ -317,16 +316,9 @@ export async function productionChat(
       });
       release = released.diagnostics;
 
-      if (released.content) {
-        conversation.answer.content = released.content;
-      } else if (conversation.currentCase) {
-        // Fail closed to deterministic server-owned rendering after any candidate,
-        // validation, freshness or rollout failure.
-        conversation.answer.content = renderCaseFacts(
-          conversation.currentCase,
-          conversation.language,
-        );
-      }
+      if (released.content) conversation.answer.content = released.content;
+      // Otherwise preserve executeConversation's deterministic server-owned answer.
+      // Shadow/canary evaluation must never degrade the customer-visible fallback.
     }
 
     // Social responses and fallbacks also revalidate the case session after provider latency.
