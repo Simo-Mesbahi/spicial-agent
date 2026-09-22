@@ -57,6 +57,7 @@ test('human review template is generated fail-closed and preserves review contex
   assert.equal(review.reviewer, '');
   assert.equal(review.reviewedAt, '');
   assert.equal(review.items.length, 2);
+  assert.match(review.source.generationSha256, /^[a-f0-9]{64}$/);
 
   for (const item of review.items) {
     assert.equal(item.approved, false);
@@ -108,4 +109,20 @@ test('human review template refuses missing or failed generation candidates', as
 
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /no valid generated candidate/i);
+});
+
+
+test('release finalizer is explicitly no-spend and binds review to the generation artifact', async () => {
+  const source = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(source, /const finalizeExisting = args\.includes\('--finalize-existing'\)/);
+  assert.match(source, /if \(live\) \{[\s\S]*evaluate-structured-ai\.mjs/);
+  assert.match(
+    source,
+    /review\.source\?\.generationSha256 === \(await fileSha256\(paths\.generation\)\)/,
+  );
+  assert.match(
+    source,
+    /--finalize-existing requires --human-review and reuses existing qualification reports without provider calls/,
+  );
 });
