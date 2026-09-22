@@ -298,11 +298,15 @@ test('Indexing is bounded, preserves source checksums and uses one provider batc
     calls = 0;
   const content = 'Procédure de retour',
     checksum = await digest(content);
+  let batchReads = 0;
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     const body = JSON.parse(init.body);
     if (url.endsWith('/knowledge_embedding_batch')) {
-      assert.equal(body.p_limit, 2);
-      return Response.json([{ chunk_id: chunk, content, checksum }]);
+      batchReads++;
+      assert.equal(body.p_limit, batchReads === 1 ? 2 : 1);
+      return Response.json(
+        batchReads === 1 ? [{ chunk_id: chunk, content, checksum }] : [],
+      );
     }
     if (url.endsWith('/embeddings')) {
       calls++;
@@ -316,12 +320,39 @@ test('Indexing is bounded, preserves source checksums and uses one provider batc
   });
   const out = await indexKnowledgeBatch(env, 2);
   assert.equal(out.indexed, 1);
+  assert.equal(out.remainingAfterBatch, false);
+  assert.equal(batchReads, 2);
   assert.equal(calls, 1);
   assert.equal(writes, 1);
-  await assert.rejects(indexKnowledgeBatch(env, 17), /invalid_index_limit/);
+  await assert.rejects(indexKnowledgeBatch(env, 33), /invalid_index_limit/);
   const dry = spawnSync(process.execPath, ['scripts/index-knowledge.mjs'], { encoding: 'utf8' });
   assert.equal(dry.status, 0);
   assert.equal(JSON.parse(dry.stdout).status, 'dry_run');
+});
+
+test('Knowledge indexing reports an incomplete corpus without a second provider call', async (t) => {
+  let batchReads = 0,
+    embeddingCalls = 0;
+  const content = 'Procédure vérifiée',
+    checksum = await digest(content);
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (url.endsWith('/knowledge_embedding_batch')) {
+      batchReads++;
+      return Response.json([{ chunk_id: chunk, content, checksum }]);
+    }
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return embeddingResponse();
+    }
+    assert.match(url, /knowledge_store_embeddings$/);
+    return Response.json(1);
+  });
+  const out = await indexKnowledgeBatch(env, 32);
+  assert.equal(out.indexed, 1);
+  assert.equal(out.remainingAfterBatch, true);
+  assert.equal(batchReads, 2);
+  assert.equal(embeddingCalls, 1);
 });
 
 test('RAG evaluation is multilingual, independent and dry by default', async () => {
