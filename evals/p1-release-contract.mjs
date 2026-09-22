@@ -1,0 +1,43 @@
+export const p1ReleaseQualificationContract = Object.freeze({
+  schema: 1,
+  name: 'P1.7 production release qualification',
+  supportedLanguages: ['fr', 'en', 'de', 'es', 'ar'],
+  structured: {
+    minimumTurns: 50,
+    maximumTurns: 100,
+    apiFailures: 0,
+    fallbackCount: 0,
+    groundingRejections: 0,
+    requireCompleteUsage: true,
+    requiredMetricAccuracy: 1,
+  },
+  retrieval: {
+    requiredQueries: 20,
+    completionCalls: 0,
+    minimumHybridRecallAtK: 1,
+    minimumHybridPrecisionAtK: 1 / 3,
+    allowRecallRegressionVsLexical: false,
+    requireEmbeddingSuccess: true,
+  },
+  generation: {
+    requiredScenarios: 10,
+    requireCandidateForEveryScenario: true,
+    requireHumanReview: true,
+    humanReviewDimensions: ['naturalness', 'language', 'conciseness', 'business_tone'],
+  },
+  grounding: {
+    requiredScenarios: 70,
+    maximumFalseSupportRate: 0,
+    maximumAbstentionRate: 0,
+    minimumSupportedRecall: 1,
+  },
+  liveBudget: {
+    maximumStructuredCompletionCalls: 100,
+    maximumGenerationCalls: 10,
+    maximumGroundingCalls: 70,
+    maximumEmbeddingCalls: 20,
+    maximumTotalCompletionCalls: 180,
+  },
+  releaseRule:
+    'All automated gates must pass and every generation scenario must have an explicit human review approval. Missing metrics never count as passing.',
+});
