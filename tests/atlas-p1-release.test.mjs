@@ -1,12 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { build } from 'esbuild';
 
 import { generationFixture, generationScenarios } from '../evals/generation.mjs';
-import {
+
+const compiled = await build({
+  stdin: {
+    contents:
+      "export {releaseCohort,releaseNaturalResponse,shouldEvaluateNaturalResponse,releaseConfigurationState} from './lib/atlas/p1-release';",
+    resolveDir: process.cwd(),
+  },
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  write: false,
+});
+const {
   releaseCohort,
   releaseNaturalResponse,
   shouldEvaluateNaturalResponse,
-} from '../lib/atlas/p1-release.ts';
+  releaseConfigurationState,
+} = await import(
+  'data:text/javascript;base64,' +
+    Buffer.from(compiled.outputFiles[0].text).toString('base64')
+);
 
 function diagnostics() {
   return {
@@ -273,4 +290,27 @@ test('release gate blocks documentary freshness failures before customer release
   );
   assert.equal(result.content, null);
   assert.equal(result.diagnostics.reason, 'evidence_changed');
+});
+
+
+test('release readiness fails closed unless structured, hybrid, generation and validation are all armed', () => {
+  const base = {
+    P1_RELEASE_MODE: 'on',
+    LLM_ORCHESTRATOR: 'structured',
+    RAG_MODE: 'hybrid',
+    LLM_GENERATION_MODE: 'release',
+    LLM_VALIDATION_MODE: 'release',
+  };
+  assert.equal(releaseConfigurationState(base).releaseReady, true);
+
+  for (const [key, value] of [
+    ['LLM_ORCHESTRATOR', 'legacy'],
+    ['RAG_MODE', 'lexical'],
+    ['LLM_GENERATION_MODE', 'shadow'],
+    ['LLM_VALIDATION_MODE', 'shadow'],
+  ]) {
+    const state = releaseConfigurationState({ ...base, [key]: value });
+    assert.equal(state.releaseReady, false, key);
+    assert.ok(state.issues.length > 0, key);
+  }
 });
