@@ -1,11 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { build } from 'esbuild';
 
 import { generationFixture, generationScenarios } from '../evals/generation.mjs';
-import {
-  KnowledgeFreshnessError,
-  revalidateKnowledgeEvidence,
-} from '../lib/atlas/knowledge-runtime.ts';
+
+const compiled = await build({
+  stdin: {
+    contents:
+      "export {KnowledgeFreshnessError,revalidateKnowledgeEvidence} from './lib/atlas/knowledge-runtime';",
+    resolveDir: process.cwd(),
+  },
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  write: false,
+});
+const { KnowledgeFreshnessError, revalidateKnowledgeEvidence } = await import(
+  'data:text/javascript;base64,' +
+    Buffer.from(compiled.outputFiles[0].text).toString('base64')
+);
 
 const scenario = generationScenarios.find((row) => row.kind === 'knowledge');
 
