@@ -167,10 +167,7 @@ export function shouldEvaluateNaturalResponse(
 ) {
   if (!releasablePlans.has(plan)) return false;
   if (cohort.mode === 'shadow')
-    return (
-      env.LLM_GENERATION_MODE === 'shadow' &&
-      env.LLM_VALIDATION_MODE === 'shadow'
-    );
+    return env.LLM_GENERATION_MODE === 'shadow';
   if (cohort.mode === 'canary' || cohort.mode === 'on')
     return (
       cohort.configurationValid &&
