@@ -503,3 +503,142 @@ test('case update, lifecycle transition, access rotation and archive use dedicat
     globalThis.fetch = previousFetch;
   }
 });
+
+
+test('case entity lookup is manager-only, bounded and forwards a trimmed customer query', async () => {
+  const previousFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    seen.push({ url, body: init.body ? JSON.parse(init.body) : null });
+    if (url.endsWith('/rest/v1/rpc/admin_me'))
+      return Response.json(adminIdentity('sav_manager'));
+    if (url.endsWith('/rest/v1/rpc/admin_case_entity_search'))
+      return Response.json({
+        entity_type: 'customer',
+        query: 'camille',
+        items: [
+          {
+            id: '00000000-0000-4000-8000-000000000201',
+            external_id: 'C-42',
+            first_name: 'Camille',
+            last_name: 'Martin',
+            email: 'camille@example.test',
+            phone: '+352000000',
+            display_name: 'Camille Martin',
+            rank: 118.5,
+          },
+        ],
+      });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest(
+        `/case/entities?organizationId=${ORGANIZATION_ID}&type=customer&q=%20camille%20`,
+      ),
+      environment(),
+    );
+    assert.equal(response.status, 200, await response.clone().text());
+    const body = await response.json();
+    assert.equal(body.entity_type, 'customer');
+    assert.equal(body.query, 'camille');
+    assert.equal(body.items.length, 1);
+    assert.equal(body.items[0].display_name, 'Camille Martin');
+
+    const business = seen.find((entry) =>
+      entry.url.endsWith('/rest/v1/rpc/admin_case_entity_search'),
+    );
+    assert.ok(business);
+    assert.deepEqual(business.body, {
+      p_organization_id: ORGANIZATION_ID,
+      p_entity_type: 'customer',
+      p_query: 'camille',
+      p_limit: 12,
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('short entity queries return no directory data and skip the business RPC', async () => {
+  const previousFetch = globalThis.fetch;
+  let businessCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me'))
+      return Response.json(adminIdentity('sc_manager'));
+    businessCalls += 1;
+    throw new Error(`Unexpected business RPC: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest(
+        `/case/entities?organizationId=${ORGANIZATION_ID}&type=customer&q=ab`,
+      ),
+      environment(),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      entity_type: 'customer',
+      query: 'ab',
+      items: [],
+    });
+    assert.equal(businessCalls, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('advisers cannot enumerate customer or product lookup data', async () => {
+  const previousFetch = globalThis.fetch;
+  let businessCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me'))
+      return Response.json(adminIdentity('adviser'));
+    businessCalls += 1;
+    throw new Error(`Unexpected business RPC: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest(
+        `/case/entities?organizationId=${ORGANIZATION_ID}&type=product&q=oled`,
+      ),
+      environment(),
+    );
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).code, 'admin_access_denied');
+    assert.equal(businessCalls, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('product entity lookup rejects malformed upstream payloads fail-closed', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me'))
+      return Response.json(adminIdentity('super_admin'));
+    if (url.endsWith('/rest/v1/rpc/admin_case_entity_search'))
+      return Response.json({
+        entity_type: 'product',
+        query: 'oled',
+        items: [{ id: 'not-a-uuid', name: 'OLED' }],
+      });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest(
+        `/case/entities?organizationId=${ORGANIZATION_ID}&type=product&q=oled`,
+      ),
+      environment(),
+    );
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).code, 'invalid_entity_search_response');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

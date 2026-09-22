@@ -38,6 +38,8 @@ Un code client numérique est généré avec une source cryptographique. Seul so
 
 Les clients et produits avec identifiant externe sont réutilisés de manière concurrent-safe. Les magasins proposés par l’interface sont limités aux magasins actifs de l’organisation.
 
+Avant de créer une nouvelle fiche, l’interface propose une recherche bornée des clients et produits existants. Cette recherche exige au moins trois caractères, reste limitée à l’organisation et aux rôles de gestion, retourne au maximum vingt résultats côté base et utilise des index trigrammes. Les caractères de motif SQL sont traités comme des caractères littéraux afin qu’une requête telle que `%%%` ne puisse jamais servir à énumérer le répertoire. La sélection d’une fiche existante transmet uniquement son identifiant au moteur de création du dossier.
+
 ## Modification et concurrence
 
 Chaque mutation reçoit `expectedVersion`. Une modification concurrente fait échouer la requête au lieu d’écraser silencieusement le travail d’un autre opérateur.
@@ -108,7 +110,7 @@ Les propriétés suivantes sont cumulatives :
 
 ## Déploiement
 
-Les migrations `20260922075414_case_management_engine.sql`, `20260922075631_case_management_postdeploy_hardening.sql` puis `20260922081258_archive_customer_boundary.sql` doivent être appliquées dans cet ordre avant d’activer l’interface sur un environnement distant.
+Les migrations `20260922075414_case_management_engine.sql`, `20260922075631_case_management_postdeploy_hardening.sql`, `20260922081258_archive_customer_boundary.sql` puis `20260922084120_case_entity_lookup.sql` doivent être appliquées dans cet ordre avant d’activer l’interface sur un environnement distant.
 
 Gates obligatoires :
 
