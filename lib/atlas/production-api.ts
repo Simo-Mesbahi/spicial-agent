@@ -12,7 +12,11 @@ import {
   withMfaLock,
 } from './mfa-enrollment';
 import { z } from 'zod';
-import { environmentLabel, type RuntimeEnv } from './runtime-settings';
+import {
+  effectiveEnvironment,
+  environmentLabel,
+  type RuntimeEnv,
+} from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { mutationOriginAllowed } from './request-security';
 import type { Database } from './api';
@@ -644,20 +648,22 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
   try {
     const path = new URL(req.url).pathname;
     if (path === '/api/production/config' && req.method === 'GET') {
-      const release = releaseConfigurationState(env);
+      const effective = await effectiveEnvironment(env, req.url);
+      const release = releaseConfigurationState(effective);
       return json({
         backend: 'supabase',
-        environment: environmentLabel(env, req.url),
-        chatEnabled: env.LLM_ORCHESTRATOR === 'structured',
+        environment: environmentLabel(effective, req.url),
+        chatEnabled: effective.LLM_ORCHESTRATOR === 'structured',
         p1Release: {
           mode: release.mode,
           ready: release.releaseReady,
           canaryPercent: release.canaryPercent,
           canarySaltConfigured: release.canarySaltConfigured,
+          modelConfigured: release.modelConfigured,
           embeddingConfigured: release.embeddingConfigured,
           issues: release.issues,
         },
-        ...publicSupabaseState(env),
+        ...publicSupabaseState(effective),
       });
     }
 
