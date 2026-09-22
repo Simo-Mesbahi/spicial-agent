@@ -105,7 +105,7 @@ Les propriétés suivantes sont cumulatives :
 
 ## Déploiement
 
-La migration `20260922072000_case_management_engine.sql` doit être appliquée avant d’activer l’interface sur un environnement distant.
+La migration `20260922075414_case_management_engine.sql` doit être appliquée avant d’activer l’interface sur un environnement distant.
 
 Gates obligatoires :
 
