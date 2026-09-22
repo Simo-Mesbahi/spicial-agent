@@ -759,6 +759,9 @@ const releaseSettings = {
   LLM_GENERATION_DAILY_LIMIT: '10',
   LLM_VALIDATION_MODE: 'release',
   LLM_VALIDATION_DAILY_LIMIT: '10',
+  EMBEDDING_PROVIDER: 'gemini',
+  EMBEDDING_MODEL: 'gemini-embedding-001',
+  EMBEDDING_API_KEY: 'test-embedding-key',
 };
 
 test('P1.7 releases natural case prose only after generation, factual validation and final fresh read', async (t) => {
