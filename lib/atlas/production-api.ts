@@ -740,7 +740,7 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
       fail(502, 'Mesures de déploiement IA invalides.', 'invalid_p1_release_metrics');
 
     const effective = await effectiveEnvironment(env, req.url);
-    const release = releaseConfigurationState(effective);
+    const release = await releaseConfigurationState(effective);
     return json(
       {
         metrics: metrics.data,
@@ -751,6 +751,9 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
           canaryPercent: release.canaryPercent,
           modelConfigured: release.modelConfigured,
           embeddingConfigured: release.embeddingConfigured,
+          attestationConfigured: release.attestationConfigured,
+          attestationVerified: release.attestationVerified,
+          attestationExpiresAt: release.attestationExpiresAt,
           issues: release.issues,
         },
       },
@@ -802,7 +805,7 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
     const path = new URL(req.url).pathname;
     if (path === '/api/production/config' && req.method === 'GET') {
       const effective = await effectiveEnvironment(env, req.url);
-      const release = releaseConfigurationState(effective);
+      const release = await releaseConfigurationState(effective);
       return json({
         backend: 'supabase',
         environment: environmentLabel(effective, req.url),
@@ -814,6 +817,9 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
           canarySaltConfigured: release.canarySaltConfigured,
           modelConfigured: release.modelConfigured,
           embeddingConfigured: release.embeddingConfigured,
+          attestationConfigured: release.attestationConfigured,
+          attestationVerified: release.attestationVerified,
+          attestationExpiresAt: release.attestationExpiresAt,
           issues: release.issues,
         },
         ...publicSupabaseState(effective),
