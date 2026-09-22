@@ -105,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          required=(SUPABASE_URL SUPABASE_PUBLISHABLE_KEY SUPABASE_SECRET_KEY SUPABASE_ORGANIZATION_ID EMBEDDING_API_KEY)
+          required=(SUPABASE_URL SUPABASE_PUBLISHABLE_KEY SUPABASE_SECRET_KEY SUPABASE_ORGANIZATION_ID)
           for key in "${required[@]}"; do
             if [[ -z "${!key:-}" ]]; then
               echo "Missing required GitHub secret: ${key}" >&2
@@ -130,10 +130,28 @@ jobs:
               ;;
           esac
 
-          if [[ "${EMBEDDING_PROVIDER}" == "openai" && "${LLM_BUDGET_MODE}" != "approved" ]]; then
-            echo "OpenAI embeddings require budget_mode=approved." >&2
-            exit 2
-          fi
+          case "${EMBEDDING_PROVIDER}" in
+            gemini)
+              if [[ -z "${EMBEDDING_API_KEY:-}" ]]; then
+                [[ -n "${GEMINI_API_KEY:-}" ]] || { echo "Missing embedding/Gemini API key." >&2; exit 2; }
+                printf 'EMBEDDING_API_KEY=%s\n' "${GEMINI_API_KEY}" >> "${GITHUB_ENV}"
+              fi
+              ;;
+            openai)
+              [[ "${LLM_BUDGET_MODE}" == "approved" ]] || {
+                echo "OpenAI embeddings require budget_mode=approved." >&2
+                exit 2
+              }
+              if [[ -z "${EMBEDDING_API_KEY:-}" ]]; then
+                [[ -n "${OPENAI_API_KEY:-}" ]] || { echo "Missing embedding/OpenAI API key." >&2; exit 2; }
+                printf 'EMBEDDING_API_KEY=%s\n' "${OPENAI_API_KEY}" >> "${GITHUB_ENV}"
+              fi
+              ;;
+            *)
+              echo "Unsupported embedding provider." >&2
+              exit 2
+              ;;
+          esac
 
           node - <<'NODE'
           const uuid = process.env.SUPABASE_ORGANIZATION_ID ?? '';
@@ -149,10 +167,18 @@ jobs:
 
       - name: Verify source before spending provider budget
         run: |
+          set -euo pipefail
           npm run typecheck
           npm run lint:app
           npm test
+          npm run test:origin-runtime
+          npm run eval:ai
+          npm run eval:rag
+          npm run eval:generation
+          npm run eval:grounding
           npm run eval:p1:release
+          npm run build
+          npm run test:starter
 
       - name: Run bounded live qualification
         id: live
