@@ -10,6 +10,9 @@ const value = (flag, fallback) =>
 const generationPath = resolve(
   value('--generation', 'outputs/p1-live/generation.json'),
 );
+const qualificationPath = resolve(
+  value('--qualification-report', 'outputs/p1-live/release-qualification.json'),
+);
 const outputPath = resolve(
   value('--output', 'outputs/p1-live/human-review.json'),
 );
@@ -20,6 +23,20 @@ function fail(message) {
 
 const generationRaw = await readFile(generationPath, 'utf8');
 const generationSha256 = createHash('sha256').update(generationRaw).digest('hex');
+const qualificationRaw = await readFile(qualificationPath, 'utf8');
+const qualification = JSON.parse(qualificationRaw);
+
+if (
+  qualification?.schema !== 1 ||
+  qualification?.kind !== 'p1-live-release-qualification' ||
+  qualification?.runMode !== 'live' ||
+  qualification?.automatedPassed !== true ||
+  typeof qualification?.qualificationId !== 'string' ||
+  !/^[a-f0-9]{64}$/.test(qualification.qualificationId) ||
+  qualification?.artifacts?.generationSha256 !== generationSha256
+)
+  fail('Qualification report is not a valid automated-passed source for this generation artifact.');
+
 const report = JSON.parse(generationRaw);
 const results = Array.isArray(report.results) ? report.results : [];
 if (!results.length) fail('Generation report has no reviewable results.');
@@ -41,10 +58,12 @@ const items = results.map((row) => {
     : [];
   if (!sentences.length) fail(`Scenario ${row.id} has an empty candidate.`);
 
+  const candidate = sentences.join(' ');
   return {
     id: row.id,
     expectedLanguage: row.language ?? row.draft.language ?? null,
-    candidate: sentences.join(' '),
+    candidate,
+    candidateSha256: createHash('sha256').update(candidate).digest('hex'),
     rubric: Array.isArray(row.rubric) ? row.rubric : [],
     approved: false,
     naturalness: 'pending',
@@ -61,6 +80,8 @@ const template = {
   reviewedAt: '',
   source: {
     kind: 'p1-generation-evaluation',
+    qualificationReport: qualificationPath,
+    qualificationId: qualification.qualificationId,
     generationReport: generationPath,
     generationSha256,
     scenarioCount: items.length,
@@ -84,6 +105,8 @@ console.log(
       status: 'human_review_template_created',
       releaseAllowed: false,
       scenarios: items.length,
+      qualification: qualificationPath,
+      qualificationId: qualification.qualificationId,
       generation: generationPath,
       output: outputPath,
       note: 'All approvals are false and all review dimensions are pending by design.',
