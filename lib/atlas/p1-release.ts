@@ -30,6 +30,7 @@ export type ReleaseReason =
   | 'generation_failed'
   | 'validation_failed'
   | 'evidence_changed'
+  | 'knowledge_unavailable'
   | 'grounding_failure'
   | 'invalid_candidate';
 
@@ -214,6 +215,7 @@ export async function releaseNaturalResponse(
     currentPack: EvidencePack;
     context: EvidenceContext;
     groundingFailure: boolean;
+    freshnessFailure?: 'knowledge_changed' | 'knowledge_unavailable' | null;
     allowEmoji: boolean;
   },
 ): Promise<{ content: string | null; diagnostics: ReleaseDiagnostics }> {
@@ -248,6 +250,13 @@ export async function releaseNaturalResponse(
   }
   if (!releasablePlans.has(input.plan)) {
     diagnostics.reason = 'ineligible_plan';
+    return { content: null, diagnostics };
+  }
+  if (input.freshnessFailure) {
+    diagnostics.reason =
+      input.freshnessFailure === 'knowledge_unavailable'
+        ? 'knowledge_unavailable'
+        : 'evidence_changed';
     return { content: null, diagnostics };
   }
   if (input.groundingFailure) {
