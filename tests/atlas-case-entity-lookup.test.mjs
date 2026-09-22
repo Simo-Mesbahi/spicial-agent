@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migrationPath =
-  'supabase/migrations/20260922083000_case_entity_lookup.sql';
+  'supabase/migrations/20260922084120_case_entity_lookup.sql';
 
 function sql() {
   return readFileSync(migrationPath, 'utf8');
