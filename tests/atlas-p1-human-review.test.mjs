@@ -94,6 +94,7 @@ test('human review template is fail-closed and bound to the full qualification s
   assert.equal(review.reviewer, '');
   assert.equal(review.reviewedAt, '');
   assert.equal(review.source.qualificationId, qualificationId);
+  assert.equal(review.source.organizationId, '00000000-0000-4000-8000-000000000001');
   assert.equal(review.source.generationSha256, sha256(generationRaw));
   assert.equal(review.items.length, 2);
 
