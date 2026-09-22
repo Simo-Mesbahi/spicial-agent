@@ -110,7 +110,7 @@ Les propriétés suivantes sont cumulatives :
 
 ## Déploiement
 
-Les migrations `20260922075414_case_management_engine.sql`, `20260922075631_case_management_postdeploy_hardening.sql`, `20260922081258_archive_customer_boundary.sql` puis `20260922083000_case_entity_lookup.sql` doivent être appliquées dans cet ordre avant d’activer l’interface sur un environnement distant.
+Les migrations `20260922075414_case_management_engine.sql`, `20260922075631_case_management_postdeploy_hardening.sql`, `20260922081258_archive_customer_boundary.sql` puis `20260922084120_case_entity_lookup.sql` doivent être appliquées dans cet ordre avant d’activer l’interface sur un environnement distant.
 
 Gates obligatoires :
 
