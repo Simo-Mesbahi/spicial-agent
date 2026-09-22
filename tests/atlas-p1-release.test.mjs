@@ -101,6 +101,14 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
   const first = await releaseCohort(env, input);
   const second = await releaseCohort(env, input);
   assert.deepEqual(second, first);
+
+  const reauthenticated = await releaseCohort(env, {
+    ...input,
+    sessionId: 'different-session-after-reauthentication',
+  });
+  assert.equal(reauthenticated.bucket, first.bucket);
+  assert.equal(reauthenticated.selected, first.selected);
+
   assert.equal(first.configurationValid, true);
   assert.ok(first.bucket >= 0 && first.bucket <= 99);
   assert.equal(first.selected, first.bucket < 17);
