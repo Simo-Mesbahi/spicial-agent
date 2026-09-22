@@ -1053,7 +1053,7 @@ begin
   ) values (
     p_organization_id,
     v_case_id,
-    extensions.crypt(v_code,extensions.gen_salt('bf',10)),
+    extensions.crypt(v_code,extensions.gen_salt('bf',12)),
     now()+interval '90 days',
     auth.uid()
   );
@@ -1743,6 +1743,14 @@ begin
     and case_id=p_case_id
     and revoked_at is null;
 
+  -- Explicit revocation keeps the security property independent from trigger
+  -- ordering and makes rotation semantics self-contained.
+  update public.case_sessions
+  set revoked_at=now()
+  where organization_id=p_organization_id
+    and case_id=p_case_id
+    and revoked_at is null;
+
   v_code := app_private.random_numeric_code(8);
   insert into public.case_access_codes(
     organization_id,
@@ -1753,7 +1761,7 @@ begin
   ) values (
     p_organization_id,
     p_case_id,
-    extensions.crypt(v_code,extensions.gen_salt('bf',10)),
+    extensions.crypt(v_code,extensions.gen_salt('bf',12)),
     now()+interval '90 days',
     auth.uid()
   );
