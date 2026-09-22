@@ -30,6 +30,15 @@ const valueSha256 = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const requiredGates = [
+  'subprocesses',
+  'reportsReadable',
+  'qualificationArtifactIntegrity',
+  'structured',
+  'retrieval',
+  'generation',
+  'grounding',
+];
 
 if (
   report?.schema !== 1 ||
@@ -40,7 +49,7 @@ if (
   report?.humanReview?.approved !== true ||
   report?.humanReview?.valid !== true ||
   report?.qualificationAnchor?.valid !== true ||
-  Object.values(report?.gates ?? {}).some((value) => value !== true) ||
+  requiredGates.some((gate) => report?.gates?.[gate] !== true) ||
   typeof report?.qualificationId !== 'string' ||
   !/^[a-f0-9]{64}$/.test(report.qualificationId) ||
   report?.parentQualificationId !== report.qualificationId ||
