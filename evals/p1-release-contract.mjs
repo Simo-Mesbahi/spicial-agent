@@ -3,8 +3,16 @@ export const p1ReleaseQualificationContract = Object.freeze({
   name: 'P1.7 production release qualification',
   supportedLanguages: ['fr', 'en', 'de', 'es', 'ar'],
   structured: {
-    minimumTurns: 50,
+    minimumTurns: 100,
     maximumTurns: 100,
+    requiredFamilies: [
+      'correction-understanding',
+      'pronoun-coreference',
+      'handoff-toggle',
+      'information-only-action-safety',
+    ],
+    turnsPerScenario: 5,
+    minimumTurnsPerLanguage: 20,
     apiFailures: 0,
     fallbackCount: 0,
     groundingRejections: 0,
