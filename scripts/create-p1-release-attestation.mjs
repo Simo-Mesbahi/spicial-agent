@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
@@ -25,6 +26,8 @@ if (secret.length < 32 || secret.length > 512)
   );
 
 const report = JSON.parse(await readFile(finalReportPath, 'utf8'));
+const valueSha256 = (value) =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,13 +38,20 @@ if (
   report?.releaseAllowed !== true ||
   report?.automatedPassed !== true ||
   report?.humanReview?.approved !== true ||
+  report?.humanReview?.valid !== true ||
+  report?.qualificationAnchor?.valid !== true ||
+  Object.values(report?.gates ?? {}).some((value) => value !== true) ||
   typeof report?.qualificationId !== 'string' ||
   !/^[a-f0-9]{64}$/.test(report.qualificationId) ||
   report?.parentQualificationId !== report.qualificationId ||
+  report?.qualificationAnchor?.sourceQualificationId !== report.qualificationId ||
+  report?.humanReview?.qualificationId !== report.qualificationId ||
   typeof report?.artifacts?.sourceTreeSha !== 'string' ||
   !/^[a-f0-9]{40,64}$/.test(report.artifacts.sourceTreeSha) ||
+  report?.source?.treeSha !== report.artifacts.sourceTreeSha ||
   typeof report?.scope?.organizationId !== 'string' ||
-  !uuid.test(report.scope.organizationId)
+  !uuid.test(report.scope.organizationId) ||
+  valueSha256({ scope: report.scope, artifacts: report.artifacts }) !== report.qualificationId
 )
   throw new Error(
     'Final report is not an approved, artifact-bound P1.7 qualification.',
