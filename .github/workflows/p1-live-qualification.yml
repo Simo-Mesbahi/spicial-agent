@@ -35,6 +35,7 @@ on:
       embedding_model:
         description: 'Exact approved 768-dimensional multilingual embedding model'
         required: true
+        default: gemini-embedding-2
         type: string
       budget_mode:
         description: 'Hosted-provider budget policy'
