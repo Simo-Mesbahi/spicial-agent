@@ -28,7 +28,15 @@ function candidate(id, language, text) {
 }
 
 async function writeQualification(path, generationRaw, overrides = {}) {
-  const qualificationId = overrides.qualificationId ?? 'a'.repeat(64);
+  const artifacts = overrides.artifacts ?? {
+    contractSha256: 'c'.repeat(64),
+    structuredSha256: 'd'.repeat(64),
+    retrievalSha256: 'e'.repeat(64),
+    generationSha256: sha256(generationRaw),
+    groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
+  };
+  const qualificationId =
+    overrides.qualificationId ?? sha256(JSON.stringify(artifacts));
   await writeFile(
     path,
     JSON.stringify({
@@ -37,9 +45,7 @@ async function writeQualification(path, generationRaw, overrides = {}) {
       runMode: 'live',
       automatedPassed: true,
       qualificationId,
-      artifacts: {
-        generationSha256: sha256(generationRaw),
-      },
+      artifacts,
       ...overrides,
     }),
   );
@@ -118,7 +124,13 @@ test('human review template rejects qualification mismatch and failed generation
   });
   await writeFile(generation, validRaw);
   await writeQualification(qualification, validRaw, {
-    artifacts: { generationSha256: 'b'.repeat(64) },
+    artifacts: {
+      contractSha256: 'c'.repeat(64),
+      structuredSha256: 'd'.repeat(64),
+      retrievalSha256: 'e'.repeat(64),
+      generationSha256: 'b'.repeat(64),
+      groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
+    },
   });
 
   const mismatched = spawnSync(
