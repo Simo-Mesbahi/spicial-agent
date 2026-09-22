@@ -820,6 +820,50 @@ export default function AdminOperationsPage() {
     }
   }
 
+  function chooseCustomer(customer: CustomerLookup) {
+    setSelectedCustomer(customer);
+    setCustomerLookupQuery('');
+    setCustomerLookupResults([]);
+    setCustomerLookupError('');
+    setCreateDraft((draft) => ({
+      ...draft,
+      customerExternalId: '',
+      customerFirstName: '',
+      customerLastName: '',
+      customerEmail: '',
+      customerPhone: '',
+    }));
+  }
+
+  function clearCustomerSelection() {
+    setSelectedCustomer(null);
+    setCustomerLookupQuery('');
+    setCustomerLookupResults([]);
+    setCustomerLookupError('');
+  }
+
+  function chooseProduct(product: ProductLookup) {
+    setSelectedProduct(product);
+    setProductLookupQuery('');
+    setProductLookupResults([]);
+    setProductLookupError('');
+    setCreateDraft((draft) => ({
+      ...draft,
+      productExternalId: '',
+      productSku: '',
+      productName: '',
+      productCategory: '',
+      productSerialNumber: '',
+    }));
+  }
+
+  function clearProductSelection() {
+    setSelectedProduct(null);
+    setProductLookupQuery('');
+    setProductLookupResults([]);
+    setProductLookupError('');
+  }
+
   async function createCase(event: FormEvent) {
     event.preventDefault();
     if (!membership || !canManageCase(membership.role, createDraft.serviceType)) return;
@@ -1428,144 +1472,363 @@ export default function AdminOperationsPage() {
 
               <fieldset>
                 <legend>Client</legend>
-                <div className="admin-ops-form-grid">
-                  <label>
-                    Identifiant externe
-                    <input
-                      maxLength={160}
-                      value={createDraft.customerExternalId}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          customerExternalId: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Prénom
-                    <input
-                      maxLength={160}
-                      value={createDraft.customerFirstName}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          customerFirstName: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Nom
-                    <input
-                      maxLength={160}
-                      value={createDraft.customerLastName}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          customerLastName: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Email
-                    <input
-                      type="email"
-                      maxLength={320}
-                      value={createDraft.customerEmail}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          customerEmail: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Téléphone
-                    <input
-                      maxLength={80}
-                      value={createDraft.customerPhone}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          customerPhone: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
+                <div className="admin-ops-entity-picker">
+                  {selectedCustomer ? (
+                    <div className="admin-ops-entity-selected">
+                      <span>
+                        <UserCheck size={18} />
+                        <strong>
+                          {selectedCustomer.display_name ||
+                            selectedCustomer.email ||
+                            selectedCustomer.external_id ||
+                            'Client existant'}
+                        </strong>
+                        <small>
+                          {[
+                            selectedCustomer.external_id,
+                            selectedCustomer.email,
+                            selectedCustomer.phone,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'Fiche client existante'}
+                        </small>
+                      </span>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={clearCustomerSelection}
+                      >
+                        <X size={15} /> Changer
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="admin-ops-entity-search">
+                        Rechercher un client existant
+                        <span>
+                          <Search size={16} />
+                          <input
+                            maxLength={80}
+                            value={customerLookupQuery}
+                            onChange={(event) =>
+                              setCustomerLookupQuery(event.target.value)
+                            }
+                            placeholder="Nom, e-mail, téléphone ou identifiant"
+                            autoComplete="off"
+                          />
+                          {customerLookupBusy && (
+                            <LoaderCircle className="spin" size={16} aria-label="Recherche en cours" />
+                          )}
+                        </span>
+                      </label>
+                      <div
+                        className="admin-ops-entity-status"
+                        aria-live="polite"
+                      >
+                        {customerLookupError && (
+                          <span className="error">{customerLookupError}</span>
+                        )}
+                        {!customerLookupError &&
+                          customerLookupQuery.trim().length > 0 &&
+                          customerLookupQuery.trim().length < 3 && (
+                            <span>Saisissez au moins 3 caractères.</span>
+                          )}
+                        {!customerLookupBusy &&
+                          !customerLookupError &&
+                          customerLookupQuery.trim().length >= 3 &&
+                          customerLookupResults.length === 0 && (
+                            <span>
+                              Aucun client existant trouvé. Vous pouvez renseigner une
+                              nouvelle fiche ci-dessous.
+                            </span>
+                          )}
+                      </div>
+                      {customerLookupResults.length > 0 && (
+                        <div
+                          className="admin-ops-entity-results"
+                          role="listbox"
+                          aria-label="Clients existants"
+                        >
+                          {customerLookupResults.map((customer) => (
+                            <button
+                              key={customer.id}
+                              type="button"
+                              role="option"
+                              aria-selected="false"
+                              onClick={() => chooseCustomer(customer)}
+                            >
+                              <span>
+                                <strong>
+                                  {customer.display_name ||
+                                    customer.email ||
+                                    customer.external_id ||
+                                    'Client existant'}
+                                </strong>
+                                <small>
+                                  {[customer.external_id, customer.email, customer.phone]
+                                    .filter(Boolean)
+                                    .join(' · ') || 'Informations disponibles'}
+                                </small>
+                              </span>
+                              <Check size={16} />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="admin-ops-entity-divider">
+                        <span>ou renseigner un nouveau client</span>
+                      </div>
+                    </>
+                  )}
                 </div>
+
+                {!selectedCustomer && (
+                  <div className="admin-ops-form-grid">
+                    <label>
+                      Identifiant externe
+                      <input
+                        maxLength={160}
+                        value={createDraft.customerExternalId}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            customerExternalId: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Prénom
+                      <input
+                        maxLength={160}
+                        value={createDraft.customerFirstName}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            customerFirstName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Nom
+                      <input
+                        maxLength={160}
+                        value={createDraft.customerLastName}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            customerLastName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        maxLength={320}
+                        value={createDraft.customerEmail}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            customerEmail: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Téléphone
+                      <input
+                        maxLength={80}
+                        value={createDraft.customerPhone}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            customerPhone: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
               </fieldset>
 
               <fieldset>
                 <legend>Produit et magasin</legend>
-                <div className="admin-ops-form-grid">
-                  <label>
-                    Produit
-                    <input
-                      maxLength={240}
-                      value={createDraft.productName}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          productName: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    SKU
-                    <input
-                      maxLength={120}
-                      value={createDraft.productSku}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          productSku: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    N° série
-                    <input
-                      maxLength={160}
-                      value={createDraft.productSerialNumber}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          productSerialNumber: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Catégorie
-                    <input
-                      maxLength={160}
-                      value={createDraft.productCategory}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          productCategory: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Identifiant produit externe
-                    <input
-                      maxLength={160}
-                      value={createDraft.productExternalId}
-                      onChange={(event) =>
-                        setCreateDraft((draft) => ({
-                          ...draft,
-                          productExternalId: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
+                <div className="admin-ops-entity-picker">
+                  {selectedProduct ? (
+                    <div className="admin-ops-entity-selected">
+                      <span>
+                        <FileSearch size={18} />
+                        <strong>{selectedProduct.name}</strong>
+                        <small>
+                          {[
+                            selectedProduct.sku,
+                            selectedProduct.serial_number,
+                            selectedProduct.external_id,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'Produit existant'}
+                        </small>
+                      </span>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={clearProductSelection}
+                      >
+                        <X size={15} /> Changer
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="admin-ops-entity-search">
+                        Rechercher un produit existant
+                        <span>
+                          <Search size={16} />
+                          <input
+                            maxLength={80}
+                            value={productLookupQuery}
+                            onChange={(event) =>
+                              setProductLookupQuery(event.target.value)
+                            }
+                            placeholder="Nom, SKU, n° série ou identifiant"
+                            autoComplete="off"
+                          />
+                          {productLookupBusy && (
+                            <LoaderCircle className="spin" size={16} aria-label="Recherche en cours" />
+                          )}
+                        </span>
+                      </label>
+                      <div
+                        className="admin-ops-entity-status"
+                        aria-live="polite"
+                      >
+                        {productLookupError && (
+                          <span className="error">{productLookupError}</span>
+                        )}
+                        {!productLookupError &&
+                          productLookupQuery.trim().length > 0 &&
+                          productLookupQuery.trim().length < 3 && (
+                            <span>Saisissez au moins 3 caractères.</span>
+                          )}
+                        {!productLookupBusy &&
+                          !productLookupError &&
+                          productLookupQuery.trim().length >= 3 &&
+                          productLookupResults.length === 0 && (
+                            <span>
+                              Aucun produit existant trouvé. Vous pouvez renseigner un
+                              nouveau produit ci-dessous.
+                            </span>
+                          )}
+                      </div>
+                      {productLookupResults.length > 0 && (
+                        <div
+                          className="admin-ops-entity-results"
+                          role="listbox"
+                          aria-label="Produits existants"
+                        >
+                          {productLookupResults.map((product) => (
+                            <button
+                              key={product.id}
+                              type="button"
+                              role="option"
+                              aria-selected="false"
+                              onClick={() => chooseProduct(product)}
+                            >
+                              <span>
+                                <strong>{product.name}</strong>
+                                <small>
+                                  {[product.sku, product.serial_number, product.external_id]
+                                    .filter(Boolean)
+                                    .join(' · ') ||
+                                    product.category ||
+                                    'Informations disponibles'}
+                                </small>
+                              </span>
+                              <Check size={16} />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="admin-ops-entity-divider">
+                        <span>ou renseigner un nouveau produit</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {!selectedProduct && (
+                  <div className="admin-ops-form-grid">
+                    <label>
+                      Produit
+                      <input
+                        maxLength={240}
+                        value={createDraft.productName}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            productName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      SKU
+                      <input
+                        maxLength={120}
+                        value={createDraft.productSku}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            productSku: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      N° série
+                      <input
+                        maxLength={160}
+                        value={createDraft.productSerialNumber}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            productSerialNumber: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Catégorie
+                      <input
+                        maxLength={160}
+                        value={createDraft.productCategory}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            productCategory: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Identifiant produit externe
+                      <input
+                        maxLength={160}
+                        value={createDraft.productExternalId}
+                        onChange={(event) =>
+                          setCreateDraft((draft) => ({
+                            ...draft,
+                            productExternalId: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="admin-ops-form-grid admin-ops-store-row">
                   <label>
                     Magasin
                     <select
