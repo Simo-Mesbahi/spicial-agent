@@ -346,6 +346,147 @@ $$;
 revoke all on function app_private.case_status_label(text)
   from public,anon,authenticated;
 
+create or replace function app_private.case_id_read_allowed(
+  p_organization_id uuid,
+  p_case_id uuid
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path=''
+as $
+declare
+  v_service_type text;
+begin
+  if p_case_id is null then
+    return app_private.is_admin(
+      p_organization_id,
+      array['super_admin','sav_manager','sc_manager','adviser'],
+      true
+    );
+  end if;
+
+  select service_type into v_service_type
+  from public.service_cases
+  where organization_id=p_organization_id and id=p_case_id;
+
+  return v_service_type is not null
+    and app_private.case_service_read_allowed(
+      p_organization_id,v_service_type
+    );
+end;
+$;
+revoke all on function app_private.case_id_read_allowed(uuid,uuid)
+  from public,anon,authenticated;
+grant execute on function app_private.case_id_read_allowed(uuid,uuid)
+  to authenticated;
+
+create or replace function app_private.conversation_read_allowed(
+  p_organization_id uuid,
+  p_conversation_id uuid
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path=''
+as $
+declare
+  v_case_id uuid;
+begin
+  if p_conversation_id is null then
+    return app_private.is_admin(
+      p_organization_id,
+      array['super_admin','sav_manager','sc_manager','adviser'],
+      true
+    );
+  end if;
+
+  select case_id into v_case_id
+  from public.assistant_conversations
+  where organization_id=p_organization_id and id=p_conversation_id;
+
+  if not found then return false; end if;
+  return app_private.case_id_read_allowed(
+    p_organization_id,v_case_id
+  );
+end;
+$;
+revoke all on function app_private.conversation_read_allowed(uuid,uuid)
+  from public,anon,authenticated;
+grant execute on function app_private.conversation_read_allowed(uuid,uuid)
+  to authenticated;
+
+-- Direct authenticated SELECTs are constrained by the same service ownership
+-- rules as the RPC layer. This prevents a manager from bypassing the admin API.
+drop policy if exists cases_admin_select on public.service_cases;
+create policy cases_admin_select on public.service_cases
+for select to authenticated
+using (
+  app_private.case_service_read_allowed(
+    organization_id,service_type
+  )
+);
+
+drop policy if exists events_admin_select on public.case_events;
+create policy events_admin_select on public.case_events
+for select to authenticated
+using (
+  app_private.case_id_read_allowed(
+    organization_id,case_id
+  )
+);
+
+drop policy if exists conversations_admin_select
+  on public.assistant_conversations;
+create policy conversations_admin_select
+on public.assistant_conversations
+for select to authenticated
+using (
+  app_private.case_id_read_allowed(
+    organization_id,case_id
+  )
+);
+
+drop policy if exists messages_admin_select on public.assistant_messages;
+create policy messages_admin_select on public.assistant_messages
+for select to authenticated
+using (
+  case
+    when case_id is not null then
+      app_private.case_id_read_allowed(
+        organization_id,case_id
+      )
+    else
+      app_private.conversation_read_allowed(
+        organization_id,conversation_id
+      )
+  end
+);
+
+drop policy if exists handoffs_admin_select on public.handoffs;
+create policy handoffs_admin_select on public.handoffs
+for select to authenticated
+using (
+  case
+    when case_id is not null then
+      app_private.case_id_read_allowed(
+        organization_id,case_id
+      )
+    when conversation_id is not null then
+      app_private.conversation_read_allowed(
+        organization_id,conversation_id
+      )
+    else
+      app_private.is_admin(
+        organization_id,
+        array['super_admin','sav_manager','sc_manager','adviser'],
+        true
+      )
+  end
+);
+
 -- ---------------------------------------------------------------------------
 -- Read models
 -- ---------------------------------------------------------------------------
