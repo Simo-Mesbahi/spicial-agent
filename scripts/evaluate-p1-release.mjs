@@ -116,6 +116,8 @@ executions.push(
     String(structuredTurns),
     '--languages',
     contract.supportedLanguages.join(','),
+    '--families',
+    contract.structured.requiredFamilies.join(','),
     '--output',
     paths.structured,
   ]),
@@ -202,10 +204,33 @@ for (const path of paths.grounding) {
 }
 
 const structuredMetrics = structured?.metrics ?? {};
+const expectedStructuredScenarios = contract.structured.requiredFamilies.flatMap((family) =>
+  contract.supportedLanguages.map((language) => `pre-p1-${family}-${language}`),
+);
+const structuredScenarios = Array.isArray(structured?.scenarios) ? structured.scenarios : [];
+const structuredScenarioSet = new Set(structuredScenarios);
+const structuredLanguageCoverage = Object.fromEntries(
+  contract.supportedLanguages.map((language) => [
+    language,
+    structuredScenarios.filter((id) => id.endsWith(`-${language}`)).length *
+      contract.structured.turnsPerScenario,
+  ]),
+);
+const structuredCoverageGate =
+  structuredScenarios.length === expectedStructuredScenarios.length &&
+  new Set(structuredScenarios).size === structuredScenarios.length &&
+  expectedStructuredScenarios.every((id) => structuredScenarioSet.has(id)) &&
+  contract.supportedLanguages.every(
+    (language) =>
+      structuredLanguageCoverage[language] >= contract.structured.minimumTurnsPerLanguage,
+  );
+
 const structuredGate = Boolean(
   structured &&
     structured.mode === 'structured' &&
+    structured.turns === structuredTurns &&
     structured.turns >= contract.structured.minimumTurns &&
+    structuredCoverageGate &&
     structured.operational?.apiFailures === contract.structured.apiFailures &&
     structured.operational?.fallbackCount === contract.structured.fallbackCount &&
     structured.operational?.groundingRejections === contract.structured.groundingRejections &&
@@ -371,6 +396,9 @@ const report = {
           provider: structured.provider,
           model: structured.model,
           turns: structured.turns,
+          scenarios: structuredScenarios,
+          languageCoverage: structuredLanguageCoverage,
+          requiredFamilies: contract.structured.requiredFamilies,
           metrics: structured.metrics,
           operational: structured.operational,
         }
