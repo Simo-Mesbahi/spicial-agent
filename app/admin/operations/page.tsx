@@ -1283,6 +1283,14 @@ export default function AdminOperationsPage() {
                 setSelectedCase(null);
                 setShowCreate(false);
                 setOneTimeCode(null);
+                setSelectedCustomer(null);
+                setSelectedProduct(null);
+                setCustomerLookupQuery('');
+                setProductLookupQuery('');
+                setCustomerLookupResults([]);
+                setProductLookupResults([]);
+                setCustomerLookupError('');
+                setProductLookupError('');
                 setCreateDraft(createDraftForRole(next?.role));
                 void loadAll(value, next?.role, {
                   search: '',
