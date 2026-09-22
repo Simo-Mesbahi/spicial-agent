@@ -88,6 +88,9 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
     RAG_MODE: 'hybrid',
     LLM_GENERATION_MODE: 'release',
     LLM_VALIDATION_MODE: 'release',
+    LLM_PROVIDER: 'gemini',
+    GEMINI_MODEL: 'gemini-3.1-flash-lite',
+    GEMINI_API_KEY: 'test-generation-key',
     LLM_BUDGET_MODE: 'approved',
     EMBEDDING_PROVIDER: 'gemini',
     EMBEDDING_MODEL: 'gemini-embedding-001',
@@ -354,6 +357,9 @@ test('release readiness fails closed unless structured, hybrid, generation and v
     RAG_MODE: 'hybrid',
     LLM_GENERATION_MODE: 'release',
     LLM_VALIDATION_MODE: 'release',
+    LLM_PROVIDER: 'gemini',
+    GEMINI_MODEL: 'gemini-3.1-flash-lite',
+    GEMINI_API_KEY: 'test-generation-key',
     LLM_BUDGET_MODE: 'approved',
     EMBEDDING_PROVIDER: 'gemini',
     EMBEDDING_MODEL: 'gemini-embedding-001',
@@ -366,6 +372,7 @@ test('release readiness fails closed unless structured, hybrid, generation and v
     ['RAG_MODE', 'lexical'],
     ['LLM_GENERATION_MODE', 'shadow'],
     ['LLM_VALIDATION_MODE', 'shadow'],
+    ['GEMINI_API_KEY', ''],
     ['EMBEDDING_API_KEY', ''],
   ]) {
     const state = releaseConfigurationState({ ...base, [key]: value });
