@@ -449,6 +449,39 @@ $$;
 revoke all on function public.admin_case_detail(uuid,uuid) from public,anon;
 grant execute on function public.admin_case_detail(uuid,uuid) to authenticated;
 
+create or replace function public.admin_case_form_options(p_organization_id uuid)
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path=''
+as $
+begin
+  if not app_private.is_admin(
+    p_organization_id,
+    array['super_admin','sav_manager','sc_manager'],
+    true
+  ) then
+    raise exception using errcode='42501',message='admin_access_denied';
+  end if;
+
+  return jsonb_build_object(
+    'stores',coalesce((
+      select jsonb_agg(to_jsonb(s) order by s.name,s.id)
+      from (
+        select id,code,name,city
+        from public.stores
+        where organization_id=p_organization_id and active
+        order by name,id
+        limit 200
+      ) s
+    ),'[]'::jsonb)
+  );
+end;
+$;
+revoke all on function public.admin_case_form_options(uuid) from public,anon;
+grant execute on function public.admin_case_form_options(uuid) to authenticated;
+
 create or replace function app_private.admin_create_case(
   p_organization_id uuid,
   p_payload jsonb,
@@ -520,17 +553,26 @@ begin
       raise exception using errcode='P0002',message='customer_not_found';
     end if;
   elsif coalesce(nullif(trim(p_payload->>'customer_first_name'),''),nullif(trim(p_payload->>'customer_last_name'),''),nullif(trim(p_payload->>'customer_email'),''),nullif(trim(p_payload->>'customer_phone'),'')) is not null then
-    insert into public.customers(
-      organization_id,external_id,first_name,last_name,email,phone
-    ) values (
-      p_organization_id,
-      nullif(trim(p_payload->>'customer_external_id'),''),
-      nullif(trim(p_payload->>'customer_first_name'),''),
-      nullif(trim(p_payload->>'customer_last_name'),''),
-      nullif(trim(p_payload->>'customer_email'),''),
-      nullif(trim(p_payload->>'customer_phone'),'')
-    )
-    returning id into v_customer_id;
+    if nullif(trim(p_payload->>'customer_external_id'),'') is not null then
+      select id into v_customer_id
+      from public.customers
+      where organization_id=p_organization_id
+        and external_id=trim(p_payload->>'customer_external_id')
+      limit 1;
+    end if;
+    if v_customer_id is null then
+      insert into public.customers(
+        organization_id,external_id,first_name,last_name,email,phone
+      ) values (
+        p_organization_id,
+        nullif(trim(p_payload->>'customer_external_id'),''),
+        nullif(trim(p_payload->>'customer_first_name'),''),
+        nullif(trim(p_payload->>'customer_last_name'),''),
+        nullif(trim(p_payload->>'customer_email'),''),
+        nullif(trim(p_payload->>'customer_phone'),'')
+      )
+      returning id into v_customer_id;
+    end if;
   end if;
 
   if nullif(p_payload->>'product_id','') is not null then
@@ -542,17 +584,26 @@ begin
       raise exception using errcode='P0002',message='product_not_found';
     end if;
   elsif nullif(trim(p_payload->>'product_name'),'') is not null then
-    insert into public.products(
-      organization_id,external_id,sku,name,category,serial_number
-    ) values (
-      p_organization_id,
-      nullif(trim(p_payload->>'product_external_id'),''),
-      nullif(trim(p_payload->>'product_sku'),''),
-      trim(p_payload->>'product_name'),
-      nullif(trim(p_payload->>'product_category'),''),
-      nullif(trim(p_payload->>'product_serial_number'),'')
-    )
-    returning id into v_product_id;
+    if nullif(trim(p_payload->>'product_external_id'),'') is not null then
+      select id into v_product_id
+      from public.products
+      where organization_id=p_organization_id
+        and external_id=trim(p_payload->>'product_external_id')
+      limit 1;
+    end if;
+    if v_product_id is null then
+      insert into public.products(
+        organization_id,external_id,sku,name,category,serial_number
+      ) values (
+        p_organization_id,
+        nullif(trim(p_payload->>'product_external_id'),''),
+        nullif(trim(p_payload->>'product_sku'),''),
+        trim(p_payload->>'product_name'),
+        nullif(trim(p_payload->>'product_category'),''),
+        nullif(trim(p_payload->>'product_serial_number'),'')
+      )
+      returning id into v_product_id;
+    end if;
   end if;
 
   if nullif(p_payload->>'store_id','') is not null then
