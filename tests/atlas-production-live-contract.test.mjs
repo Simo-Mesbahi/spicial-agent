@@ -114,7 +114,7 @@ test('Supabase migration history stays ordered with reviewed local additions', (
     '20260918131105_knowledge_search_trigram_ranking.sql',
     // Reviewed repository migrations. Remote application remains an explicit deployment step.
     '20260920181024_hybrid_knowledge_retrieval.sql',
-    '20260922072000_case_management_engine.sql',
+    '20260922075414_case_management_engine.sql',
   ]);
   assert.ok(!migrations.includes('202609030001_production_foundation.sql'));
 });
