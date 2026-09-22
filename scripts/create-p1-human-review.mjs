@@ -40,12 +40,12 @@ const items = results.map((row) => {
 
   return {
     id: row.id,
-    language: row.language ?? row.draft.language ?? null,
+    expectedLanguage: row.language ?? row.draft.language ?? null,
     candidate: sentences.join(' '),
     rubric: Array.isArray(row.rubric) ? row.rubric : [],
     approved: false,
     naturalness: 'pending',
-    language_quality: 'pending',
+    language: 'pending',
     conciseness: 'pending',
     business_tone: 'pending',
     notes: '',
@@ -64,7 +64,7 @@ const template = {
   instructions: {
     allowedReviewValues: ['pass', 'fail'],
     approvalRule:
-      'Set approved=true only when naturalness, language_quality, conciseness and business_tone are all pass after human inspection.',
+      'Set approved=true only when naturalness, language, conciseness and business_tone are all pass after human inspection.',
     safety:
       'Do not approve a candidate merely because automated factual validation passed. Review customer-facing quality independently.',
   },
