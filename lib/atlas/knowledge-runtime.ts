@@ -25,8 +25,11 @@ const revalidationRowSchema = z
   .strict();
 
 export class KnowledgeFreshnessError extends Error {
-  constructor(public reason: 'knowledge_changed' | 'knowledge_unavailable') {
+  reason: 'knowledge_changed' | 'knowledge_unavailable';
+
+  constructor(reason: 'knowledge_changed' | 'knowledge_unavailable') {
     super(reason);
+    this.reason = reason;
   }
 }
 
