@@ -1,6 +1,6 @@
 import type { AtlasEnv } from './api';
 import { redacted } from './domain';
-import { digest } from './embedding-runtime';
+import { digest, embeddingSettings } from './embedding-runtime';
 import {
   assertValidationEvidence,
   type ValidationDiagnostics,
@@ -21,6 +21,13 @@ export type ReleaseSettings = {
   LLM_VALIDATION_MODE?: string;
   LLM_ORCHESTRATOR?: string;
   RAG_MODE?: string;
+  EMBEDDING_PROVIDER?: string;
+  EMBEDDING_MODEL?: string;
+  EMBEDDING_BASE_URL?: string;
+  EMBEDDING_API_KEY?: string;
+  EMBEDDING_REVISION?: string;
+  EMBEDDING_SEND_DIMENSIONS?: string;
+  LLM_BUDGET_MODE?: string;
 };
 
 export type P1ReleaseMode = 'off' | 'shadow' | 'canary' | 'on';
@@ -35,6 +42,7 @@ export type ReleaseReason =
   | 'validation_failed'
   | 'evidence_changed'
   | 'knowledge_unavailable'
+  | 'hybrid_unavailable'
   | 'grounding_failure'
   | 'invalid_candidate';
 
@@ -95,6 +103,7 @@ export type ReleaseConfigurationState = {
   releaseReady: boolean;
   canaryPercent: number;
   canarySaltConfigured: boolean;
+  embeddingConfigured: boolean;
   issues: string[];
 };
 
@@ -125,6 +134,14 @@ export function releaseConfigurationState(
   }
 
   const canarySaltConfigured = (env.P1_CANARY_SALT?.trim().length ?? 0) >= 16;
+  let embeddingConfigured = false;
+  try {
+    embeddingSettings(env);
+    embeddingConfigured = true;
+  } catch {
+    embeddingConfigured = false;
+  }
+
   if (mode === 'canary') {
     if (canaryPercent < 1) issues.push('canary_percent_must_be_positive');
     if (!canarySaltConfigured) issues.push('canary_salt_missing');
@@ -134,6 +151,7 @@ export function releaseConfigurationState(
     if (env.LLM_ORCHESTRATOR !== 'structured')
       issues.push('structured_orchestrator_required');
     if (env.RAG_MODE !== 'hybrid') issues.push('hybrid_rag_required');
+    if (!embeddingConfigured) issues.push('embedding_configuration_required');
     if (env.LLM_GENERATION_MODE !== 'release')
       issues.push('generation_release_mode_required');
     if (env.LLM_VALIDATION_MODE !== 'release')
@@ -147,6 +165,7 @@ export function releaseConfigurationState(
       issues.length === 0 && (mode === 'canary' || mode === 'on'),
     canaryPercent,
     canarySaltConfigured,
+    embeddingConfigured,
     issues,
   };
 }
@@ -277,6 +296,7 @@ export async function releaseNaturalResponse(
     context: EvidenceContext;
     groundingFailure: boolean;
     freshnessFailure?: 'knowledge_changed' | 'knowledge_unavailable' | null;
+    hybridEvidenceReady?: boolean;
     allowEmoji: boolean;
   },
 ): Promise<{ content: string | null; diagnostics: ReleaseDiagnostics }> {
@@ -318,6 +338,13 @@ export async function releaseNaturalResponse(
       input.freshnessFailure === 'knowledge_unavailable'
         ? 'knowledge_unavailable'
         : 'evidence_changed';
+    return { content: null, diagnostics };
+  }
+  if (
+    (input.plan === 'knowledge' || input.plan === 'case_and_knowledge') &&
+    input.hybridEvidenceReady !== true
+  ) {
+    diagnostics.reason = 'hybrid_unavailable';
     return { content: null, diagnostics };
   }
   if (input.groundingFailure) {
