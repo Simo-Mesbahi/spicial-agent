@@ -73,7 +73,12 @@ pushes or pull requests. Before any provider call it requires the literal
 server secrets and runs the complete no-spend CI/evaluation/build gate. Only then does
 it execute the bounded live qualification.
 
-The workflow expects these GitHub Actions secrets:
+The workflow requires a protected GitHub **Environment** selected at dispatch time.
+Use a preproduction environment with reviewer protection for this operation; its
+secrets are exposed only to the qualification job after the environment gate is
+approved.
+
+The selected environment must provide these GitHub Actions secrets:
 
 - `SUPABASE_URL`;
 - `SUPABASE_PUBLISHABLE_KEY`;
