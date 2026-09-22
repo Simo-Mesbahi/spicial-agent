@@ -134,6 +134,10 @@ async function fileSha256(path) {
   return createHash('sha256').update(raw).digest('hex');
 }
 
+function valueSha256(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
 const executions = [];
 
 if (live) {
@@ -231,6 +235,68 @@ for (const path of paths.grounding) {
       path,
       error: error instanceof Error ? error.message : String(error),
     });
+  }
+}
+
+let artifacts = null;
+let qualificationId = null;
+if (readFailures.length === 0) {
+  try {
+    artifacts = {
+      contractSha256: valueSha256(contract),
+      structuredSha256: await fileSha256(paths.structured),
+      retrievalSha256: await fileSha256(paths.retrieval),
+      generationSha256: await fileSha256(paths.generation),
+      groundingSha256: await Promise.all(paths.grounding.map((path) => fileSha256(path))),
+    };
+    qualificationId = valueSha256(artifacts);
+  } catch (error) {
+    readFailures.push({
+      name: 'artifact_hashing',
+      path: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+let qualificationAnchor = {
+  required: finalizeExisting,
+  valid: !finalizeExisting,
+  path: finalizeExisting ? qualificationReportPath : null,
+  reason: finalizeExisting ? 'not_checked' : null,
+  sourceQualificationId: null,
+};
+
+if (finalizeExisting) {
+  try {
+    const prior = await readJson(qualificationReportPath);
+    const valid =
+      prior?.schema === 1 &&
+      prior?.kind === 'p1-live-release-qualification' &&
+      prior?.runMode === 'live' &&
+      prior?.automatedPassed === true &&
+      prior?.artifacts &&
+      artifacts &&
+      JSON.stringify(prior.artifacts) === JSON.stringify(artifacts) &&
+      prior?.qualificationId === qualificationId &&
+      prior?.artifacts?.contractSha256 === valueSha256(contract);
+
+    qualificationAnchor = {
+      required: true,
+      valid,
+      path: qualificationReportPath,
+      reason: valid ? null : 'artifact_or_contract_mismatch',
+      sourceQualificationId:
+        typeof prior?.qualificationId === 'string' ? prior.qualificationId : null,
+    };
+  } catch (error) {
+    qualificationAnchor = {
+      required: true,
+      valid: false,
+      path: qualificationReportPath,
+      reason: error instanceof Error ? error.message : String(error),
+      sourceQualificationId: null,
+    };
   }
 }
 
