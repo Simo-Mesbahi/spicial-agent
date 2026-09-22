@@ -917,11 +917,12 @@ export async function recordProductionReleaseEvent(
   try {
     const payload = await boundedJson(response.clone(), 128 * 1024);
     const parsed = releaseTelemetryResponseSchema.safeParse(payload);
-    if (!parsed.success || !parsed.data.metadata.release) return;
+    if (!parsed.success) return;
 
     const settings = supabaseSettings(env);
     const metadata = parsed.data.metadata;
     const release = metadata.release;
+    if (!release) return;
     await supabaseRequest(env, '/rest/v1/rpc/record_p1_release_event', {
       mode: { kind: 'privileged' },
       method: 'POST',
