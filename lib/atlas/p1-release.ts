@@ -11,7 +11,7 @@ import {
   type GenerationDiagnostics,
   type NaturalDraft,
 } from './natural-generation';
-import type { ConversationPlan } from './structured-conversation';
+import { safeConversationalDraft, type ConversationPlan } from './structured-conversation';
 
 export type ReleaseSettings = {
   P1_RELEASE_MODE?: string;
@@ -304,11 +304,12 @@ export async function releaseNaturalResponse(
 
   const refs = generationEvidence(input.currentPack).references;
   if (
+    !input.draft.sentences.some((sentence) => sentence.evidenceRefs.length) ||
     input.draft.sentences.some(
       (sentence) =>
-        !sentence.evidenceRefs.length ||
         new Set(sentence.evidenceRefs).size !== sentence.evidenceRefs.length ||
-        sentence.evidenceRefs.some((ref) => !Object.hasOwn(refs, ref)),
+        sentence.evidenceRefs.some((ref) => !Object.hasOwn(refs, ref)) ||
+        (!sentence.evidenceRefs.length && !safeConversationalDraft(sentence.text)),
     )
   ) {
     diagnostics.reason = 'invalid_candidate';
