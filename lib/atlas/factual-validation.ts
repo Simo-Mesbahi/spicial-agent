@@ -116,7 +116,7 @@ type ValidationReason =
   | 'uncertain_claim'
   | 'output_language_mismatch';
 export type ValidationDiagnostics = {
-  mode: 'off' | 'shadow';
+  mode: 'off' | 'shadow' | 'release';
   outcome: 'skipped' | 'supported_candidate' | 'blocked' | 'abstained';
   reason: ValidationReason | null;
   issues: Array<(typeof factualIssues)[number]>;
@@ -230,7 +230,7 @@ function assess(
     return { outcome: 'abstained', reason: 'uncertain_claim', issues };
   return { outcome: 'supported_candidate', reason: null, issues: [] };
 }
-/** Shadow-only semantic audit. Even a positive result has NO authority to release a draft. */
+/** Semantic audit. Even a positive result has NO authority to release a draft by itself. */
 export async function validateNaturalDraft(
   env: AtlasEnv,
   input: {
@@ -245,7 +245,12 @@ export async function validateNaturalDraft(
     beforeCalls = trace.calls,
     beforeAttempts = trace.attempts.length;
   const diagnostics: ValidationDiagnostics = {
-    mode: env.LLM_VALIDATION_MODE === 'shadow' ? 'shadow' : 'off',
+    mode:
+      env.LLM_VALIDATION_MODE === 'shadow'
+        ? 'shadow'
+        : env.LLM_VALIDATION_MODE === 'release'
+          ? 'release'
+          : 'off',
     outcome: 'skipped',
     reason: 'disabled',
     issues: [],
@@ -259,7 +264,8 @@ export async function validateNaturalDraft(
   };
   try {
     if (!env.LLM_VALIDATION_MODE || env.LLM_VALIDATION_MODE === 'off') return diagnostics;
-    if (env.LLM_VALIDATION_MODE !== 'shadow') throw new ProviderError('configuration');
+    if (!['shadow', 'release'].includes(env.LLM_VALIDATION_MODE))
+      throw new ProviderError('configuration');
     // Parse into bounded owned copies before any asynchronous provider operation.
     const parsed = naturalDraftSchema.safeParse(input.draft);
     if (!parsed.success) throw new ValidationError('invalid_draft');

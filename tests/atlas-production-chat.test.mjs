@@ -98,6 +98,8 @@ async function setup(t, overrides = {}) {
     prompts: [],
     revoked: false,
     knowledgeRows: [],
+    revalidationRows: null,
+    afterKnowledgeRevalidation: () => {},
     afterGeneration: () => {},
     generationOutput: {
       language: 'fr',
@@ -154,6 +156,24 @@ async function setup(t, overrides = {}) {
     if (path.endsWith('/knowledge_search')) {
       assert.equal(body.p_organization_id, org);
       return Response.json(remote.knowledgeRows);
+    }
+    if (path.endsWith('/knowledge_revalidate_sources')) {
+      assert.equal(body.p_organization_id, org);
+      await remote.afterKnowledgeRevalidation();
+      const rows =
+        remote.revalidationRows ??
+        remote.knowledgeRows.map((row) => ({
+          document_id: row.document_id,
+          chunk_id: row.chunk_id,
+          version: row.version,
+          revision: row.revision ?? 1,
+          locale: row.locale,
+          market: row.market,
+          effective_from: row.effective_from,
+          effective_until: row.effective_until,
+          content: row.content,
+        }));
+      return Response.json(rows);
     }
     if (path.endsWith('/chat/completions')) {
       remote.providerCalls++;
@@ -671,12 +691,6 @@ test('Social, clarification, handoff and unsupported-action turns never request 
     output({ intent: 'clarification', requiresClarification: true }),
     output({ intent: 'human_handoff', requiresHuman: true }),
     output({ intent: 'action' }),
-    output({
-      intent: 'information',
-      requiresKnowledge: true,
-      retrievalQuery: 'retour',
-      response: '',
-    }),
   ]) {
     c.remote.output = u;
     const reply = await c.call('chat', question('Pouvez-vous m’aider ?'));
@@ -684,7 +698,198 @@ test('Social, clarification, handoff and unsupported-action turns never request 
     assert.equal(reply.data.metadata.providerCalls, 1);
     assert.equal(reply.data.metadata.generation, null);
   }
-  assert.equal(c.remote.providerCalls, 5);
+  assert.equal(c.remote.providerCalls, 4);
+});
+
+test('Published documentary turns can be shadow-qualified without releasing model prose', async (t) => {
+  const c = await setup(t, {
+    P1_RELEASE_MODE: 'shadow',
+    LLM_GENERATION_MODE: 'shadow',
+    LLM_GENERATION_DAILY_LIMIT: '2',
+  });
+  c.remote.output = output({
+    intent: 'information',
+    subIntent: 'procedure',
+    topic: 'return',
+    requiresKnowledge: true,
+    retrievalQuery: 'retour produit',
+    response: '',
+  });
+  c.remote.knowledgeRows = [
+    {
+      document_id: '00000000-0000-4000-8000-000000000701',
+      chunk_id: '00000000-0000-4000-8000-000000000702',
+      title: 'Retour',
+      category: 'SAV',
+      version: '1',
+      locale: 'fr-FR',
+      market: 'GLOBAL',
+      effective_from: null,
+      effective_until: null,
+      chunk_ordinal: 0,
+      content: 'Un retour doit être enregistré selon la procédure publiée.',
+      rank: 5,
+    },
+  ];
+  c.remote.generationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        text: 'Un retour doit être enregistré selon la procédure publiée.',
+        evidenceRefs: ['knowledge.0'],
+      },
+    ],
+  };
+
+  const reply = await c.call('chat', question('Comment retourner un produit ?'));
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.metadata.providerCalls, 2);
+  assert.equal(reply.data.metadata.generation.outcome, 'candidate_generated');
+  assert.equal(reply.data.metadata.generation.released, false);
+  assert.equal(reply.data.metadata.release.mode, 'shadow');
+  assert.equal(reply.data.metadata.release.released, false);
+  assert.equal(reply.data.metadata.release.reason, 'shadow_only');
+  assert.match(reply.data.content, /procédure publiée/);
+});
+
+test('Documentary fallback is revalidated even when natural generation fails', async (t) => {
+  const c = await setup(t, {
+    P1_RELEASE_MODE: 'shadow',
+    LLM_GENERATION_MODE: 'shadow',
+    LLM_GENERATION_DAILY_LIMIT: '2',
+  });
+  c.remote.output = output({
+    intent: 'information',
+    subIntent: 'procedure',
+    topic: 'return',
+    requiresKnowledge: true,
+    retrievalQuery: 'retour produit',
+    response: '',
+  });
+  c.remote.knowledgeRows = [
+    {
+      document_id: '00000000-0000-4000-8000-000000000711',
+      chunk_id: '00000000-0000-4000-8000-000000000712',
+      title: 'Retour obsolète',
+      category: 'SAV',
+      version: '1',
+      locale: 'fr-FR',
+      market: 'GLOBAL',
+      effective_from: null,
+      effective_until: null,
+      chunk_ordinal: 0,
+      content: 'ANCIENNE PROCEDURE QUI NE DOIT PLUS ETRE SERVIE.',
+      rank: 5,
+    },
+  ];
+  c.remote.generationStatus = 503;
+  c.remote.afterGeneration = () => {
+    // Simulate unpublication during provider latency.
+    c.remote.revalidationRows = [];
+  };
+
+  const reply = await c.call('chat', question('Comment retourner un produit ?'));
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.metadata.providerCalls, 2);
+  assert.equal(reply.data.metadata.generation.outcome, 'failed');
+  assert.equal(reply.data.metadata.evidence.knowledgeStatus, 'unavailable');
+  assert.deepEqual(reply.data.metadata.sources, []);
+  assert.doesNotMatch(reply.data.content, /ANCIENNE PROCEDURE/);
+  assert.match(reply.data.content, /information suffisamment fiable/i);
+});
+
+const releaseSettings = {
+  P1_RELEASE_MODE: 'on',
+  RAG_MODE: 'hybrid',
+  LLM_GENERATION_MODE: 'release',
+  LLM_GENERATION_DAILY_LIMIT: '10',
+  LLM_VALIDATION_MODE: 'release',
+  LLM_VALIDATION_DAILY_LIMIT: '10',
+  EMBEDDING_PROVIDER: 'gemini',
+  EMBEDDING_MODEL: 'gemini-embedding-001',
+  EMBEDDING_API_KEY: 'test-embedding-key',
+};
+
+test('P1.7 releases natural case prose only after generation, factual validation and final fresh read', async (t) => {
+  const c = await setup(t, releaseSettings);
+  c.remote.generationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        text: 'Votre dossier est actuellement en diagnostic.',
+        evidenceRefs: ['case.status'],
+      },
+    ],
+  };
+  c.remote.validationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        index: 0,
+        kind: 'factual',
+        verdict: 'supported',
+        issues: [],
+        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+      },
+    ],
+  };
+
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.content, 'Votre dossier est actuellement en diagnostic.');
+  assert.equal(reply.data.metadata.mode, 'grounded_generation');
+  assert.deepEqual(reply.data.metadata.generation, {
+    mode: 'release',
+    outcome: 'candidate_generated',
+    released: true,
+  });
+  assert.deepEqual(reply.data.metadata.validation, {
+    outcome: 'supported_candidate',
+    released: true,
+  });
+  assert.equal(reply.data.metadata.release.released, true);
+  assert.equal(reply.data.metadata.release.reason, null);
+  assert.equal(reply.data.metadata.providerCalls, 3);
+  assert.equal(reply.data.metadata.caseEvidence.version, 1);
+});
+
+test('P1.7 never releases a previously supported draft when the case changes during validation', async (t) => {
+  const c = await setup(t, releaseSettings);
+  c.remote.generationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        text: 'Votre dossier est actuellement en diagnostic.',
+        evidenceRefs: ['case.status'],
+      },
+    ],
+  };
+  c.remote.validationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        index: 0,
+        kind: 'factual',
+        verdict: 'supported',
+        issues: [],
+        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+      },
+    ],
+  };
+  c.remote.afterValidation = () => {
+    c.remote.case.status = 'ready';
+    c.remote.case.version = 2;
+  };
+
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.metadata.release.released, false);
+  assert.equal(reply.data.metadata.release.reason, 'validation_failed');
+  assert.equal(reply.data.metadata.validation.outcome, 'blocked');
+  assert.equal(reply.data.metadata.caseEvidence.version, 2);
+  assert.match(reply.data.content, /retrait/);
+  assert.doesNotMatch(reply.data.content, /actuellement en diagnostic/);
+  assert.equal(reply.data.metadata.providerCalls, 3);
 });
 
 const auditSettings = {

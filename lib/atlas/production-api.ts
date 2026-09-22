@@ -1,6 +1,7 @@
 import { caseSchema } from './case-schema';
 import { bindProductionCaseSession, caseSessionHash, CaseAccessError } from './case-adapter';
 import { productionChat } from './production-chat';
+import { releaseConfigurationState } from './p1-release';
 import {
   MfaError,
   mfaError,
@@ -11,7 +12,11 @@ import {
   withMfaLock,
 } from './mfa-enrollment';
 import { z } from 'zod';
-import { environmentLabel, type RuntimeEnv } from './runtime-settings';
+import {
+  effectiveEnvironment,
+  environmentLabel,
+  type RuntimeEnv,
+} from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { mutationOriginAllowed } from './request-security';
 import type { Database } from './api';
@@ -642,13 +647,25 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
 export async function handleProductionApi(req: Request, env: ProductionEnv): Promise<Response> {
   try {
     const path = new URL(req.url).pathname;
-    if (path === '/api/production/config' && req.method === 'GET')
+    if (path === '/api/production/config' && req.method === 'GET') {
+      const effective = await effectiveEnvironment(env, req.url);
+      const release = releaseConfigurationState(effective);
       return json({
         backend: 'supabase',
-        environment: environmentLabel(env, req.url),
-        chatEnabled: env.LLM_ORCHESTRATOR === 'structured',
-        ...publicSupabaseState(env),
+        environment: environmentLabel(effective, req.url),
+        chatEnabled: effective.LLM_ORCHESTRATOR === 'structured',
+        p1Release: {
+          mode: release.mode,
+          ready: release.releaseReady,
+          canaryPercent: release.canaryPercent,
+          canarySaltConfigured: release.canarySaltConfigured,
+          modelConfigured: release.modelConfigured,
+          embeddingConfigured: release.embeddingConfigured,
+          issues: release.issues,
+        },
+        ...publicSupabaseState(effective),
       });
+    }
 
     if (path === '/api/production/health' && req.method === 'GET') {
       supabaseSettings(env);
