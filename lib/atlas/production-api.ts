@@ -1,6 +1,7 @@
 import { caseSchema } from './case-schema';
 import { bindProductionCaseSession, caseSessionHash, CaseAccessError } from './case-adapter';
 import { productionChat } from './production-chat';
+import { releaseConfigurationState } from './p1-release';
 import {
   MfaError,
   mfaError,
@@ -642,13 +643,22 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
 export async function handleProductionApi(req: Request, env: ProductionEnv): Promise<Response> {
   try {
     const path = new URL(req.url).pathname;
-    if (path === '/api/production/config' && req.method === 'GET')
+    if (path === '/api/production/config' && req.method === 'GET') {
+      const release = releaseConfigurationState(env);
       return json({
         backend: 'supabase',
         environment: environmentLabel(env, req.url),
         chatEnabled: env.LLM_ORCHESTRATOR === 'structured',
+        p1Release: {
+          mode: release.mode,
+          ready: release.releaseReady,
+          canaryPercent: release.canaryPercent,
+          canarySaltConfigured: release.canarySaltConfigured,
+          issues: release.issues,
+        },
         ...publicSupabaseState(env),
       });
+    }
 
     if (path === '/api/production/health' && req.method === 'GET') {
       supabaseSettings(env);
