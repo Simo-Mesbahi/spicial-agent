@@ -235,6 +235,51 @@ const accessCodeResultSchema = caseMutationResultSchema.extend({
   replayed: z.boolean(),
 });
 
+const customerLookupSchema = z
+  .object({
+    entity_type: z.literal('customer'),
+    query: z.string().max(80),
+    items: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            external_id: z.string().max(160).nullable(),
+            first_name: z.string().max(160).nullable(),
+            last_name: z.string().max(160).nullable(),
+            email: z.string().max(320).nullable(),
+            phone: z.string().max(80).nullable(),
+            display_name: z.string().max(321),
+            rank: z.number().finite(),
+          })
+          .strict(),
+      )
+      .max(20),
+  })
+  .strict();
+
+const productLookupSchema = z
+  .object({
+    entity_type: z.literal('product'),
+    query: z.string().max(80),
+    items: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            external_id: z.string().max(160).nullable(),
+            sku: z.string().max(120).nullable(),
+            name: z.string().max(240),
+            category: z.string().max(160).nullable(),
+            serial_number: z.string().max(160).nullable(),
+            rank: z.number().finite(),
+          })
+          .strict(),
+      )
+      .max(20),
+  })
+  .strict();
+
 const caseFormOptionsSchema = z
   .object({
     stores: z
@@ -810,6 +855,41 @@ export async function handleAdminOperationsApi(
       if (!parsed.success) fail(502, 'Détail du dossier invalide.', 'invalid_case_detail_response');
       if (!parsed.data) fail(404, 'Dossier introuvable.', 'case_not_found');
       return json({ case: parsed.data }, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/entities` && req.method === 'GET') {
+      const organization = organizationId(url, session.me);
+      const entityType = z
+        .enum(['customer', 'product'])
+        .safeParse(url.searchParams.get('type'));
+      const query = (url.searchParams.get('q') ?? '').trim();
+      if (!entityType.success || query.length > 80)
+        fail(400, 'Recherche de ressource invalide.', 'invalid_entity_search');
+
+      if (query.length < 3)
+        return json(
+          { entity_type: entityType.data, query, items: [] },
+          200,
+          session.cookies,
+        );
+
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_case_entity_search',
+        {
+          p_organization_id: organization,
+          p_entity_type: entityType.data,
+          p_query: query,
+          p_limit: 12,
+        },
+        session.accessToken,
+      );
+      const schema =
+        entityType.data === 'customer' ? customerLookupSchema : productLookupSchema;
+      const parsed = schema.safeParse(result);
+      if (!parsed.success)
+        fail(502, 'Résultats de recherche invalides.', 'invalid_entity_search_response');
+      return json(parsed.data, 200, session.cookies);
     }
 
     if (path === `${BASE_PATH}/case/options` && req.method === 'GET') {
