@@ -88,6 +88,8 @@ L’archivage :
 
 Les dossiers archivés restent consultables avec le filtre dédié et deviennent non modifiables.
 
+La frontière d’archivage est également vérifiée directement par les RPC client. Un dossier archivé est refusé lors de l’ouverture d’une nouvelle session et lors du rafraîchissement d’une session existante, même si un code ou un token obsolète survivait à une erreur opérationnelle. Le refus reste volontairement neutre afin de ne pas divulguer l’état du dossier.
+
 ## Sécurité
 
 Les propriétés suivantes sont cumulatives :
@@ -101,11 +103,12 @@ Les propriétés suivantes sont cumulatives :
 - concurrence optimiste ;
 - idempotency keys ;
 - aucun accès direct aux tables sensibles depuis le navigateur ;
-- aucun code client en clair persisté.
+- aucun code client en clair persisté ;
+- refus explicite des dossiers archivés dans les RPC d’accès client, indépendamment de la révocation des credentials.
 
 ## Déploiement
 
-Les migrations `20260922075414_case_management_engine.sql` puis `20260922075631_case_management_postdeploy_hardening.sql` doivent être appliquées dans cet ordre avant d’activer l’interface sur un environnement distant.
+Les migrations `20260922075414_case_management_engine.sql`, `20260922075631_case_management_postdeploy_hardening.sql` puis `20260922081258_archive_customer_boundary.sql` doivent être appliquées dans cet ordre avant d’activer l’interface sur un environnement distant.
 
 Gates obligatoires :
 
