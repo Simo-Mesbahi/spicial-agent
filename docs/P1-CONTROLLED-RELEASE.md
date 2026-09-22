@@ -68,7 +68,7 @@ npm run eval:p1:release -- --live --confirm P1_RELEASE
 
 The governed live plan currently measures:
 
-- at least 50 structured multilingual conversation turns;
+- exactly 100 structured live turns across four critical conversation families and all five supported languages;
 - 20 hybrid-retrieval queries;
 - all 10 natural-generation scenarios;
 - all 70 factual-grounding scenarios.
@@ -132,16 +132,18 @@ Failure preserves the deterministic server-owned answer. A stale documentary fal
 
 - server-only rollout salt;
 - organization ID;
-- authorized case ID;
-- customer session identifier.
+- authorized case ID.
 
-The bucket is stable for the same session and cannot be chosen by the browser.
+The bucket is stable across browser/session re-authentication for the same dossier and cannot be chosen by the browser.
 
 Required configuration:
 
 ```dotenv
 LLM_ORCHESTRATOR=structured
 RAG_MODE=hybrid
+EMBEDDING_PROVIDER=<approved provider>
+EMBEDDING_MODEL=<768-dimensional multilingual model>
+EMBEDDING_API_KEY=<server secret>
 LLM_GENERATION_MODE=release
 LLM_VALIDATION_MODE=release
 
@@ -167,6 +169,9 @@ Full release uses:
 ```dotenv
 LLM_ORCHESTRATOR=structured
 RAG_MODE=hybrid
+EMBEDDING_PROVIDER=<approved provider>
+EMBEDDING_MODEL=<768-dimensional multilingual model>
+EMBEDDING_API_KEY=<server secret>
 LLM_GENERATION_MODE=release
 LLM_VALIDATION_MODE=release
 P1_RELEASE_MODE=on
