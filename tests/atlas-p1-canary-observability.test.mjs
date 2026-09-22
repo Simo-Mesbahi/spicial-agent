@@ -5,6 +5,8 @@ import { build } from 'esbuild';
 
 const migrationPath =
   'supabase/migrations/20260922112140_p1_release_observability.sql';
+const hardeningPath =
+  'supabase/migrations/20260922112354_p1_release_observability_hardening.sql';
 
 test('P1.7 canary telemetry schema is privacy-bounded and deny-by-default', async () => {
   const sql = await readFile(migrationPath, 'utf8');
@@ -22,42 +24,51 @@ test('P1.7 canary telemetry schema is privacy-bounded and deny-by-default', asyn
   assert.match(sql, /revoke all on public\.p1_release_events[\s\S]*service_role/);
 });
 
-test('P1.7 telemetry writes are server-only and admin reads stay aggregate + MFA-backed', async () => {
-  const sql = await readFile(migrationPath, 'utf8');
+test('P1.7 telemetry writes are server-only and admin reads use a SECURITY INVOKER API wrapper', async () => {
+  const base = await readFile(migrationPath, 'utf8');
+  const hardening = await readFile(hardeningPath, 'utf8');
 
   assert.match(
-    sql,
+    base,
     /create or replace function public\.record_p1_release_event\([\s\S]*security definer/,
   );
   assert.match(
-    sql,
+    base,
     /revoke all on function public\.record_p1_release_event\([\s\S]*from public,anon,authenticated/,
   );
   assert.match(
-    sql,
+    base,
     /grant execute on function public\.record_p1_release_event\([\s\S]*to service_role/,
   );
+
   assert.match(
-    sql,
-    /create or replace function public\.admin_p1_release_metrics\([\s\S]*security definer/,
+    hardening,
+    /create or replace function app_private\.admin_p1_release_metrics\([\s\S]*security definer/,
   );
   assert.match(
-    sql,
+    hardening,
     /app_private\.is_admin\(p_organization_id,null,true\)/,
   );
   assert.match(
-    sql,
+    hardening,
+    /create or replace function public\.admin_p1_release_metrics\([\s\S]*security invoker/,
+  );
+  assert.match(
+    hardening,
+    /select app_private\.admin_p1_release_metrics\(p_organization_id,p_hours\)/,
+  );
+  assert.match(
+    hardening,
     /grant execute on function public\.admin_p1_release_metrics\(uuid,integer\)[\s\S]*to authenticated/,
   );
-  assert.match(sql, /'invariant_violations'/);
-  assert.match(sql, /'release_rate'/);
-  assert.match(sql, /'p95_ms'/);
-  assert.doesNotMatch(
-    sql.match(
-      /create or replace function public\.admin_p1_release_metrics\([\s\S]*?\n\$\$;/,
-    )?.[0] ?? '',
-    /select \* from public\.p1_release_events[^\n]*limit/i,
-  );
+  assert.match(hardening, /'invariant_violations'/);
+  assert.match(hardening, /release_mode not in \('canary','on'\)/);
+  assert.match(hardening, /or not cohort/);
+  assert.match(hardening, /or not attempted/);
+  assert.match(hardening, /'release_rate'/);
+  assert.match(hardening, /'p95_ms'/);
+  assert.match(hardening, /drop index if exists public\.p1_release_events_org_mode_time_idx/);
+  assert.match(hardening, /drop index if exists public\.p1_release_events_org_released_time_idx/);
 });
 
 test('release telemetry recorder sends only bounded diagnostics and never response prose', async (t) => {
