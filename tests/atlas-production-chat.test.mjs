@@ -752,6 +752,52 @@ test('Published documentary turns can be shadow-qualified without releasing mode
   assert.match(reply.data.content, /procédure publiée/);
 });
 
+test('Documentary fallback is revalidated even when natural generation fails', async (t) => {
+  const c = await setup(t, {
+    P1_RELEASE_MODE: 'shadow',
+    LLM_GENERATION_MODE: 'shadow',
+    LLM_GENERATION_DAILY_LIMIT: '2',
+  });
+  c.remote.output = output({
+    intent: 'information',
+    subIntent: 'procedure',
+    topic: 'return',
+    requiresKnowledge: true,
+    retrievalQuery: 'retour produit',
+    response: '',
+  });
+  c.remote.knowledgeRows = [
+    {
+      document_id: '00000000-0000-4000-8000-000000000711',
+      chunk_id: '00000000-0000-4000-8000-000000000712',
+      title: 'Retour obsolète',
+      category: 'SAV',
+      version: '1',
+      locale: 'fr-FR',
+      market: 'GLOBAL',
+      effective_from: null,
+      effective_until: null,
+      chunk_ordinal: 0,
+      content: 'ANCIENNE PROCEDURE QUI NE DOIT PLUS ETRE SERVIE.',
+      rank: 5,
+    },
+  ];
+  c.remote.generationStatus = 503;
+  c.remote.afterGeneration = () => {
+    // Simulate unpublication during provider latency.
+    c.remote.revalidationRows = [];
+  };
+
+  const reply = await c.call('chat', question('Comment retourner un produit ?'));
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.metadata.providerCalls, 2);
+  assert.equal(reply.data.metadata.generation.outcome, 'failed');
+  assert.equal(reply.data.metadata.evidence.knowledgeStatus, 'unavailable');
+  assert.deepEqual(reply.data.metadata.sources, []);
+  assert.doesNotMatch(reply.data.content, /ANCIENNE PROCEDURE/);
+  assert.match(reply.data.content, /information suffisamment fiable/i);
+});
+
 const releaseSettings = {
   P1_RELEASE_MODE: 'on',
   RAG_MODE: 'hybrid',
