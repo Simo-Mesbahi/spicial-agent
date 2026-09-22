@@ -8,7 +8,8 @@ Le serveur ne reconnaît que :
 
 - `LLM_PROVIDER=gemini`
 - `LLM_BUDGET_MODE=free`
-- `LLM_MODEL=gemini-2.5-flash` ou `gemini-2.5-flash-lite`
+- `GEMINI_MODEL=gemini-3.1-flash-lite` (défaut validé pour ce projet)
+- `LLM_MODEL=` laissé vide afin de ne pas écraser le modèle Gemini dédié
 - `GEMINI_API_KEY` comme secret serveur
 
 L’endpoint est figé sur `https://generativelanguage.googleapis.com/v1beta/openai`. Aucun champ de l’interface ou de l’API SAV SC Assistant AI ne peut modifier le fournisseur, le budget, le modèle ou la clé. OpenAI et les endpoints compatibles génériques restent bloqués en budget `zero`.
@@ -23,10 +24,11 @@ L’endpoint est figé sur `https://generativelanguage.googleapis.com/v1beta/ope
 
 | Variable          | Valeur pour l’essai |
 | ----------------- | ------------------- |
-| `LLM_PROVIDER`    | `gemini`            |
-| `LLM_BUDGET_MODE` | `free`              |
-| `LLM_MODEL`       | `gemini-2.5-flash`  |
-| `LLM_DAILY_LIMIT` | `100`               |
+| `LLM_PROVIDER`    | `gemini`                |
+| `LLM_BUDGET_MODE` | `free`                  |
+| `GEMINI_MODEL`    | `gemini-3.1-flash-lite` |
+| `LLM_MODEL`       | vide                      |
+| `LLM_DAILY_LIMIT` | `100`                   |
 
 La clé reste exclusivement côté serveur. Les noms de variables ne doivent recevoir aucun préfixe de publication au navigateur.
 
