@@ -224,13 +224,14 @@ export async function releaseCohort(
     };
 
   const salt = env.P1_CANARY_SALT!.trim();
+  // Cohort by stable business identity, not ephemeral browser/session identity.
+  // Re-authentication must not make the same dossier jump in or out of canary.
   const bucket = stableBucket(
     await digest(
       [
         salt,
         input.organizationId,
         input.authorizedCaseId,
-        input.sessionId,
       ].join('|'),
     ),
   );
