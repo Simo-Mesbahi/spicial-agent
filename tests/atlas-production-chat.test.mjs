@@ -243,6 +243,9 @@ async function setup(t, overrides = {}) {
     get cookie() {
       return cookie;
     },
+    get csrf() {
+      return csrf;
+    },
   };
 }
 const question = (message = 'Où en est ma télé ?', requestId = crypto.randomUUID()) => ({
@@ -339,6 +342,46 @@ test('Strict body, CSRF, same origin and foreign reference checks prevent provid
   );
   assert.equal((await c.call('chat', question('SAV-2026-9999'))).status, 403);
   assert.equal(c.remote.providerCalls, 0);
+});
+
+test('Production chat accepts the exact configured public origin behind a host-rewriting proxy', async (t) => {
+  const publicOrigin = 'https://support.example.com';
+  const c = await setup(t, {
+    APP_ENVIRONMENT: 'LOCAL',
+    APP_PUBLIC_ORIGIN: publicOrigin,
+  });
+
+  const accepted = await handleProductionApi(
+    new Request('http://127.0.0.1:5173/api/production/chat', {
+      method: 'POST',
+      headers: {
+        Origin: publicOrigin,
+        'Content-Type': 'application/json',
+        Cookie: c.cookie,
+        'x-atlas-csrf': c.csrf,
+      },
+      body: JSON.stringify(question()),
+    }),
+    c.env,
+  );
+  assert.equal(accepted.status, 200, await accepted.clone().text());
+  assert.equal(c.remote.providerCalls, 1);
+
+  const hostile = await handleProductionApi(
+    new Request('http://127.0.0.1:5173/api/production/chat', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://attacker.example',
+        'Content-Type': 'application/json',
+        Cookie: c.cookie,
+        'x-atlas-csrf': c.csrf,
+      },
+      body: JSON.stringify(question()),
+    }),
+    c.env,
+  );
+  assert.equal(hostile.status, 403);
+  assert.equal(c.remote.providerCalls, 1);
 });
 
 test('Zero daily allowance prevents even the first provider request', async (t) => {
