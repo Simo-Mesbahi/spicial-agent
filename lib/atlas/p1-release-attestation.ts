@@ -46,9 +46,13 @@ function encodeBase64Url(bytes: Uint8Array) {
 
 function decodeBase64Url(value: string) {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('invalid_base64url');
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4);
+  const padded =
+    value.replace(/-/g, '+').replace(/_/g, '/') +
+    '='.repeat((4 - (value.length % 4)) % 4);
   const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (encodeBase64Url(bytes) !== value) throw new Error('non_canonical_base64url');
+  return bytes;
 }
 
 function textBytes(value: string) {
@@ -142,7 +146,6 @@ export async function verifyReleaseAttestation(
     return { valid: false, payload: null, reason: 'invalid_format' };
 
   let payload: ReleaseAttestationPayload;
-  let signature: Uint8Array;
   try {
     const payloadRaw = new TextDecoder('utf-8', { fatal: true }).decode(
       decodeBase64Url(parts[1]),
@@ -151,9 +154,15 @@ export async function verifyReleaseAttestation(
     if (!parsed.success)
       return { valid: false, payload: null, reason: 'invalid_payload' };
     payload = parsed.data;
-    signature = decodeBase64Url(parts[2]);
   } catch {
     return { valid: false, payload: null, reason: 'invalid_payload' };
+  }
+
+  let signature: Uint8Array;
+  try {
+    signature = decodeBase64Url(parts[2]);
+  } catch {
+    return { valid: false, payload: null, reason: 'invalid_signature' };
   }
 
   if (signature.length !== 32)
