@@ -235,6 +235,23 @@ const accessCodeResultSchema = caseMutationResultSchema.extend({
   replayed: z.boolean(),
 });
 
+const caseFormOptionsSchema = z
+  .object({
+    stores: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            code: z.string().max(160),
+            name: z.string().max(240),
+            city: z.string().max(160).nullable(),
+          })
+          .strict(),
+      )
+      .max(200),
+  })
+  .strict();
+
 const auditSchema = z
   .object({
     items: z
@@ -793,6 +810,19 @@ export async function handleAdminOperationsApi(
       if (!parsed.success) fail(502, 'Détail du dossier invalide.', 'invalid_case_detail_response');
       if (!parsed.data) fail(404, 'Dossier introuvable.', 'case_not_found');
       return json({ case: parsed.data }, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/options` && req.method === 'GET') {
+      const organization = organizationId(url, session.me);
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_case_form_options',
+        { p_organization_id: organization },
+        session.accessToken,
+      );
+      const parsed = caseFormOptionsSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Options de dossier invalides.', 'invalid_case_options_response');
+      return json(parsed.data, 200, session.cookies);
     }
 
     if (path === `${BASE_PATH}/case/create` && req.method === 'POST') {
