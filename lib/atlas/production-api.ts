@@ -609,9 +609,15 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
       fail(403, 'Organisation non autorisée.', 'organization_denied');
     const limit = Math.max(1, Math.min(Number(params.get('limit') ?? 50) || 50, 100));
     const offset = Math.max(0, Number(params.get('offset') ?? 0) || 0);
+    const serviceType = params.get('serviceType') || null;
+    if (serviceType && !['sav', 'customer_service'].includes(serviceType))
+      fail(400, 'Service invalide.', 'invalid_service_type');
+    const archiveFilter = params.get('archive') || 'active';
+    if (!['active', 'archived', 'all'].includes(archiveFilter))
+      fail(400, 'Filtre d’archive invalide.', 'invalid_archive_filter');
     const result = await rpc<unknown>(
       env,
-      'admin_list_cases',
+      'admin_list_cases_v2',
       {
         p_organization_id: organizationId,
         p_limit: limit,
@@ -619,6 +625,8 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
         p_search: (params.get('search') ?? '').slice(0, 120),
         p_status: params.get('status') || null,
         p_kind: params.get('kind') || null,
+        p_service_type: serviceType,
+        p_archive_filter: archiveFilter,
       },
       { kind: 'user', accessToken: session.accessToken },
     );
