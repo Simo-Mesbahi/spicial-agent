@@ -84,9 +84,12 @@ Natural-generation qualification additionally requires explicit human review of:
 
 An automated green report alone does **not** authorize customer release.
 
-The live qualification writes an immutable artifact manifest (SHA-256 for the contract,
-structured report, retrieval report, generation report and all grounding shards) and a
-derived `qualificationId`. Human review is bound to that exact qualification run and
+The live qualification writes an immutable artifact manifest containing the clean Git
+source-tree SHA plus SHA-256 fingerprints for the qualification contract, structured
+report, retrieval report, generation report and all grounding shards. A derived
+`qualificationId` binds the full evidence set. Live qualification and finalization
+refuse tracked working-tree changes, so a reviewed release cannot silently drift to
+different application code. Human review is bound to that exact qualification run and
 to the exact generated customer-facing prose.
 
 After the live run reaches `human_review_required`, generate the fail-closed review
@@ -114,7 +117,7 @@ npm run eval:p1:finalize -- \
 
 The final report is written separately to
 `outputs/p1-live/release-final.json`; the original live qualification report is never
-overwritten. Finalization fails closed if any artifact, contract, reviewed candidate,
+overwritten. Finalization fails closed if the source tree, any artifact, contract, reviewed candidate,
 candidate hash, language, rubric, reviewer metadata or qualification ID has changed.
 
 ## P1.7B — Documentary freshness gate
