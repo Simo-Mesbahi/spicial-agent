@@ -29,7 +29,17 @@ import { providerTrace, ProviderError } from './provider-runtime';
 import { publicModelConfig } from './model-policy';
 import { mutationOriginAllowed } from './request-security';
 import { effectiveEnvironment } from './runtime-settings';
-import { searchKnowledge } from './knowledge-runtime';
+import {
+  searchKnowledge,
+  revalidateKnowledgeEvidence,
+  KnowledgeFreshnessError,
+} from './knowledge-runtime';
+import {
+  releaseCohort,
+  releaseNaturalResponse,
+  shouldEvaluateNaturalResponse,
+  type ReleaseDiagnostics,
+} from './p1-release';
 
 export async function productionChat(
   req: Request,
@@ -126,6 +136,7 @@ export async function productionChat(
   let persisted = false;
   let generation: GenerationDiagnostics | null = null;
   let validation: ValidationDiagnostics | null = null;
+  let release: ReleaseDiagnostics | null = null;
   try {
     lease = await acquireConversation(env.DB, adapter.spaceId, adapter.expiresAt);
     // A production session authorizes exactly one case. Changing it requires verification.
@@ -196,77 +207,130 @@ export async function productionChat(
       if (!(error instanceof ProviderError)) throw error;
       fallbackReason = error.reason;
     }
-    // Shadow runtime is limited to case-only answers. Documentary drafts are evaluated
-    // offline until publication can be revalidated after generation (P1.6).
-    if (
-      conversation?.plan.kind === 'case' &&
-      conversation.evidencePack &&
-      env.LLM_GENERATION_MODE === 'shadow'
+    const cohort = await releaseCohort(env, {
+      organizationId: adapter.organizationId,
+      authorizedCaseId: adapter.caseId,
+      sessionId,
+    });
+
+    async function refreshReleaseEvidence(
+      generatedFrom: NonNullable<typeof conversation>['evidencePack'] & {},
     ) {
+      if (!generatedFrom) throw new EvidencePackError('invalid_evidence');
+      // Revalidate the customer session after all upstream latency. A fresh case read is
+      // required even for knowledge-only turns because authorization is session-bound.
+      const authorizedFacts = await adapter.read();
+      const knowledge = generatedFrom.knowledge.sources.length
+        ? await revalidateKnowledgeEvidence(env, generatedFrom)
+        : { articles: [], scope: 'not_required' as const };
+      const pack = await buildEvidencePack({
+        context: evidenceContext,
+        language: generatedFrom.responseLanguage,
+        caseFacts: generatedFrom.caseFacts ? authorizedFacts : null,
+        knowledge,
+        offerContact: false,
+      });
+      return { pack, authorizedFacts };
+    }
+
+    if (conversation?.evidencePack) {
       const generatedFrom = conversation.evidencePack;
-      const result = await generateNaturalDraft(
+      const evaluate = shouldEvaluateNaturalResponse(
         env,
-        {
-          pack: conversation.evidencePack,
-          context: evidenceContext,
-          message,
-          guidance: {
-            topic: conversation.state.currentTopic,
-            subIntent: conversation.understanding.subIntent,
-            short: conversation.state.stylePreferences.short,
-            emoji: conversation.state.stylePreferences.emoji,
-          },
-        },
-        trace,
+        conversation.plan.kind,
+        cohort,
       );
-      generation = result.diagnostics;
-      if (generation.calls > 0) {
-        // A valid draft can still be false. Never assign result.draft to any response or history.
-        usedCase = await adapter.read();
-        conversation.evidencePack = await buildEvidencePack({
-          context: evidenceContext,
-          language: conversation.language,
-          caseFacts: usedCase,
-          knowledge: conversation.knowledge,
-          offerContact: false,
-        });
-        if (result.draft && env.LLM_VALIDATION_MODE === 'shadow') {
-          validation = await validateNaturalDraft(
-            env,
-            {
-              draft: result.draft,
-              pack: generatedFrom,
-              currentPack: conversation.evidencePack,
-              context: evidenceContext,
+      let draft: Awaited<ReturnType<typeof generateNaturalDraft>>['draft'] = null;
+      let freshnessFailure: 'knowledge_changed' | 'knowledge_unavailable' | null = null;
+      let currentPack = generatedFrom;
+
+      if (evaluate) {
+        const result = await generateNaturalDraft(
+          env,
+          {
+            pack: generatedFrom,
+            context: evidenceContext,
+            message,
+            guidance: {
+              topic: conversation.state.currentTopic,
+              subIntent: conversation.understanding.subIntent,
+              short: conversation.state.stylePreferences.short,
+              emoji: conversation.state.stylePreferences.emoji,
             },
-            trace,
-          );
-          if (validation.calls > 0) {
-            // The model report is advisory. Refresh authorization and facts after its latency.
-            usedCase = await adapter.read();
-            conversation.evidencePack = await buildEvidencePack({
-              context: evidenceContext,
-              language: conversation.language,
-              caseFacts: usedCase,
-              knowledge: conversation.knowledge,
-              offerContact: false,
-            });
-            validation = await revalidateFactualResult(
-              validation,
-              generatedFrom,
-              conversation.evidencePack,
-              evidenceContext,
+          },
+          trace,
+        );
+        draft = result.draft;
+        generation = result.diagnostics;
+
+        if (draft && generation.outcome === 'candidate_generated') {
+          try {
+            const refreshed = await refreshReleaseEvidence(generatedFrom);
+            currentPack = refreshed.pack;
+            usedCase = refreshed.authorizedFacts;
+            validation = await validateNaturalDraft(
+              env,
+              {
+                draft,
+                pack: generatedFrom,
+                currentPack,
+                context: evidenceContext,
+              },
+              trace,
             );
+
+            if (validation.calls > 0) {
+              // No provider result can cross the gate without a second post-validation
+              // authorization + publication refresh.
+              const finalRefresh = await refreshReleaseEvidence(generatedFrom);
+              currentPack = finalRefresh.pack;
+              usedCase = finalRefresh.authorizedFacts;
+              validation = await revalidateFactualResult(
+                validation,
+                generatedFrom,
+                currentPack,
+                evidenceContext,
+              );
+            }
+          } catch (error) {
+            if (error instanceof KnowledgeFreshnessError)
+              freshnessFailure = error.reason;
+            else throw error;
           }
         }
-        conversation.currentCase = conversation.evidencePack.caseFacts;
+      }
+
+      conversation.evidencePack = currentPack;
+      conversation.currentCase = currentPack.caseFacts;
+      const released = await releaseNaturalResponse(env, {
+        cohort,
+        plan: conversation.plan.kind,
+        draft,
+        generation,
+        validation,
+        generatedPack: generatedFrom,
+        currentPack,
+        context: evidenceContext,
+        groundingFailure: conversation.groundingFailure,
+        freshnessFailure,
+        allowEmoji: conversation.state.stylePreferences.emoji,
+      });
+      release = released.diagnostics;
+
+      if (released.content) {
+        conversation.answer.content = released.content;
+      } else if (conversation.currentCase) {
+        // Fail closed to deterministic server-owned rendering after any candidate,
+        // validation, freshness or rollout failure.
         conversation.answer.content = renderCaseFacts(
-          conversation.currentCase!,
+          conversation.currentCase,
           conversation.language,
         );
       }
     }
+
     // Social responses and fallbacks also revalidate the case session after provider latency.
+    // For released content, usedCase already comes from the final post-validation refresh.
     const finalFacts = usedCase ?? (await adapter.read());
     const language =
       conversation?.language ??
@@ -295,14 +359,29 @@ export async function productionChat(
     const metadata = {
       evidence,
       generation: generation
-        ? { mode: generation.mode, outcome: generation.outcome, released: false }
+        ? {
+            mode: generation.mode,
+            outcome: generation.outcome,
+            released: release?.released ?? false,
+          }
         : null,
-      validation: validation ? { outcome: validation.outcome, released: false } : null,
+      validation: validation
+        ? {
+            mode: validation.mode,
+            outcome: validation.outcome,
+            released: release?.released ?? false,
+          }
+        : null,
+      release,
       orchestrator: 'structured',
       dataSource: 'supabase',
       provider: config.provider,
       model: config.model,
-      mode: conversation ? config.provider : 'deterministic',
+      mode: release?.released
+        ? 'grounded_generation'
+        : conversation
+          ? config.provider
+          : 'deterministic',
       fallback: fallbackReason ? 'provider_unavailable' : null,
       fallbackReason,
       requestId,
@@ -368,7 +447,14 @@ export async function productionChat(
       evidence,
       generation,
       validation,
-      outcome: safety ? 'safety_guard' : fallbackReason ? 'fallback' : 'provider_success',
+      release,
+      outcome: safety
+        ? 'safety_guard'
+        : release?.released
+          ? 'natural_released'
+          : fallbackReason
+            ? 'fallback'
+            : 'provider_success',
       fallbackReason,
       providerTrace: trace,
       persisted,
@@ -386,6 +472,7 @@ export async function productionChat(
       outcome: 'error',
       generation,
       validation,
+      release,
       errorClassification:
         error instanceof CaseAccessError
           ? error.code
