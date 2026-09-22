@@ -643,7 +643,7 @@ grant execute on function public.admin_list_cases_v2(
   uuid,integer,integer,text,text,text,text,text
 ) to authenticated;
 
-create or replace function public.admin_case_detail(
+create or replace function public.admin_case_detail_v2(
   p_organization_id uuid,
   p_case_id uuid
 )
@@ -744,8 +744,8 @@ begin
   );
 end;
 $$;
-revoke all on function public.admin_case_detail(uuid,uuid) from public,anon;
-grant execute on function public.admin_case_detail(uuid,uuid) to authenticated;
+revoke all on function public.admin_case_detail_v2(uuid,uuid) from public,anon;
+grant execute on function public.admin_case_detail_v2(uuid,uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Audited mutations
