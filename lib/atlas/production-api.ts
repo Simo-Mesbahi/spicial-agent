@@ -204,6 +204,9 @@ const releaseTelemetryResponseSchema = z
                 'unsupported_action',
               ])
               .nullable(),
+            // Parsed to lock the internal response contract, deliberately NOT persisted.
+            evidenceCaseVersion: z.number().int().positive().nullable(),
+            knowledgeSourceCount: z.number().int().min(0).max(3),
           })
           .strict()
           .nullable(),
