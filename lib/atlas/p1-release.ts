@@ -17,12 +17,17 @@ import {
   type NaturalDraft,
 } from './natural-generation';
 import { safeConversationalDraft, type ConversationPlan } from './structured-conversation';
+import { verifyReleaseAttestation } from './p1-release-attestation';
 
 export type ReleaseSettings = ModelEnvironment &
   EmbeddingEnv & {
     P1_RELEASE_MODE?: string;
     P1_CANARY_PERCENT?: string;
     P1_CANARY_SALT?: string;
+    P1_RELEASE_ATTESTATION?: string;
+    P1_RELEASE_ATTESTATION_KEY?: string;
+    P1_DEPLOYED_SOURCE_TREE_SHA?: string;
+    SUPABASE_ORGANIZATION_ID?: string;
     LLM_GENERATION_MODE?: string;
     LLM_VALIDATION_MODE?: string;
     LLM_ORCHESTRATOR?: string;
@@ -104,12 +109,15 @@ export type ReleaseConfigurationState = {
   canarySaltConfigured: boolean;
   modelConfigured: boolean;
   embeddingConfigured: boolean;
+  attestationConfigured: boolean;
+  attestationVerified: boolean;
+  attestationExpiresAt: string | null;
   issues: string[];
 };
 
-export function releaseConfigurationState(
+export async function releaseConfigurationState(
   env: ReleaseSettings,
-): ReleaseConfigurationState {
+): Promise<ReleaseConfigurationState> {
   const issues: string[] = [];
   let mode: P1ReleaseMode = 'off';
   try {
@@ -150,6 +158,34 @@ export function releaseConfigurationState(
     embeddingConfigured = false;
   }
 
+  const attestationConfigured = Boolean(
+    env.P1_RELEASE_ATTESTATION?.trim() &&
+      env.P1_RELEASE_ATTESTATION_KEY?.trim() &&
+      env.P1_DEPLOYED_SOURCE_TREE_SHA?.trim() &&
+      env.SUPABASE_ORGANIZATION_ID?.trim(),
+  );
+  let attestationVerified = false;
+  let attestationExpiresAt: string | null = null;
+
+  if (mode === 'canary' || mode === 'on') {
+    if (!attestationConfigured) {
+      issues.push('release_attestation_missing');
+    } else {
+      const attestation = await verifyReleaseAttestation({
+        token: env.P1_RELEASE_ATTESTATION,
+        secret: env.P1_RELEASE_ATTESTATION_KEY,
+        deployedSourceTreeSha: env.P1_DEPLOYED_SOURCE_TREE_SHA,
+        organizationId: env.SUPABASE_ORGANIZATION_ID,
+      });
+      if (!attestation.valid) {
+        issues.push('release_attestation_invalid');
+      } else {
+        attestationVerified = true;
+        attestationExpiresAt = attestation.payload.expiresAt;
+      }
+    }
+  }
+
   if (mode === 'canary') {
     if (canaryPercent < 1) issues.push('canary_percent_must_be_positive');
     if (!canarySaltConfigured) issues.push('canary_salt_missing');
@@ -176,6 +212,9 @@ export function releaseConfigurationState(
     canarySaltConfigured,
     modelConfigured,
     embeddingConfigured,
+    attestationConfigured,
+    attestationVerified,
+    attestationExpiresAt,
     issues,
   };
 }
@@ -193,7 +232,7 @@ export async function releaseCohort(
     sessionId: string;
   },
 ): Promise<ReleaseCohort> {
-  const state = releaseConfigurationState(env);
+  const state = await releaseConfigurationState(env);
   const mode = state.mode;
   const percent = state.canaryPercent;
 

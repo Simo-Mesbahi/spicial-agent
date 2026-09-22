@@ -29,11 +29,25 @@ const qualificationArtifacts =
   qualification?.artifacts && typeof qualification.artifacts === 'object'
     ? qualification.artifacts
     : null;
-const computedQualificationId = qualificationArtifacts
-  ? createHash('sha256')
-      .update(JSON.stringify(qualificationArtifacts))
-      .digest('hex')
-  : null;
+const qualificationScope =
+  qualification?.scope && typeof qualification.scope === 'object'
+    ? qualification.scope
+    : null;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const computedQualificationId =
+  qualificationArtifacts &&
+  qualificationScope &&
+  UUID.test(qualificationScope.organizationId ?? '')
+    ? createHash('sha256')
+        .update(
+          JSON.stringify({
+            scope: qualificationScope,
+            artifacts: qualificationArtifacts,
+          }),
+        )
+        .digest('hex')
+    : null;
 
 if (
   qualification?.schema !== 1 ||
@@ -98,6 +112,7 @@ const template = {
     kind: 'p1-generation-evaluation',
     qualificationReport: qualificationPath,
     qualificationId: qualification.qualificationId,
+    organizationId: qualificationScope.organizationId,
     generationReport: generationPath,
     generationSha256,
     scenarioCount: items.length,

@@ -29,6 +29,9 @@ type ReleaseOverview = {
     canaryPercent: number;
     modelConfigured: boolean;
     embeddingConfigured: boolean;
+    attestationConfigured: boolean;
+    attestationVerified: boolean;
+    attestationExpiresAt: string | null;
     issues: string[];
   };
 };
@@ -127,6 +130,8 @@ export default function PerformancePage() {
           <tr><th>Replis après validation</th><td>{releaseOverview?.metrics.quality.validation_failed ?? '—'}</td></tr>
           <tr><th>Preuves invalidées / indisponibles</th><td>{releaseOverview?.metrics.quality.evidence_invalidated ?? '—'}</td></tr>
           <tr><th>Échecs de génération</th><td>{releaseOverview?.metrics.quality.generation_failed ?? '—'}</td></tr>
+          <tr><th>Attestation de qualification</th><td>{releaseOverview ? (releaseOverview.configuration.attestationVerified ? 'Vérifiée' : releaseOverview.configuration.attestationConfigured ? 'Invalide / expirée' : 'Non configurée') : '—'}</td></tr>
+          <tr><th>Expiration de l’attestation</th><td>{releaseOverview?.configuration.attestationExpiresAt ? new Date(releaseOverview.configuration.attestationExpiresAt).toLocaleString('fr-FR') : '—'}</td></tr>
           <tr><th>Latence P95 observée</th><td>{releaseOverview?.metrics.latency.p95_ms == null ? '—' : `${releaseOverview.metrics.latency.p95_ms} ms`}</td></tr>
           <tr><th>Appels fournisseur</th><td>{releaseOverview?.metrics.usage.provider_calls ?? '—'}</td></tr>
         </tbody></table></div>
