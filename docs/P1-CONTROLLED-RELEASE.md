@@ -177,7 +177,7 @@ LLM_VALIDATION_MODE=release
 P1_RELEASE_MODE=on
 ```
 
-The release controller refuses to arm `canary` or `on` if any required layer is not enabled.
+The release controller refuses to arm `canary` or `on` if any required layer is not enabled or if the active generation provider / multilingual embedding provider is not validly configured.
 
 `GET /api/production/config` exposes only non-secret readiness diagnostics:
 
@@ -185,6 +185,8 @@ The release controller refuses to arm `canary` or `on` if any required layer is 
 - readiness;
 - canary percentage;
 - whether a salt is configured;
+- whether the active generation provider is configured;
+- whether the embedding provider is configured;
 - configuration issue codes.
 
 The salt itself is never exposed.
