@@ -24,7 +24,11 @@ import {
   ConversationBusy,
   type ConversationLease,
 } from './conversation-state';
-import { understandConversation, executeConversation } from './structured-conversation';
+import {
+  understandConversation,
+  executeConversation,
+  safeConversationReply,
+} from './structured-conversation';
 import { detectConversationLanguage } from './conversation-intelligence';
 import { providerTrace, ProviderError } from './provider-runtime';
 import { publicModelConfig } from './model-policy';
@@ -321,9 +325,23 @@ export async function productionChat(
       });
       release = released.diagnostics;
 
-      if (released.content) conversation.answer.content = released.content;
-      // Otherwise preserve executeConversation's deterministic server-owned answer.
-      // Shadow/canary evaluation must never degrade the customer-visible fallback.
+      if (released.content) {
+        conversation.answer.content = released.content;
+      } else if (currentPack.caseFacts) {
+        // A model candidate may have consumed enough latency for the dossier to change.
+        // The deterministic fallback must therefore use the final fresh case facts.
+        conversation.answer.content = renderCaseFacts(
+          currentPack.caseFacts,
+          conversation.language,
+        );
+      } else if (freshnessFailure) {
+        // Never retain documentary prose from evidence that failed the final publication check.
+        conversation.answer.content = safeConversationReply(
+          'missing',
+          conversation.language,
+        );
+        conversation.answer.sources = [];
+      }
     }
 
     // Social responses and fallbacks also revalidate the case session after provider latency.
@@ -364,7 +382,6 @@ export async function productionChat(
         : null,
       validation: validation
         ? {
-            mode: validation.mode,
             outcome: validation.outcome,
             released: release?.released ?? false,
           }
