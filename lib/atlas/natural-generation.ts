@@ -85,7 +85,7 @@ const guidanceSchema = z
   .strict();
 export type GenerationGuidance = z.infer<typeof guidanceSchema>;
 export type GenerationDiagnostics = {
-  mode: 'off' | 'shadow';
+  mode: 'off' | 'shadow' | 'release';
   outcome: 'skipped' | 'candidate_generated' | 'failed';
   reason:
     | ProviderFailureReason
@@ -159,7 +159,7 @@ async function reserveGeneration(env: AtlasEnv, organizationId: string) {
       .first(),
   );
 }
-/** One optional draft call. No retries and NO path that releases its text to customers. */
+/** One optional draft call. No retries. Release authority lives exclusively in p1-release.ts. */
 export async function generateNaturalDraft(
   env: AtlasEnv,
   input: {
@@ -174,7 +174,12 @@ export async function generateNaturalDraft(
     beforeCalls = trace.calls,
     beforeAttempts = trace.attempts.length;
   const diagnostics: GenerationDiagnostics = {
-    mode: env.LLM_GENERATION_MODE === 'shadow' ? 'shadow' : 'off',
+    mode:
+      env.LLM_GENERATION_MODE === 'shadow'
+        ? 'shadow'
+        : env.LLM_GENERATION_MODE === 'release'
+          ? 'release'
+          : 'off',
     outcome: 'skipped',
     reason: 'disabled',
     evidenceCaseVersion: null,
@@ -190,7 +195,8 @@ export async function generateNaturalDraft(
   try {
     if (!env.LLM_GENERATION_MODE || env.LLM_GENERATION_MODE === 'off')
       return { draft, diagnostics };
-    if (env.LLM_GENERATION_MODE !== 'shadow') throw new ProviderError('configuration');
+    if (!['shadow', 'release'].includes(env.LLM_GENERATION_MODE))
+      throw new ProviderError('configuration');
     const parsedPack = evidencePackSchema.safeParse(input.pack);
     if (!parsedPack.success) throw new EvidencePackError('invalid_evidence');
     const pack = parsedPack.data;
