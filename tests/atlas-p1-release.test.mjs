@@ -301,6 +301,44 @@ test('release gate blocks documentary freshness failures before customer release
 });
 
 
+test('documentary release requires a successful hybrid evidence path even when evidence is fresh', async () => {
+  const fixture = generationFixture(generationScenarios.find((row) => row.kind === 'knowledge'));
+  const { generation, validation } = diagnostics();
+  const result = await releaseNaturalResponse(
+    {},
+    {
+      cohort: {
+        mode: 'on',
+        selected: true,
+        bucket: null,
+        percent: 100,
+        configurationValid: true,
+      },
+      plan: 'knowledge',
+      draft: {
+        language: fixture.pack.responseLanguage,
+        sentences: [
+          {
+            text: 'La demande fait l’objet d’un examen.',
+            evidenceRefs: ['knowledge.0'],
+          },
+        ],
+      },
+      generation: { ...generation, evidenceCaseVersion: null },
+      validation,
+      generatedPack: fixture.pack,
+      currentPack: structuredClone(fixture.pack),
+      context: fixture.context,
+      groundingFailure: false,
+      freshnessFailure: null,
+      hybridEvidenceReady: false,
+      allowEmoji: false,
+    },
+  );
+  assert.equal(result.content, null);
+  assert.equal(result.diagnostics.reason, 'hybrid_unavailable');
+});
+
 test('release readiness fails closed unless structured, hybrid, generation and validation are all armed', () => {
   const base = {
     P1_RELEASE_MODE: 'on',
@@ -320,6 +358,7 @@ test('release readiness fails closed unless structured, hybrid, generation and v
     ['RAG_MODE', 'lexical'],
     ['LLM_GENERATION_MODE', 'shadow'],
     ['LLM_VALIDATION_MODE', 'shadow'],
+    ['EMBEDDING_API_KEY', ''],
   ]) {
     const state = releaseConfigurationState({ ...base, [key]: value });
     assert.equal(state.releaseReady, false, key);
