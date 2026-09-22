@@ -66,6 +66,33 @@ A cost-bearing qualification requires explicit confirmation:
 npm run eval:p1:release -- --live --confirm P1_RELEASE
 ```
 
+For a reproducible remote run, the repository also provides the manual-only
+`.github/workflows/p1-live-qualification.yml` workflow. It is never triggered by
+pushes or pull requests. Before any provider call it requires the literal
+`P1_RELEASE` acknowledgement, requires the `main` branch, validates the required
+server secrets and runs the complete no-spend CI/evaluation/build gate. Only then does
+it execute the bounded live qualification.
+
+The workflow requires a protected GitHub **Environment** selected at dispatch time.
+Use a preproduction environment with reviewer protection for this operation; its
+secrets are exposed only to the qualification job after the environment gate is
+approved.
+
+The selected environment must provide these GitHub Actions secrets:
+
+- `SUPABASE_URL`;
+- `SUPABASE_PUBLISHABLE_KEY`;
+- `SUPABASE_SECRET_KEY`;
+- `SUPABASE_ORGANIZATION_ID`;
+- `GEMINI_API_KEY` and/or `OPENAI_API_KEY` for the selected model provider;
+- optional `EMBEDDING_API_KEY` when embeddings use a separate credential.
+
+When `EMBEDDING_API_KEY` is intentionally omitted, the workflow can reuse the
+selected Gemini/OpenAI provider key for embeddings without printing it. The workflow
+never enables `P1_RELEASE_MODE=canary` or `on`. A successful automated run produces
+a seven-day GitHub artifact containing the qualification reports and a fail-closed
+`human-review.json` template whose approvals all start disabled.
+
 The governed live plan currently measures:
 
 - exactly 100 structured live turns across four critical conversation families and all five supported languages;
