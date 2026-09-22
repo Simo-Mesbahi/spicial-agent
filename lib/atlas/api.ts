@@ -38,6 +38,7 @@ import { effectiveEnvironment } from './runtime-settings';
 import { modelSettings, publicModelConfig, type ModelEnvironment } from './model-policy';
 import { caseBrief } from './case-brief';
 import { boundedJson, JsonLimitError } from './bounded-json';
+import { mutationOriginAllowed } from './request-security';
 import { supportDecision, supportQuickReplies, type SupportPath } from './support-routing';
 import { z } from 'zod';
 import { acquireConversation, commitConversation, releaseConversation, ConversationBusy, type ConversationLease } from './conversation-state';
@@ -56,6 +57,7 @@ export interface Database {
 export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSettings, GenerationSettings, ValidationSettings {
   DB: Database;
   APP_ENVIRONMENT?: string;
+  APP_PUBLIC_ORIGIN?: string;
   SUPABASE_ORGANIZATION_ID?: string;
   RAG_RESULTS?: number;
   RAG_MIN_ANCHORS?: number;
@@ -232,9 +234,8 @@ async function spaceFor(db: Database, req: Request): Promise<Space> {
     .first<Space>();
   return s ?? fail(401, 'Votre session a expiré. Démarrez une nouvelle démonstration.');
 }
-function guardWrite(req: Request, s?: Space) {
-  const origin = req.headers.get('origin');
-  if (origin && origin !== new URL(req.url).origin) fail(403, 'Origine non autorisée.');
+function guardWrite(req: Request, env: AtlasEnv, s?: Space) {
+  if (!mutationOriginAllowed(req, env)) fail(403, 'Origine non autorisée.');
   if (req.headers.get('sec-fetch-site') === 'cross-site') fail(403, 'Requête externe refusée.');
   if (s && req.headers.get('x-atlas-csrf') !== s.csrf)
     fail(403, 'Session de sécurité invalide. Rechargez la page.');
@@ -932,7 +933,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
     if (path === '/api/knowledge' && req.method === 'GET') return json({ articles });
     if (!db) fail(503, 'Le stockage n’est pas disponible.');
     if (path === '/api/session' && req.method === 'POST') {
-      guardWrite(req);
+      guardWrite(req, env);
       await body(req);
       try {
         const existing = await spaceFor(db, req);
@@ -979,7 +980,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       });
     }
     const s = await spaceFor(db, req);
-    if (req.method !== 'GET') guardWrite(req, s);
+    if (req.method !== 'GET') guardWrite(req, env, s);
     if (path === '/api/snapshot' && req.method === 'GET')
       return json(await snapshot(db, s, req, env));
     if (path === '/api/session' && req.method === 'DELETE') {

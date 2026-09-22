@@ -13,6 +13,7 @@ import {
 import { z } from 'zod';
 import { environmentLabel, type RuntimeEnv } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
+import { mutationOriginAllowed } from './request-security';
 import type { Database } from './api';
 import {
   jwtClaims,
@@ -166,9 +167,8 @@ function clearCookie(req: Request, name: string) {
   return sessionCookie(req, name, '', 0);
 }
 
-function guardMutation(req: Request) {
-  const origin = req.headers.get('origin');
-  if (origin && origin !== new URL(req.url).origin)
+function guardMutation(req: Request, env: ProductionEnv) {
+  if (!mutationOriginAllowed(req, env))
     fail(403, 'Requête externe refusée.', 'invalid_origin');
   if (req.headers.get('sec-fetch-site') === 'cross-site')
     fail(403, 'Requête externe refusée.', 'cross_site_request');
@@ -353,7 +353,7 @@ function publicAdmin(me: z.infer<typeof adminMeSchema>) {
 async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) {
   const settings = supabaseSettings(env);
   if (path === '/api/production/cases/verify' && req.method === 'POST') {
-    guardMutation(req);
+    guardMutation(req, env);
     const parsed = z
       .object({
         reference: z
@@ -442,7 +442,7 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
     }
   }
   if (path === '/api/production/cases/current' && req.method === 'DELETE') {
-    guardMutation(req);
+    guardMutation(req, env);
     const accessToken = cookie(req, CASE_COOKIE);
     if (accessToken)
       await rpc(
@@ -462,7 +462,7 @@ async function handleCaseRoutes(req: Request, env: ProductionEnv, path: string) 
 
 async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string) {
   if (path === '/api/production/admin/login' && req.method === 'POST') {
-    guardMutation(req);
+    guardMutation(req, env);
     await reserveRate(env.DB, await networkKey(req, 'admin-login'), 10, FIFTEEN_MINUTES);
     const parsed = z
       .object({
@@ -509,7 +509,7 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
   }
 
   if (path === '/api/production/admin/mfa/enroll' && req.method === 'POST') {
-    guardMutation(req);
+    guardMutation(req, env);
     await requestBody(req);
     const accessToken = cookie(req, PREAUTH_ACCESS_COOKIE);
     const refreshToken = cookie(req, PREAUTH_REFRESH_COOKIE);
@@ -519,7 +519,7 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
   }
 
   if (path === '/api/production/admin/mfa/verify' && req.method === 'POST') {
-    guardMutation(req);
+    guardMutation(req, env);
     await reserveRate(env.DB, await networkKey(req, 'admin-mfa'), 10, FIFTEEN_MINUTES);
     const parsed = z
       .object({
@@ -569,7 +569,7 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
   }
 
   if (path === '/api/production/admin/logout' && req.method === 'POST') {
-    guardMutation(req);
+    guardMutation(req, env);
     const accessToken = cookie(req, ADMIN_ACCESS_COOKIE) || cookie(req, PREAUTH_ACCESS_COOKIE);
     if (accessToken)
       await supabaseRequest(env, '/auth/v1/logout', {
@@ -655,7 +655,7 @@ export async function handleProductionApi(req: Request, env: ProductionEnv): Pro
     }
 
     if (path === '/api/production/chat' && ['GET', 'POST'].includes(req.method)) {
-      if (req.method === 'POST') guardMutation(req);
+      if (req.method === 'POST') guardMutation(req, env);
       await reserveRate(env.DB, await networkKey(req, 'production-chat'), 60, FIFTEEN_MINUTES);
       const body = req.method === 'POST' ? await requestBody(req) : null;
       return json(

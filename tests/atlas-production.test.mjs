@@ -297,3 +297,34 @@ test('An MFA admin session refreshes securely when only the refresh cookie remai
     env.DB.sql.close();
   }
 });
+
+
+test('Production mutations honor the exact configured public origin behind a local reverse proxy', async () => {
+  const env = {
+    ...environment(),
+    APP_ENVIRONMENT: 'LOCAL',
+    APP_PUBLIC_ORIGIN: 'https://codespace-5173.app.github.dev',
+  };
+  try {
+    const accepted = await handleProductionApi(
+      new Request('http://127.0.0.1:5173/api/production/admin/logout', {
+        method: 'POST',
+        headers: { Origin: 'https://codespace-5173.app.github.dev' },
+      }),
+      env,
+    );
+    assert.equal(accepted.status, 200);
+
+    const rejected = await handleProductionApi(
+      new Request('http://127.0.0.1:5173/api/production/admin/logout', {
+        method: 'POST',
+        headers: { Origin: 'https://attacker.example' },
+      }),
+      env,
+    );
+    assert.equal(rejected.status, 403);
+    assert.equal((await rejected.json()).code, 'invalid_origin');
+  } finally {
+    env.DB.sql.close();
+  }
+});

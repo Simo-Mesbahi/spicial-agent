@@ -2,10 +2,13 @@ import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
 import { sites } from './build/sites-vite-plugin.ts';
+import { codespacesPublicOrigin } from './build/codespaces-origin.ts';
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID = '00000000-0000-4000-8000-000000000000';
+const DEV_PORT = 5173;
 
 const { d1, r2 } = hostingConfig;
+const codespacesOrigin = codespacesPublicOrigin(process.env, DEV_PORT);
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
@@ -30,6 +33,14 @@ const localBindingConfig = {
         },
       ]
     : [],
+  ...(codespacesOrigin
+    ? {
+        // Codespaces terminates HTTPS and may rewrite the host before the
+        // request reaches the Cloudflare Vite runtime. Inject the exact
+        // browser-facing origin as a non-secret local Worker binding.
+        vars: { APP_PUBLIC_ORIGIN: codespacesOrigin },
+      }
+    : {}),
 };
 
 export default defineConfig(async () => {
@@ -45,6 +56,8 @@ export default defineConfig(async () => {
   return {
     server: {
       host: '0.0.0.0',
+      port: DEV_PORT,
+      strictPort: true,
       allowedHosts: ['terminal.local', '.app.github.dev'],
       ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
     },

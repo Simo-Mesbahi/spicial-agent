@@ -24,3 +24,14 @@ Comparer à contexte identique les réponses, les appels d’outils, les erreurs
 Consultation opérationnelle : réparation, devis, échange, livraison, retour, remboursement, réclamation. Explication documentaire : garantie, compte/fidélité/facture, sécurité produit, disponibilités et contact. Les stocks, modifications de compte, paiements, annulations de commandes et remboursements réels ne sont pas exécutés dans cette version.
 
 Le plan d’activation détaillé, les responsabilités et les critères de sortie sont dans [SUPABASE-PRODUCTION.md](SUPABASE-PRODUCTION.md).
+
+
+## Reverse proxy et origine publique
+
+Les mutations HTTP vérifient l’origine du navigateur avant tout traitement métier. Une terminaison TLS classique qui conserve exactement le même hôte public est prise en charge lorsque le navigateur utilise HTTPS et que le runtime interne observe HTTP.
+
+Si un reverse proxy réécrit également l’hôte, configurer `APP_PUBLIC_ORIGIN` côté serveur avec l’origine publique canonique exacte, par exemple `https://support.example.com`. Les chemins, jokers, identifiants intégrés à l’URL et origines HTTP hors environnement `LOCAL` sont refusés. L’application ne fait pas confiance à `X-Forwarded-Host` pour décider qu’une mutation est de même origine.
+
+En développement GitHub Codespaces, `vite.config.ts` dérive automatiquement l’origine HTTPS publique à partir de `CODESPACE_NAME` et `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`, la transmet au Worker comme binding local non secret, fixe le port à `5173` et active `strictPort`. Cela évite une configuration manuelle fragile dans `.dev.vars` tout en conservant la même politique d’origine exacte.
+
+Cette exception de proxy ne remplace ni `Sec-Fetch-Site`, ni les jetons CSRF des sessions concernées, ni les cookies `SameSite`.

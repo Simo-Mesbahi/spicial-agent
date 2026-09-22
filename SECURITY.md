@@ -10,7 +10,7 @@ N’utiliser que des données fictives. La publication expose uniquement le parc
 - Espace valable 24 h ; grant par dossier valable 1 h ; chaque accès est contrôlé au serveur.
 - Code fictif dérivé du jeton de session et de la référence ; seule une empreinte liée à l’espace est conservée par dossier. Le code n’est pas envoyé au modèle.
 - Verrouillage après 5 échecs et quotas atomiques de création de sessions et de conversations.
-- Vérification d’origine, jeton CSRF pour mutations, requêtes SQL paramétrées.
+- Vérification d’origine centralisée et exacte, jeton CSRF pour mutations, requêtes SQL paramétrées. La terminaison TLS d’un reverse proxy est tolérée uniquement à hôte identique ; un proxy qui réécrit l’hôte doit utiliser `APP_PUBLIC_ORIGIN` avec une origine canonique exacte. Aucun wildcard ni en-tête `X-Forwarded-Host` n’est approuvé comme source de confiance.
 - Transitions métier explicites, confirmation des devis, version optimiste et identifiant d’opération contre les doublons.
 - Édition client imposée côté hébergement : simulation, progression opérateur et retard forcé refusés par l’API ; journaux et files internes absents du snapshot navigateur.
 - Devis sans montant valide non acceptables ; un montant absent n’est pas interprété comme zéro.
