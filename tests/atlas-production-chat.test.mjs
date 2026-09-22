@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { database } from './helpers/atlas-fixture.mjs';
 const bundle = await build({
   stdin: {
-    contents: `export {handleProductionApi} from './lib/atlas/production-api'; export * from './lib/atlas/case-adapter'; export {renderCaseFacts} from './lib/atlas/case-facts-renderer';`,
+    contents: `export {handleProductionApi} from './lib/atlas/production-api'; export * from './lib/atlas/case-adapter'; export {renderCaseFacts} from './lib/atlas/case-facts-renderer'; export {createReleaseAttestation} from './lib/atlas/p1-release-attestation';`,
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -12,7 +12,7 @@ const bundle = await build({
   format: 'esm',
   write: false,
 });
-const { handleProductionApi, productionCaseAdapter, normalizeCase, renderCaseFacts } = await import(
+const { handleProductionApi, productionCaseAdapter, normalizeCase, renderCaseFacts, createReleaseAttestation } = await import(
   'data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64')
 );
 const org = '00000000-0000-4000-8000-000000000001';
@@ -798,20 +798,41 @@ test('Documentary fallback is revalidated even when natural generation fails', a
   assert.match(reply.data.content, /information suffisamment fiable/i);
 });
 
-const releaseSettings = {
-  P1_RELEASE_MODE: 'on',
-  RAG_MODE: 'hybrid',
-  LLM_GENERATION_MODE: 'release',
-  LLM_GENERATION_DAILY_LIMIT: '10',
-  LLM_VALIDATION_MODE: 'release',
-  LLM_VALIDATION_DAILY_LIMIT: '10',
-  EMBEDDING_PROVIDER: 'gemini',
-  EMBEDDING_MODEL: 'gemini-embedding-001',
-  EMBEDDING_API_KEY: 'test-embedding-key',
-};
+const RELEASE_TREE = 'a'.repeat(40);
+const RELEASE_SECRET = 'test-release-attestation-key-32-bytes-minimum';
+
+async function approvedReleaseSettings() {
+  const now = Date.now();
+  const token = await createReleaseAttestation(
+    {
+      schema: 1,
+      qualificationId: 'b'.repeat(64),
+      sourceTreeSha: RELEASE_TREE,
+      organizationId: org,
+      approvedAt: new Date(now - 60_000).toISOString(),
+      expiresAt: new Date(now + 24 * 60 * 60_000).toISOString(),
+    },
+    RELEASE_SECRET,
+    now,
+  );
+  return {
+    P1_RELEASE_MODE: 'on',
+    RAG_MODE: 'hybrid',
+    LLM_GENERATION_MODE: 'release',
+    LLM_GENERATION_DAILY_LIMIT: '10',
+    LLM_VALIDATION_MODE: 'release',
+    LLM_VALIDATION_DAILY_LIMIT: '10',
+    EMBEDDING_PROVIDER: 'gemini',
+    EMBEDDING_MODEL: 'gemini-embedding-001',
+    EMBEDDING_API_KEY: 'test-embedding-key',
+    P1_RELEASE_ATTESTATION: token,
+    P1_RELEASE_ATTESTATION_KEY: RELEASE_SECRET,
+    P1_DEPLOYED_SOURCE_TREE_SHA: RELEASE_TREE,
+  };
+}
 
 test('P1.7 releases natural case prose only after generation, factual validation and final fresh read', async (t) => {
-  const c = await setup(t, releaseSettings);
+  const c = await setup(t, await approvedReleaseSettings());
   c.remote.generationOutput = {
     language: 'fr',
     sentences: [
@@ -854,7 +875,7 @@ test('P1.7 releases natural case prose only after generation, factual validation
 });
 
 test('P1.7 never releases a previously supported draft when the case changes during validation', async (t) => {
-  const c = await setup(t, releaseSettings);
+  const c = await setup(t, await approvedReleaseSettings());
   c.remote.generationOutput = {
     language: 'fr',
     sentences: [
