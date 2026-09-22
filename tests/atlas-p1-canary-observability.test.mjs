@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 
 const migrationPath =
-  'supabase/migrations/20260922110000_p1_release_observability.sql';
+  'supabase/migrations/20260922112140_p1_release_observability.sql';
 
 test('P1.7 canary telemetry schema is privacy-bounded and deny-by-default', async () => {
   const sql = await readFile(migrationPath, 'utf8');
