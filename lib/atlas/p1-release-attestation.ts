@@ -55,6 +55,12 @@ function textBytes(value: string) {
   return new TextEncoder().encode(value);
 }
 
+function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function normalizedKey(value: string | undefined) {
   const key = value?.trim() ?? '';
   if (key.length < 32 || key.length > 512) return null;
@@ -158,7 +164,7 @@ export async function verifyReleaseAttestation(
     const verified = await crypto.subtle.verify(
       'HMAC',
       verifyingKey,
-      signature,
+      exactArrayBuffer(signature),
       textBytes(`${TOKEN_PREFIX}.${parts[1]}`),
     );
     if (!verified)
