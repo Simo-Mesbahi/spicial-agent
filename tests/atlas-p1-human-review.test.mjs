@@ -29,6 +29,7 @@ function candidate(id, language, text) {
 
 async function writeQualification(path, generationRaw, overrides = {}) {
   const artifacts = overrides.artifacts ?? {
+    sourceTreeSha: 'a'.repeat(40),
     contractSha256: 'c'.repeat(64),
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
@@ -125,6 +126,7 @@ test('human review template rejects qualification mismatch and failed generation
   await writeFile(generation, validRaw);
   await writeQualification(qualification, validRaw, {
     artifacts: {
+      sourceTreeSha: 'a'.repeat(40),
       contractSha256: 'c'.repeat(64),
       structuredSha256: 'd'.repeat(64),
       retrievalSha256: 'e'.repeat(64),
@@ -191,6 +193,9 @@ test('release finalizer is no-spend, preserves the live report and verifies exac
     source,
     /qualificationArtifactIntegrity: qualificationAnchor\.valid/,
   );
+  assert.match(source, /sourceTreeSha: source\.treeSha/);
+  assert.match(source, /tracked working-tree changes detected/i);
+  assert.match(source, /prior\?\.artifacts\?\.sourceTreeSha === source\.treeSha/);
   assert.match(
     source,
     /review\.source\?\.qualificationId === qualificationId/,
