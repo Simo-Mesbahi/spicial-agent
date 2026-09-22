@@ -474,6 +474,26 @@ function organizationFromBody(value: unknown, me: z.infer<typeof adminMeSchema>)
   return parsed.data;
 }
 
+function caseManagerOrganizationId(
+  url: URL,
+  me: z.infer<typeof adminMeSchema>,
+) {
+  const organization = organizationId(url, me);
+  const membership = me.memberships.find(
+    (item) => item.organization_id === organization,
+  );
+  if (
+    !membership ||
+    !['super_admin', 'sav_manager', 'sc_manager'].includes(membership.role)
+  )
+    fail(
+      403,
+      'Votre rôle ne permet pas de rechercher ces ressources.',
+      'admin_access_denied',
+    );
+  return organization;
+}
+
 function mapSupabaseError(error: SupabaseRequestError): never {
   switch (error.code) {
     case '40001':
@@ -858,7 +878,7 @@ export async function handleAdminOperationsApi(
     }
 
     if (path === `${BASE_PATH}/case/entities` && req.method === 'GET') {
-      const organization = organizationId(url, session.me);
+      const organization = caseManagerOrganizationId(url, session.me);
       const entityType = z
         .enum(['customer', 'product'])
         .safeParse(url.searchParams.get('type'));
