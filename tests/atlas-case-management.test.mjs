@@ -98,10 +98,21 @@ test('case management migration preserves audit, idempotency and soft-delete inv
     'update public.case_access_codes',
     'update public.case_sessions',
     'extensions.crypt',
-    'extensions.gen_salt',
+    "extensions.gen_salt('bf',12)",
+    'create policy cases_admin_select',
+    'app_private.case_id_read_allowed',
+    'app_private.conversation_read_allowed',
   ])
     assert.ok(sql.includes(token), `missing migration invariant: ${token}`);
 
   assert.equal(/delete\s+from\s+public\.service_cases/i.test(sql), false);
   assert.equal(/grant\s+(?:insert|update|delete)[^;]*service_cases[^;]*authenticated/i.test(sql), false);
+  assert.equal((sql.match(/create or replace function app_private\.admin_create_case/g) ?? []).length, 1);
+  assert.equal((sql.match(/create or replace function app_private\.admin_archive_case/g) ?? []).length, 1);
+});
+
+test('staging seed assigns explicit service ownership to both case families', () => {
+  const seed = readFileSync('supabase/seed.staging.sql', 'utf8');
+  assert.match(seed, /'SAV-2026-1042', 'sav', 'repair'/);
+  assert.match(seed, /'SC-2026-2048', 'customer_service', 'complaint'/);
 });
