@@ -5,6 +5,7 @@ import { retrieve } from './domain';
 import { publicModelConfig } from './model-policy';
 import { applyConfig, availableProviders, defaults, environmentLabel, readSettings, runtimeConfigSchema, saveSettings, scopeKey, validateConfig, type Revision } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
+import { mutationOriginAllowed } from './request-security';
 import { chunkKnowledge, knowledgeDocumentSchema, knowledgeDraftSchema, knowledgeListSchema } from './knowledge-control';
 import type { ProductionEnv } from './production-api';
 import { SupabaseRequestError, supabaseRequest } from './supabase';
@@ -250,9 +251,8 @@ function fail(status: number, message: string, code: string): never {
   throw new AdminOperationsError(status, message, code);
 }
 
-function guardMutation(req: Request) {
-  const origin = req.headers.get('origin');
-  if (origin && origin !== new URL(req.url).origin)
+function guardMutation(req: Request, env: ProductionEnv) {
+  if (!mutationOriginAllowed(req, env))
     fail(403, 'Requête externe refusée.', 'invalid_origin');
   if (req.headers.get('sec-fetch-site') === 'cross-site')
     fail(403, 'Requête externe refusée.', 'cross_site_request');
@@ -399,8 +399,8 @@ export async function handleAdminOperationsApi(
 
     if (path === `${BASE_PATH}/provider-health`) {
       if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.', code: 'method_not_allowed' }, 405, session.cookies);
-      guardMutation(req);
-      if (req.headers.get('origin') !== url.origin)
+      guardMutation(req, env);
+      if (!req.headers.get('origin') || !mutationOriginAllowed(req, env))
         fail(403, 'Origine requise.', 'invalid_origin');
       const organization = organizationId(url, session.me);
       if (organization !== env.SUPABASE_ORGANIZATION_ID)
@@ -462,7 +462,7 @@ export async function handleAdminOperationsApi(
     }
 
     if (path.startsWith(`${BASE_PATH}/knowledge/`) && req.method === 'POST') {
-      guardMutation(req);
+      guardMutation(req, env);
       const raw = await requestBody(req, 160 * 1024);
       const common = z.object({
         organizationId: z.string().uuid(),
@@ -673,7 +673,7 @@ export async function handleAdminOperationsApi(
           history: history.results.map(item => ({ revision: item.revision, actor: item.actor, createdAt: item.created_at, config: runtimeConfigSchema.parse(JSON.parse(item.config)) })) }, 200, session.cookies);
       }
       if (req.method === 'POST') {
-        guardMutation(req);
+        guardMutation(req, env);
         if (!canEdit) fail(403, 'Seul le super-administrateur peut modifier les réglages.', 'settings_role_denied');
         if (path.endsWith('/preview')) {
           const input = z.object({ query: z.string().trim().min(3).max(1000), ragResults: z.number().int().min(1).max(3), ragMinAnchors: z.number().int().min(1).max(3) }).strict().safeParse(await requestBody(req));
@@ -738,7 +738,7 @@ export async function handleAdminOperationsApi(
     }
 
     if (path === `${BASE_PATH}/case/note` && req.method === 'POST') {
-      guardMutation(req);
+      guardMutation(req, env);
       const parsed = z
         .object({
           organizationId: z.string().uuid(),
@@ -778,7 +778,7 @@ export async function handleAdminOperationsApi(
     }
 
     if (path === `${BASE_PATH}/handoff` && req.method === 'POST') {
-      guardMutation(req);
+      guardMutation(req, env);
       const parsed = z
         .object({
           organizationId: z.string().uuid(),
