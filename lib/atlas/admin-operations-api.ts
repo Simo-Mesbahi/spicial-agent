@@ -802,7 +802,7 @@ export async function handleAdminOperationsApi(
         fail(400, 'Dossier invalide.', 'invalid_case_id');
       const result = await safeRpc<unknown>(
         env,
-        'admin_case_detail',
+        'admin_case_detail_v2',
         { p_organization_id: organization, p_case_id: caseId },
         session.accessToken,
       );
