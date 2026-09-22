@@ -824,3 +824,463 @@ body:has(.admin-ops-page) .admin-operations-launcher {
     grid-column: 1 / -1;
   }
 }
+
+
+/* Case management --------------------------------------------------------- */
+
+.admin-ops-one-time {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  margin-top: 20px;
+  padding: 16px 18px;
+  color: #173d30;
+  background: #eef8f2;
+  border: 1px solid #cfe6d9;
+  border-radius: 13px;
+  box-shadow: 0 12px 30px #15362908;
+}
+
+.admin-ops-one-time > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-ops-one-time > div:first-child span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-ops-one-time strong {
+  font-size: 12px;
+}
+
+.admin-ops-one-time small {
+  color: #5f796d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.admin-ops-one-time code {
+  padding: 8px 12px;
+  color: #102f25;
+  background: #fff;
+  border: 1px solid #c8ded3;
+  border-radius: 9px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.admin-ops-one-time button,
+.admin-ops-manager button,
+.admin-ops-case-toolbar button,
+.admin-ops-edit-form button,
+.admin-ops-workflow button,
+.admin-ops-sensitive button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  color: #fff;
+  background: var(--ops-green-dark);
+  border: 1px solid var(--ops-green-dark);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.admin-ops-one-time button.ghost,
+.admin-ops-manager button.ghost,
+.admin-ops-case-toolbar button.ghost,
+.admin-ops-edit-form button.ghost,
+.admin-ops-workflow button.ghost,
+.admin-ops-sensitive button.ghost {
+  color: #315b4b;
+  background: #f4f7f5;
+  border-color: #d6e2dc;
+}
+
+.admin-ops-sensitive button.danger,
+.admin-ops-sensitive-action button.danger {
+  color: #8e2d2d;
+  background: #fff5f5;
+  border-color: #efcaca;
+}
+
+.admin-ops-manager {
+  margin-top: 22px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--ops-line);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px #1536290a;
+}
+
+.admin-ops-manager > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  background: #f8fbf9;
+  border-bottom: 1px solid #e2eae5;
+}
+
+.admin-ops-manager > header p {
+  color: var(--ops-green);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+}
+
+.admin-ops-manager > header h2 {
+  margin-top: 3px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.admin-ops-manager-form {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.admin-ops-manager-form fieldset {
+  margin: 0;
+  padding: 17px;
+  background: #fbfcfb;
+  border: 1px solid #e3ebe6;
+  border-radius: 12px;
+}
+
+.admin-ops-manager-form legend {
+  padding: 0 7px;
+  color: #315949;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.admin-ops-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.admin-ops-form-grid label,
+.admin-ops-archive-form > label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  color: #52685d;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.admin-ops-form-grid label.wide {
+  grid-column: span 2;
+}
+
+.admin-ops-form-grid input,
+.admin-ops-form-grid select,
+.admin-ops-form-grid textarea,
+.admin-ops-archive-form textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 10px;
+  color: var(--ops-ink);
+  background: #fff;
+  border: 1px solid #d5e0da;
+  border-radius: 8px;
+  outline: none;
+  font: inherit;
+  font-size: 11px;
+}
+
+.admin-ops-form-grid textarea,
+.admin-ops-archive-form textarea {
+  min-height: 90px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.admin-ops-form-grid input:focus,
+.admin-ops-form-grid select:focus,
+.admin-ops-form-grid textarea:focus,
+.admin-ops-archive-form textarea:focus {
+  border-color: var(--ops-green);
+  box-shadow: 0 0 0 3px #176b5518;
+}
+
+.admin-ops-manager-actions,
+.admin-ops-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-ops-manager-actions > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #668076;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.admin-ops-search-advanced {
+  grid-template-columns: auto minmax(140px, 1fr) minmax(130px, auto) minmax(105px, auto) auto;
+}
+
+.admin-ops-search select {
+  min-height: 40px;
+  padding: 8px 9px;
+  color: var(--ops-ink);
+  background: #fbfcfb;
+  border: 1px solid #d7e1dc;
+  border-radius: 8px;
+  outline: none;
+  font-size: 10px;
+}
+
+.admin-ops-archive-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 13px;
+  padding: 12px 13px;
+  color: #6b4d2c;
+  background: #fff8ed;
+  border: 1px solid #ead6b9;
+  border-radius: 10px;
+}
+
+.admin-ops-archive-banner span {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-ops-archive-banner strong {
+  font-size: 11px;
+}
+
+.admin-ops-archive-banner small {
+  color: #846e54;
+  font-size: 10px;
+}
+
+.admin-ops-case-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px;
+  background: #fbfcfb;
+  border: 1px solid #e2e9e5;
+  border-radius: 11px;
+}
+
+.admin-ops-case-toolbar > span {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-ops-case-toolbar strong {
+  font-size: 12px;
+}
+
+.admin-ops-case-toolbar small {
+  color: #6b7c73;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.admin-ops-edit-form,
+.admin-ops-workflow,
+.admin-ops-sensitive {
+  margin-top: 14px;
+  padding: 15px;
+  background: #fbfcfb;
+  border: 1px solid #e2e9e5;
+  border-radius: 12px;
+}
+
+.admin-ops-edit-form {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-ops-financial-facts {
+  margin-top: 10px;
+}
+
+.admin-ops-workflow > header,
+.admin-ops-sensitive > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.admin-ops-workflow > header > div,
+.admin-ops-sensitive > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-ops-workflow > header strong,
+.admin-ops-sensitive > header strong {
+  color: #345447;
+  font-size: 11px;
+}
+
+.admin-ops-workflow > header small,
+.admin-ops-sensitive > header small {
+  color: #74867c;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.admin-ops-workflow .admin-ops-inline-actions {
+  margin-top: 11px;
+}
+
+.admin-ops-sensitive {
+  background: #fafbfa;
+}
+
+.admin-ops-sensitive-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid #e6ece8;
+}
+
+.admin-ops-sensitive-action > div:first-child {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.admin-ops-sensitive-action > div:first-child span {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-ops-sensitive-action strong {
+  color: #354f44;
+  font-size: 11px;
+}
+
+.admin-ops-sensitive-action small {
+  max-width: 680px;
+  color: #72837a;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.admin-ops-sensitive-action.danger > div:first-child {
+  color: #8d4141;
+}
+
+.admin-ops-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.admin-ops-archive-form {
+  display: grid;
+  width: min(500px, 100%);
+  gap: 9px;
+}
+
+.admin-ops-archive-form .admin-ops-check {
+  align-items: flex-start;
+}
+
+@media (max-width: 1100px) {
+  .admin-ops-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-ops-search-advanced {
+    grid-template-columns: auto minmax(0, 1fr) minmax(130px, auto);
+  }
+
+  .admin-ops-search-advanced select:nth-of-type(2),
+  .admin-ops-search-advanced button {
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-ops-one-time {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-ops-one-time > div:last-child,
+  .admin-ops-manager-actions,
+  .admin-ops-inline-actions,
+  .admin-ops-case-toolbar,
+  .admin-ops-sensitive-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-ops-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-ops-form-grid label.wide {
+    grid-column: auto;
+  }
+
+  .admin-ops-manager-actions,
+  .admin-ops-inline-actions {
+    align-items: stretch;
+  }
+
+  .admin-ops-manager-actions button,
+  .admin-ops-inline-actions button,
+  .admin-ops-one-time button {
+    width: 100%;
+  }
+
+  .admin-ops-sensitive-action {
+    display: flex;
+  }
+
+  .admin-ops-confirm-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-ops-confirm-actions button {
+    width: 100%;
+  }
+
+  .admin-ops-search-advanced {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-ops-search-advanced select,
+  .admin-ops-search-advanced button {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}

@@ -26,14 +26,14 @@ values
 on conflict (id) do update set name = excluded.name, category = excluded.category;
 
 insert into public.service_cases (
-  id, organization_id, customer_id, product_id, store_id, reference, kind,
+  id, organization_id, customer_id, product_id, store_id, reference, service_type, kind,
   title, description, status, warranty_status, warranty_label, delivery_mode,
   estimated_at, source_system, source_updated_at
 ) values
   (
     '00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000301',
-    '00000000-0000-4000-8000-000000000101', 'SAV-2026-1042', 'repair',
+    '00000000-0000-4000-8000-000000000101', 'SAV-2026-1042', 'sav', 'repair',
     'Écran noir intermittent', 'Le diagnostic est terminé et la pièce nécessaire est commandée.',
     'waiting_part', 'covered', 'Prise en charge sous garantie', 'Retrait en magasin',
     now() + interval '5 days', 'staging_seed', now()
@@ -41,7 +41,7 @@ insert into public.service_cases (
   (
     '00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000302',
-    '00000000-0000-4000-8000-000000000102', 'SC-2026-2048', 'complaint',
+    '00000000-0000-4000-8000-000000000102', 'SC-2026-2048', 'customer_service', 'complaint',
     'Accessoire manquant', 'La demande est prise en charge par le service client.',
     'complaint_review', 'unknown', 'Analyse en cours', 'Réponse par email',
     now() + interval '2 days', 'staging_seed', now()

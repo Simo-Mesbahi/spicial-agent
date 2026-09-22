@@ -7,6 +7,13 @@ import { applyConfig, availableProviders, defaults, environmentLabel, readSettin
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { mutationOriginAllowed } from './request-security';
 import { chunkKnowledge, knowledgeDocumentSchema, knowledgeDraftSchema, knowledgeListSchema } from './knowledge-control';
+import {
+  caseAccessRotateInputSchema,
+  caseArchiveInputSchema,
+  caseCreateInputSchema,
+  caseTransitionInputSchema,
+  caseUpdateInputSchema,
+} from './case-management';
 import type { ProductionEnv } from './production-api';
 import { SupabaseRequestError, supabaseRequest } from './supabase';
 
@@ -143,6 +150,7 @@ const caseDetailSchema = z
   .object({
     id: z.string().uuid(),
     reference: z.string().max(64),
+    service_type: z.enum(['sav', 'customer_service']),
     title: z.string().max(180),
     description: z.string().max(6000),
     kind: z.string().max(40),
@@ -152,15 +160,50 @@ const caseDetailSchema = z
     estimated_at: z.string().nullable(),
     created_at: z.string(),
     closed_at: z.string().nullable(),
+    archived_at: z.string().nullable(),
+    archive_reason: z.string().max(1000).nullable(),
     source_system: z.string().max(120).nullable(),
     source_updated_at: z.string().nullable(),
+    warranty_status: z.string().max(40),
     warranty_label: z.string().max(240).nullable(),
     quote_cents: z.number().int().nonnegative().nullable(),
     refund_cents: z.number().int().nonnegative().nullable(),
     currency: z.string().length(3),
-    product: z.string().max(240).nullable(),
-    store: z.string().max(240).nullable(),
-    customer: z.string().max(320).nullable(),
+    delivery_mode: z.string().max(240).nullable(),
+    customer_id: z.string().uuid().nullable(),
+    customer: z
+      .object({
+        id: z.string().uuid(),
+        external_id: z.string().max(160).nullable(),
+        first_name: z.string().max(160).nullable(),
+        last_name: z.string().max(160).nullable(),
+        email: z.string().max(320).nullable(),
+        phone: z.string().max(80).nullable(),
+      })
+      .strict()
+      .nullable(),
+    product_id: z.string().uuid().nullable(),
+    product: z
+      .object({
+        id: z.string().uuid(),
+        external_id: z.string().max(160).nullable(),
+        sku: z.string().max(120).nullable(),
+        name: z.string().max(240),
+        category: z.string().max(160).nullable(),
+        serial_number: z.string().max(160).nullable(),
+      })
+      .strict()
+      .nullable(),
+    store_id: z.string().uuid().nullable(),
+    store: z
+      .object({
+        id: z.string().uuid(),
+        code: z.string().max(160),
+        name: z.string().max(240),
+        city: z.string().max(160).nullable(),
+      })
+      .strict()
+      .nullable(),
     events: z
       .array(
         z.object({
@@ -176,6 +219,38 @@ const caseDetailSchema = z
   })
   .strict()
   .nullable();
+
+const caseMutationResultSchema = z
+  .object({
+    ok: z.literal(true),
+    id: z.string().uuid(),
+    reference: z.string().max(64),
+    version: z.number().int().positive(),
+  })
+  .passthrough();
+
+const accessCodeResultSchema = caseMutationResultSchema.extend({
+  access_code: z.string().regex(/^\d{6,12}$/).nullable(),
+  access_code_available: z.boolean(),
+  replayed: z.boolean(),
+});
+
+const caseFormOptionsSchema = z
+  .object({
+    stores: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            code: z.string().max(160),
+            name: z.string().max(240),
+            city: z.string().max(160).nullable(),
+          })
+          .strict(),
+      )
+      .max(200),
+  })
+  .strict();
 
 const auditSchema = z
   .object({
@@ -727,7 +802,7 @@ export async function handleAdminOperationsApi(
         fail(400, 'Dossier invalide.', 'invalid_case_id');
       const result = await safeRpc<unknown>(
         env,
-        'admin_case_detail',
+        'admin_case_detail_v2',
         { p_organization_id: organization, p_case_id: caseId },
         session.accessToken,
       );
@@ -735,6 +810,172 @@ export async function handleAdminOperationsApi(
       if (!parsed.success) fail(502, 'Détail du dossier invalide.', 'invalid_case_detail_response');
       if (!parsed.data) fail(404, 'Dossier introuvable.', 'case_not_found');
       return json({ case: parsed.data }, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/options` && req.method === 'GET') {
+      const organization = organizationId(url, session.me);
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_case_form_options',
+        { p_organization_id: organization },
+        session.accessToken,
+      );
+      const parsed = caseFormOptionsSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Options de dossier invalides.', 'invalid_case_options_response');
+      return json(parsed.data, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/create` && req.method === 'POST') {
+      guardMutation(req, env);
+      const input = caseCreateInputSchema.safeParse(await requestBody(req));
+      if (!input.success) fail(400, 'Nouveau dossier invalide.', 'invalid_case_create');
+      const organization = organizationFromBody(input.data.organizationId, session.me);
+      const customer = input.data.customer;
+      const product = input.data.product;
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_create_case',
+        {
+          p_organization_id: organization,
+          p_payload: {
+            service_type: input.data.serviceType,
+            kind: input.data.kind,
+            title: input.data.title,
+            description: input.data.description,
+            customer_id: input.data.customerId,
+            customer_external_id: customer?.externalId ?? null,
+            customer_first_name: customer?.firstName ?? null,
+            customer_last_name: customer?.lastName ?? null,
+            customer_email: customer?.email ?? null,
+            customer_phone: customer?.phone ?? null,
+            product_id: input.data.productId,
+            product_external_id: product?.externalId ?? null,
+            product_sku: product?.sku ?? null,
+            product_name: product?.name ?? null,
+            product_category: product?.category ?? null,
+            product_serial_number: product?.serialNumber ?? null,
+            store_id: input.data.storeId,
+            warranty_status: input.data.warrantyStatus,
+            warranty_label: input.data.warrantyLabel,
+            quote_cents: input.data.quoteCents,
+            refund_cents: input.data.refundCents,
+            currency: input.data.currency,
+            delivery_mode: input.data.deliveryMode,
+            estimated_at: input.data.estimatedAt,
+          },
+          p_request_id: input.data.requestId,
+        },
+        session.accessToken,
+      );
+      const parsed = accessCodeResultSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Création du dossier non confirmée.', 'invalid_case_create_response');
+      return json(parsed.data, 201, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/update` && req.method === 'POST') {
+      guardMutation(req, env);
+      const input = caseUpdateInputSchema.safeParse(await requestBody(req));
+      if (!input.success) fail(400, 'Modification du dossier invalide.', 'invalid_case_update');
+      const organization = organizationFromBody(input.data.organizationId, session.me);
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_update_case',
+        {
+          p_organization_id: organization,
+          p_case_id: input.data.caseId,
+          p_expected_version: input.data.expectedVersion,
+          p_payload: {
+            title: input.data.title,
+            description: input.data.description,
+            customer_id: input.data.customerId,
+            product_id: input.data.productId,
+            store_id: input.data.storeId,
+            warranty_status: input.data.warrantyStatus,
+            warranty_label: input.data.warrantyLabel,
+            quote_cents: input.data.quoteCents,
+            refund_cents: input.data.refundCents,
+            currency: input.data.currency,
+            delivery_mode: input.data.deliveryMode,
+            estimated_at: input.data.estimatedAt,
+          },
+          p_request_id: input.data.requestId,
+        },
+        session.accessToken,
+      );
+      const parsed = caseMutationResultSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Modification du dossier non confirmée.', 'invalid_case_update_response');
+      return json(parsed.data, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/transition` && req.method === 'POST') {
+      guardMutation(req, env);
+      const input = caseTransitionInputSchema.safeParse(await requestBody(req));
+      if (!input.success) fail(400, 'Transition de dossier invalide.', 'invalid_case_transition');
+      const organization = organizationFromBody(input.data.organizationId, session.me);
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_transition_case',
+        {
+          p_organization_id: organization,
+          p_case_id: input.data.caseId,
+          p_expected_version: input.data.expectedVersion,
+          p_status: input.data.status,
+          p_note: input.data.note,
+          p_customer_visible: input.data.customerVisible,
+          p_request_id: input.data.requestId,
+        },
+        session.accessToken,
+      );
+      const parsed = caseMutationResultSchema
+        .extend({ status: z.string().max(50) })
+        .safeParse(result);
+      if (!parsed.success) fail(502, 'Transition non confirmée.', 'invalid_case_transition_response');
+      return json(parsed.data, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/access-code` && req.method === 'POST') {
+      guardMutation(req, env);
+      const input = caseAccessRotateInputSchema.safeParse(await requestBody(req));
+      if (!input.success) fail(400, 'Renouvellement du code invalide.', 'invalid_case_access_rotation');
+      const organization = organizationFromBody(input.data.organizationId, session.me);
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_rotate_case_access_code',
+        {
+          p_organization_id: organization,
+          p_case_id: input.data.caseId,
+          p_expected_version: input.data.expectedVersion,
+          p_request_id: input.data.requestId,
+        },
+        session.accessToken,
+      );
+      const parsed = accessCodeResultSchema.safeParse(result);
+      if (!parsed.success) fail(502, 'Renouvellement du code non confirmé.', 'invalid_case_access_response');
+      return json(parsed.data, 200, session.cookies);
+    }
+
+    if (path === `${BASE_PATH}/case/archive` && req.method === 'POST') {
+      guardMutation(req, env);
+      const input = caseArchiveInputSchema.safeParse(await requestBody(req));
+      if (!input.success) fail(400, 'Archivage du dossier invalide.', 'invalid_case_archive');
+      const organization = organizationFromBody(input.data.organizationId, session.me);
+      const result = await safeRpc<unknown>(
+        env,
+        'admin_archive_case',
+        {
+          p_organization_id: organization,
+          p_case_id: input.data.caseId,
+          p_expected_version: input.data.expectedVersion,
+          p_reason: input.data.reason,
+          p_request_id: input.data.requestId,
+        },
+        session.accessToken,
+      );
+      const parsed = caseMutationResultSchema
+        .extend({ archived: z.literal(true) })
+        .safeParse(result);
+      if (!parsed.success) fail(502, 'Archivage du dossier non confirmé.', 'invalid_case_archive_response');
+      return json(parsed.data, 200, session.cookies);
     }
 
     if (path === `${BASE_PATH}/case/note` && req.method === 'POST') {

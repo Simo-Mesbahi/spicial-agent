@@ -256,3 +256,250 @@ test('optimistic concurrency conflicts are exposed as a safe 409', async () => {
     globalThis.fetch = previousFetch;
   }
 });
+
+
+test('case management options are bounded and require the authenticated admin context', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me')) return Response.json(adminIdentity('super_admin'));
+    if (url.endsWith('/rest/v1/rpc/admin_case_form_options'))
+      return Response.json({
+        stores: [
+          {
+            id: '00000000-0000-4000-8000-000000000101',
+            code: 'PAR-001',
+            name: 'Maison Atlas Paris',
+            city: 'Paris',
+          },
+        ],
+      });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest(`/case/options?organizationId=${ORGANIZATION_ID}`),
+      environment(),
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.stores.length, 1);
+    assert.equal(body.stores[0].code, 'PAR-001');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('case creation forwards only validated server contract fields and returns one-time access code', async () => {
+  const previousFetch = globalThis.fetch;
+  const rpcBodies = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me')) return Response.json(adminIdentity('super_admin'));
+    if (url.endsWith('/rest/v1/rpc/admin_create_case')) {
+      rpcBodies.push(JSON.parse(init.body));
+      return Response.json({
+        ok: true,
+        id: CASE_ID,
+        reference: 'SAV-2026-000001',
+        version: 1,
+        access_code: '48172635',
+        access_code_available: true,
+        replayed: false,
+      });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest('/case/create', {
+        method: 'POST',
+        headers: { Origin: 'https://atlas.test', 'Sec-Fetch-Site': 'same-origin' },
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          serviceType: 'sav',
+          kind: 'repair',
+          title: 'Téléviseur en panne',
+          description: 'Écran noir intermittent.',
+          customer: {
+            externalId: 'C-42',
+            firstName: 'Camille',
+            lastName: 'Martin',
+            email: 'camille@example.test',
+            phone: '+352000000',
+          },
+          product: {
+            externalId: 'P-42',
+            sku: 'TV-42',
+            name: 'Téléviseur OLED',
+            category: 'Image & son',
+            serialNumber: 'SER-42',
+          },
+          storeId: '00000000-0000-4000-8000-000000000101',
+          warrantyStatus: 'covered',
+          warrantyLabel: 'Garantie constructeur',
+          quoteCents: null,
+          refundCents: null,
+          currency: 'EUR',
+          deliveryMode: 'Retrait magasin',
+          estimatedAt: '2026-09-30T10:00:00.000Z',
+          requestId: '12345678-1234-4234-8234-123456789012',
+        }),
+      }),
+      environment(),
+    );
+    assert.equal(response.status, 201, await response.clone().text());
+    const body = await response.json();
+    assert.equal(body.reference, 'SAV-2026-000001');
+    assert.equal(body.access_code, '48172635');
+    assert.equal(rpcBodies.length, 1);
+    assert.equal(rpcBodies[0].p_payload.service_type, 'sav');
+    assert.equal(rpcBodies[0].p_payload.customer_email, 'camille@example.test');
+    assert.equal(rpcBodies[0].p_payload.product_serial_number, 'SER-42');
+    assert.equal('serviceType' in rpcBodies[0].p_payload, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('case creation rejects a kind outside its service before any case mutation RPC', async () => {
+  const previousFetch = globalThis.fetch;
+  let mutationCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me')) return Response.json(adminIdentity('super_admin'));
+    mutationCalls += 1;
+    throw new Error(`Unexpected mutation RPC: ${url}`);
+  };
+  try {
+    const response = await handleAdminOperationsApi(
+      adminRequest('/case/create', {
+        method: 'POST',
+        headers: { Origin: 'https://atlas.test', 'Sec-Fetch-Site': 'same-origin' },
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          serviceType: 'customer_service',
+          kind: 'repair',
+          title: 'Demande invalide',
+          requestId: '12345678-1234-4234-8234-123456789012',
+        }),
+      }),
+      environment(),
+    );
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, 'invalid_case_create');
+    assert.equal(mutationCalls, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('case update, lifecycle transition, access rotation and archive use dedicated audited RPCs', async () => {
+  const previousFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.endsWith('/rest/v1/rpc/admin_me')) return Response.json(adminIdentity('super_admin'));
+    const body = JSON.parse(init.body ?? '{}');
+    seen.push({ url, body });
+    if (url.endsWith('/rest/v1/rpc/admin_update_case'))
+      return Response.json({ ok: true, id: CASE_ID, reference: 'SAV-2026-1042', version: 2, changed_fields: ['title'] });
+    if (url.endsWith('/rest/v1/rpc/admin_transition_case'))
+      return Response.json({ ok: true, id: CASE_ID, reference: 'SAV-2026-1042', version: 3, status: 'diagnosis' });
+    if (url.endsWith('/rest/v1/rpc/admin_rotate_case_access_code'))
+      return Response.json({ ok: true, id: CASE_ID, reference: 'SAV-2026-1042', version: 4, access_code: '99112233', access_code_available: true, replayed: false });
+    if (url.endsWith('/rest/v1/rpc/admin_archive_case'))
+      return Response.json({ ok: true, id: CASE_ID, reference: 'SAV-2026-1042', version: 5, archived: true });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const commonHeaders = { Origin: 'https://atlas.test', 'Sec-Fetch-Site': 'same-origin' };
+    const requestId = () => crypto.randomUUID();
+
+    const updated = await handleAdminOperationsApi(
+      adminRequest('/case/update', {
+        method: 'POST',
+        headers: commonHeaders,
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          caseId: CASE_ID,
+          expectedVersion: 1,
+          title: 'Titre corrigé',
+          description: 'Description',
+          customerId: null,
+          productId: null,
+          storeId: null,
+          warrantyStatus: 'unknown',
+          warrantyLabel: null,
+          quoteCents: null,
+          refundCents: null,
+          currency: 'EUR',
+          deliveryMode: null,
+          estimatedAt: null,
+          requestId: requestId(),
+        }),
+      }),
+      environment(),
+    );
+    assert.equal(updated.status, 200);
+
+    const transitioned = await handleAdminOperationsApi(
+      adminRequest('/case/transition', {
+        method: 'POST',
+        headers: commonHeaders,
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          caseId: CASE_ID,
+          expectedVersion: 2,
+          status: 'diagnosis',
+          note: 'Diagnostic démarré.',
+          customerVisible: true,
+          requestId: requestId(),
+        }),
+      }),
+      environment(),
+    );
+    assert.equal(transitioned.status, 200);
+
+    const rotated = await handleAdminOperationsApi(
+      adminRequest('/case/access-code', {
+        method: 'POST',
+        headers: commonHeaders,
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          caseId: CASE_ID,
+          expectedVersion: 3,
+          requestId: requestId(),
+        }),
+      }),
+      environment(),
+    );
+    assert.equal(rotated.status, 200);
+    assert.equal((await rotated.json()).access_code, '99112233');
+
+    const archived = await handleAdminOperationsApi(
+      adminRequest('/case/archive', {
+        method: 'POST',
+        headers: commonHeaders,
+        body: JSON.stringify({
+          organizationId: ORGANIZATION_ID,
+          caseId: CASE_ID,
+          expectedVersion: 4,
+          reason: 'Dossier de test clôturé et archivé.',
+          requestId: requestId(),
+        }),
+      }),
+      environment(),
+    );
+    assert.equal(archived.status, 200);
+
+    assert.deepEqual(
+      seen.map((entry) => new URL(entry.url).pathname.split('/').at(-1)),
+      ['admin_update_case', 'admin_transition_case', 'admin_rotate_case_access_code', 'admin_archive_case'],
+    );
+    assert.equal(seen[1].body.p_customer_visible, true);
+    assert.equal(seen[3].body.p_reason, 'Dossier de test clôturé et archivé.');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
