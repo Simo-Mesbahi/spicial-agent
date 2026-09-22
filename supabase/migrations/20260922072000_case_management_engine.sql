@@ -355,7 +355,7 @@ language plpgsql
 stable
 security definer
 set search_path=''
-as $
+as $$
 declare
   v_service_type text;
 begin
@@ -376,7 +376,7 @@ begin
       p_organization_id,v_service_type
     );
 end;
-$;
+$$;
 revoke all on function app_private.case_id_read_allowed(uuid,uuid)
   from public,anon,authenticated;
 grant execute on function app_private.case_id_read_allowed(uuid,uuid)
@@ -391,7 +391,7 @@ language plpgsql
 stable
 security definer
 set search_path=''
-as $
+as $$
 declare
   v_case_id uuid;
 begin
@@ -412,7 +412,7 @@ begin
     p_organization_id,v_case_id
   );
 end;
-$;
+$$;
 revoke all on function app_private.conversation_read_allowed(uuid,uuid)
   from public,anon,authenticated;
 grant execute on function app_private.conversation_read_allowed(uuid,uuid)
