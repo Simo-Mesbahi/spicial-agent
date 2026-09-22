@@ -259,6 +259,7 @@ type CreateDraft = {
 type EditDraft = {
   title: string;
   description: string;
+  storeId: string;
   warrantyStatus: WarrantyStatus;
   warrantyLabel: string;
   quoteEuros: string;
@@ -381,6 +382,7 @@ function editDraftFromCase(value: CaseDetail): EditDraft {
   return {
     title: value.title,
     description: value.description,
+    storeId: value.store_id ?? '',
     warrantyStatus: value.warranty_status,
     warrantyLabel: value.warranty_label ?? '',
     quoteEuros: centsToInput(value.quote_cents),
@@ -759,12 +761,22 @@ export default function AdminOperationsPage() {
     }
   }
 
-  function startEdit() {
+  async function startEdit() {
     if (!selectedCase || !canManageSelected) return;
-    setEditDraft(editDraftFromCase(selectedCase));
-    setEditing(true);
     setError('');
     setSuccess('');
+    try {
+      if (!formOptions.stores.length) await loadFormOptions(organizationId);
+      setEditDraft(editDraftFromCase(selectedCase));
+      setEditing(true);
+    } catch (cause) {
+      if (!handleAuthError(cause))
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : 'Préparation de la modification impossible.',
+        );
+    }
   }
 
   async function saveEdit(event: FormEvent) {
@@ -787,7 +799,7 @@ export default function AdminOperationsPage() {
             description: editDraft.description,
             customerId: selectedCase.customer_id,
             productId: selectedCase.product_id,
-            storeId: selectedCase.store_id,
+            storeId: editDraft.storeId || null,
             warrantyStatus: editDraft.warrantyStatus,
             warrantyLabel: editDraft.warrantyLabel || null,
             quoteCents: eurosToCents(editDraft.quoteEuros),
@@ -1851,7 +1863,7 @@ export default function AdminOperationsPage() {
                     <small>{selectedCase.description || 'Aucune description.'}</small>
                   </span>
                   {canManageSelected && !editing && (
-                    <button onClick={startEdit}>
+                    <button onClick={() => void startEdit()}>
                       <Pencil size={15} /> Modifier
                     </button>
                   )}
@@ -1887,6 +1899,27 @@ export default function AdminOperationsPage() {
                             )
                           }
                         />
+                      </label>
+                      <label>
+                        Magasin
+                        <select
+                          value={editDraft.storeId}
+                          onChange={(event) =>
+                            setEditDraft((draft) =>
+                              draft
+                                ? { ...draft, storeId: event.target.value }
+                                : draft,
+                            )
+                          }
+                        >
+                          <option value="">Non renseigné</option>
+                          {formOptions.stores.map((store) => (
+                            <option value={store.id} key={store.id}>
+                              {store.name}
+                              {store.city ? ` · ${store.city}` : ''}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <label>
                         Garantie
