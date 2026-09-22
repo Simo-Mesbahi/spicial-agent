@@ -752,6 +752,97 @@ test('Published documentary turns can be shadow-qualified without releasing mode
   assert.match(reply.data.content, /procédure publiée/);
 });
 
+const releaseSettings = {
+  P1_RELEASE_MODE: 'on',
+  RAG_MODE: 'hybrid',
+  LLM_GENERATION_MODE: 'release',
+  LLM_GENERATION_DAILY_LIMIT: '10',
+  LLM_VALIDATION_MODE: 'release',
+  LLM_VALIDATION_DAILY_LIMIT: '10',
+};
+
+test('P1.7 releases natural case prose only after generation, factual validation and final fresh read', async (t) => {
+  const c = await setup(t, releaseSettings);
+  c.remote.generationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        text: 'Votre dossier est actuellement en diagnostic.',
+        evidenceRefs: ['case.status'],
+      },
+    ],
+  };
+  c.remote.validationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        index: 0,
+        kind: 'factual',
+        verdict: 'supported',
+        issues: [],
+        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+      },
+    ],
+  };
+
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.content, 'Votre dossier est actuellement en diagnostic.');
+  assert.equal(reply.data.metadata.mode, 'grounded_generation');
+  assert.deepEqual(reply.data.metadata.generation, {
+    mode: 'release',
+    outcome: 'candidate_generated',
+    released: true,
+  });
+  assert.deepEqual(reply.data.metadata.validation, {
+    outcome: 'supported_candidate',
+    released: true,
+  });
+  assert.equal(reply.data.metadata.release.released, true);
+  assert.equal(reply.data.metadata.release.reason, null);
+  assert.equal(reply.data.metadata.providerCalls, 3);
+  assert.equal(reply.data.metadata.caseEvidence.version, 1);
+});
+
+test('P1.7 never releases a previously supported draft when the case changes during validation', async (t) => {
+  const c = await setup(t, releaseSettings);
+  c.remote.generationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        text: 'Votre dossier est actuellement en diagnostic.',
+        evidenceRefs: ['case.status'],
+      },
+    ],
+  };
+  c.remote.validationOutput = {
+    language: 'fr',
+    sentences: [
+      {
+        index: 0,
+        kind: 'factual',
+        verdict: 'supported',
+        issues: [],
+        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+      },
+    ],
+  };
+  c.remote.afterValidation = () => {
+    c.remote.case.status = 'ready';
+    c.remote.case.version = 2;
+  };
+
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(reply.data.metadata.release.released, false);
+  assert.equal(reply.data.metadata.release.reason, 'validation_failed');
+  assert.equal(reply.data.metadata.validation.outcome, 'blocked');
+  assert.equal(reply.data.metadata.caseEvidence.version, 2);
+  assert.match(reply.data.content, /retrait/);
+  assert.doesNotMatch(reply.data.content, /actuellement en diagnostic/);
+  assert.equal(reply.data.metadata.providerCalls, 3);
+});
+
 const auditSettings = {
   LLM_GENERATION_MODE: 'shadow',
   LLM_GENERATION_DAILY_LIMIT: '10',
