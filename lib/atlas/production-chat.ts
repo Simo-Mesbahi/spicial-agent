@@ -273,44 +273,76 @@ export async function productionChat(
         draft = result.draft;
         generation = result.diagnostics;
 
-        if (draft && generation.outcome === 'candidate_generated') {
+        // Any provider attempt can consume enough time for a case or published
+        // procedure to change. Refresh before using either a candidate OR the
+        // deterministic fallback. This closes the stale-document window on
+        // provider failures, malformed responses and validation abstentions.
+        if (generation.calls > 0) {
           try {
             const refreshed = await refreshReleaseEvidence(generatedFrom);
             currentPack = refreshed.pack;
             usedCase = refreshed.authorizedFacts;
-            if (
-              env.LLM_VALIDATION_MODE === 'shadow' ||
-              env.LLM_VALIDATION_MODE === 'release'
-            ) {
-              validation = await validateNaturalDraft(
-                env,
-                {
-                  draft,
-                  pack: generatedFrom,
-                  currentPack,
-                  context: evidenceContext,
-                },
-                trace,
-              );
-
-              if (validation.calls > 0) {
-                // No provider result can cross the gate without a second post-validation
-                // authorization + publication refresh.
-                const finalRefresh = await refreshReleaseEvidence(generatedFrom);
-                currentPack = finalRefresh.pack;
-                usedCase = finalRefresh.authorizedFacts;
-                validation = await revalidateFactualResult(
-                  validation,
-                  generatedFrom,
-                  currentPack,
-                  evidenceContext,
-                );
-              }
-            }
           } catch (error) {
-            if (error instanceof KnowledgeFreshnessError)
+            if (error instanceof KnowledgeFreshnessError) {
               freshnessFailure = error.reason;
-            else throw error;
+              // Drop stale documentary evidence from the active pack. A fresh
+              // case read is still required for case-backed deterministic fallback.
+              usedCase = await adapter.read();
+              currentPack = await buildEvidencePack({
+                context: evidenceContext,
+                language: generatedFrom.responseLanguage,
+                caseFacts: generatedFrom.caseFacts ? usedCase : null,
+                knowledge: { articles: [], scope: 'supabase_unavailable' },
+                offerContact: false,
+              });
+            } else throw error;
+          }
+        }
+
+        if (
+          draft &&
+          generation.outcome === 'candidate_generated' &&
+          !freshnessFailure &&
+          (env.LLM_VALIDATION_MODE === 'shadow' ||
+            env.LLM_VALIDATION_MODE === 'release')
+        ) {
+          validation = await validateNaturalDraft(
+            env,
+            {
+              draft,
+              pack: generatedFrom,
+              currentPack,
+              context: evidenceContext,
+            },
+            trace,
+          );
+
+          if (validation.calls > 0) {
+            try {
+              // No provider verdict can cross the gate without a second
+              // post-validation authorization + publication refresh.
+              const finalRefresh = await refreshReleaseEvidence(generatedFrom);
+              currentPack = finalRefresh.pack;
+              usedCase = finalRefresh.authorizedFacts;
+              validation = await revalidateFactualResult(
+                validation,
+                generatedFrom,
+                currentPack,
+                evidenceContext,
+              );
+            } catch (error) {
+              if (error instanceof KnowledgeFreshnessError) {
+                freshnessFailure = error.reason;
+                usedCase = await adapter.read();
+                currentPack = await buildEvidencePack({
+                  context: evidenceContext,
+                  language: generatedFrom.responseLanguage,
+                  caseFacts: generatedFrom.caseFacts ? usedCase : null,
+                  knowledge: { articles: [], scope: 'supabase_unavailable' },
+                  offerContact: false,
+                });
+              } else throw error;
+            }
           }
         }
       }
@@ -335,6 +367,14 @@ export async function productionChat(
 
       if (released.content) {
         conversation.answer.content = released.content;
+      } else if (freshnessFailure) {
+        // Never retain documentary prose from evidence that failed any final
+        // publication check. Case-backed turns can still fall back to freshly
+        // re-read server facts, but documentary-only turns must abstain.
+        conversation.answer.sources = [];
+        conversation.answer.content = currentPack.caseFacts
+          ? renderCaseFacts(currentPack.caseFacts, conversation.language)
+          : safeConversationReply('missing', conversation.language);
       } else if (currentPack.caseFacts) {
         // A model candidate may have consumed enough latency for the dossier to change.
         // The deterministic fallback must therefore use the final fresh case facts.
@@ -342,13 +382,6 @@ export async function productionChat(
           currentPack.caseFacts,
           conversation.language,
         );
-      } else if (freshnessFailure) {
-        // Never retain documentary prose from evidence that failed the final publication check.
-        conversation.answer.content = safeConversationReply(
-          'missing',
-          conversation.language,
-        );
-        conversation.answer.sources = [];
       }
     }
 
