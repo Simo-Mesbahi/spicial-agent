@@ -421,34 +421,74 @@ let humanReview = {
 if (humanReviewPath) {
   try {
     const review = await readJson(resolve(humanReviewPath));
-    const expectedIds = new Set(generationRows.map((row) => row.id));
+    const expectedReviewItems = new Map(
+      generationRows.map((row) => {
+        const candidate = Array.isArray(row.draft?.sentences)
+          ? row.draft.sentences
+              .map((sentence) => sentence?.text)
+              .filter(Boolean)
+              .join(' ')
+          : '';
+        return [
+          row.id,
+          {
+            candidate,
+            candidateSha256: valueSha256(candidate),
+            expectedLanguage: row.language ?? row.draft?.language ?? null,
+            rubric: Array.isArray(row.rubric) ? row.rubric : [],
+          },
+        ];
+      }),
+    );
+    const expectedIds = new Set(expectedReviewItems.keys());
     const items = Array.isArray(review.items) ? review.items : [];
+    const reviewedAt = Date.parse(review.reviewedAt);
+    const generationCreatedAt = Date.parse(generation?.createdAt ?? '');
+    const validReviewTime =
+      Number.isFinite(reviewedAt) &&
+      reviewedAt <= Date.now() + 5 * 60_000 &&
+      (!Number.isFinite(generationCreatedAt) || reviewedAt >= generationCreatedAt);
+
     const validItems =
       review.schema === 1 &&
       typeof review.reviewer === 'string' &&
       review.reviewer.trim().length >= 2 &&
+      review.reviewer.trim().length <= 160 &&
       typeof review.reviewedAt === 'string' &&
-      !Number.isNaN(Date.parse(review.reviewedAt)) &&
-      review.source?.generationSha256 === (await fileSha256(paths.generation)) &&
+      validReviewTime &&
+      review.source?.qualificationId === qualificationId &&
+      review.source?.generationSha256 === artifacts?.generationSha256 &&
+      review.source?.scenarioCount === expectedIds.size &&
       items.length === expectedIds.size &&
-      items.every(
-        (item) =>
-          expectedIds.has(item.id) &&
+      items.every((item) => {
+        const expected = expectedReviewItems.get(item.id);
+        return (
+          expected &&
           item.approved === true &&
+          item.candidate === expected.candidate &&
+          item.candidateSha256 === expected.candidateSha256 &&
+          item.expectedLanguage === expected.expectedLanguage &&
+          JSON.stringify(item.rubric) === JSON.stringify(expected.rubric) &&
+          (typeof item.notes === 'string' ? item.notes.length <= 2000 : item.notes === undefined) &&
           contract.generation.humanReviewDimensions.every(
             (dimension) => item[dimension] === 'pass',
-          ),
-      ) &&
+          )
+        );
+      }) &&
       new Set(items.map((item) => item.id)).size === items.length;
 
     humanReview = {
       provided: true,
-      valid: validItems,
-      approved: validItems,
+      valid: Boolean(validItems),
+      approved: Boolean(validItems),
       path: resolve(humanReviewPath),
       reason: validItems ? null : 'invalid_or_incomplete',
       reviewer: typeof review.reviewer === 'string' ? review.reviewer : null,
       reviewedAt: typeof review.reviewedAt === 'string' ? review.reviewedAt : null,
+      qualificationId:
+        typeof review.source?.qualificationId === 'string'
+          ? review.source.qualificationId
+          : null,
     };
   } catch (error) {
     humanReview = {
@@ -464,6 +504,7 @@ if (humanReviewPath) {
 const automatedGates = {
   subprocesses: subprocessFailures.length === 0,
   reportsReadable: readFailures.length === 0,
+  qualificationArtifactIntegrity: qualificationAnchor.valid,
   structured: structuredGate,
   retrieval: retrievalGate,
   generation: generationGate,
@@ -479,9 +520,15 @@ const report = {
   kind: 'p1-live-release-qualification',
   runMode: live ? 'live' : 'finalize_existing',
   createdAt: new Date().toISOString(),
+  qualificationId,
+  parentQualificationId: finalizeExisting
+    ? qualificationAnchor.sourceQualificationId
+    : null,
   releaseAllowed,
   automatedPassed,
   contract,
+  artifacts,
+  qualificationAnchor,
   plannedCalls,
   executions,
   failures: {
@@ -533,6 +580,8 @@ console.log(
       automatedPassed,
       gates: automatedGates,
       grounding: groundingMetrics,
+      qualificationId,
+      qualificationAnchor,
       humanReview,
       output,
     },
