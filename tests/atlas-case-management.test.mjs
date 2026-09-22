@@ -80,7 +80,7 @@ test('case update contract rejects unsafe money and malformed timestamps', () =>
 
 test('case management migration preserves audit, idempotency and soft-delete invariants', () => {
   const sql = readFileSync(
-    'supabase/migrations/20260922072000_case_management_engine.sql',
+    'supabase/migrations/20260922075414_case_management_engine.sql',
     'utf8',
   );
 
