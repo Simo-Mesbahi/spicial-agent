@@ -47,6 +47,13 @@ as $$
 declare
   v_query text := left(trim(coalesce(p_query,'')),80);
   v_normalized text := lower(left(trim(coalesce(p_query,'')),80));
+  v_like_query text := replace(
+    replace(
+      replace(lower(left(trim(coalesce(p_query,'')),80)),'!','!!'),
+      '%','!%'
+    ),
+    '_','!_'
+  );
   v_limit integer := least(greatest(coalesce(p_limit,12),1),20);
 begin
   if not app_private.is_admin(
@@ -123,25 +130,14 @@ begin
                 coalesce(c.last_name,'') || ' ' ||
                 coalesce(c.email,'') || ' ' ||
                 coalesce(c.phone,'')
-              ) like '%'||v_normalized||'%'
-              or greatest(
-                extensions.similarity(
-                  lower(coalesce(c.external_id,'')),
-                  v_normalized
-                ),
-                extensions.similarity(
-                  lower(trim(concat_ws(' ',c.first_name,c.last_name))),
-                  v_normalized
-                ),
-                extensions.similarity(
-                  lower(coalesce(c.email,'')),
-                  v_normalized
-                ),
-                extensions.similarity(
-                  lower(coalesce(c.phone,'')),
-                  v_normalized
-                )
-              )>=0.22
+              ) like '%'||v_like_query||'%' escape '!'
+              or lower(
+                coalesce(c.external_id,'') || ' ' ||
+                coalesce(c.first_name,'') || ' ' ||
+                coalesce(c.last_name,'') || ' ' ||
+                coalesce(c.email,'') || ' ' ||
+                coalesce(c.phone,'')
+              ) operator(extensions.%) v_normalized
             )
           order by rank desc,display_name,c.id
           limit v_limit
@@ -202,25 +198,14 @@ begin
               coalesce(p.name,'') || ' ' ||
               coalesce(p.category,'') || ' ' ||
               coalesce(p.serial_number,'')
-            ) like '%'||v_normalized||'%'
-            or greatest(
-              extensions.similarity(
-                lower(coalesce(p.external_id,'')),
-                v_normalized
-              ),
-              extensions.similarity(
-                lower(coalesce(p.sku,'')),
-                v_normalized
-              ),
-              extensions.similarity(
-                lower(p.name),
-                v_normalized
-              ),
-              extensions.similarity(
-                lower(coalesce(p.serial_number,'')),
-                v_normalized
-              )
-            )>=0.22
+            ) like '%'||v_like_query||'%' escape '!'
+            or lower(
+              coalesce(p.external_id,'') || ' ' ||
+              coalesce(p.sku,'') || ' ' ||
+              coalesce(p.name,'') || ' ' ||
+              coalesce(p.category,'') || ' ' ||
+              coalesce(p.serial_number,'')
+            ) operator(extensions.%) v_normalized
           )
         order by rank desc,p.name,p.id
         limit v_limit
