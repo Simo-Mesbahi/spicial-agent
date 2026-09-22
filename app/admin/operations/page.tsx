@@ -556,12 +556,8 @@ export default function AdminOperationsPage() {
   );
 
   useEffect(() => {
-    if (!showCreate || selectedCustomer || customerLookupQuery.trim().length < 3) {
-      setCustomerLookupResults([]);
-      setCustomerLookupBusy(false);
-      setCustomerLookupError('');
+    if (!showCreate || selectedCustomer || customerLookupQuery.trim().length < 3)
       return;
-    }
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -600,12 +596,8 @@ export default function AdminOperationsPage() {
   ]);
 
   useEffect(() => {
-    if (!showCreate || selectedProduct || productLookupQuery.trim().length < 3) {
-      setProductLookupResults([]);
-      setProductLookupBusy(false);
-      setProductLookupError('');
+    if (!showCreate || selectedProduct || productLookupQuery.trim().length < 3)
       return;
-    }
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -809,6 +801,8 @@ export default function AdminOperationsPage() {
     setProductLookupQuery('');
     setCustomerLookupResults([]);
     setProductLookupResults([]);
+    setCustomerLookupBusy(false);
+    setProductLookupBusy(false);
     setCustomerLookupError('');
     setProductLookupError('');
     try {
@@ -824,6 +818,7 @@ export default function AdminOperationsPage() {
     setSelectedCustomer(customer);
     setCustomerLookupQuery('');
     setCustomerLookupResults([]);
+    setCustomerLookupBusy(false);
     setCustomerLookupError('');
     setCreateDraft((draft) => ({
       ...draft,
@@ -839,6 +834,7 @@ export default function AdminOperationsPage() {
     setSelectedCustomer(null);
     setCustomerLookupQuery('');
     setCustomerLookupResults([]);
+    setCustomerLookupBusy(false);
     setCustomerLookupError('');
   }
 
@@ -846,6 +842,7 @@ export default function AdminOperationsPage() {
     setSelectedProduct(product);
     setProductLookupQuery('');
     setProductLookupResults([]);
+    setProductLookupBusy(false);
     setProductLookupError('');
     setCreateDraft((draft) => ({
       ...draft,
@@ -861,6 +858,7 @@ export default function AdminOperationsPage() {
     setSelectedProduct(null);
     setProductLookupQuery('');
     setProductLookupResults([]);
+    setProductLookupBusy(false);
     setProductLookupError('');
   }
 
@@ -1289,6 +1287,8 @@ export default function AdminOperationsPage() {
                 setProductLookupQuery('');
                 setCustomerLookupResults([]);
                 setProductLookupResults([]);
+                setCustomerLookupBusy(false);
+                setProductLookupBusy(false);
                 setCustomerLookupError('');
                 setProductLookupError('');
                 setCreateDraft(createDraftForRole(next?.role));
@@ -1518,9 +1518,12 @@ export default function AdminOperationsPage() {
                           <input
                             maxLength={80}
                             value={customerLookupQuery}
-                            onChange={(event) =>
-                              setCustomerLookupQuery(event.target.value)
-                            }
+                            onChange={(event) => {
+                              setCustomerLookupQuery(event.target.value);
+                              setCustomerLookupResults([]);
+                              setCustomerLookupBusy(false);
+                              setCustomerLookupError('');
+                            }}
                             placeholder="Nom, e-mail, téléphone ou identifiant"
                             autoComplete="off"
                           />
@@ -1697,9 +1700,12 @@ export default function AdminOperationsPage() {
                           <input
                             maxLength={80}
                             value={productLookupQuery}
-                            onChange={(event) =>
-                              setProductLookupQuery(event.target.value)
-                            }
+                            onChange={(event) => {
+                              setProductLookupQuery(event.target.value);
+                              setProductLookupResults([]);
+                              setProductLookupBusy(false);
+                              setProductLookupError('');
+                            }}
                             placeholder="Nom, SKU, n° série ou identifiant"
                             autoComplete="off"
                           />
