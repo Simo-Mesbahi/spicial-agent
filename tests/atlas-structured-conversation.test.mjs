@@ -220,7 +220,11 @@ test('semantic normalization keeps current language independent from default Fre
 });
 
 test('semantic normalization separates generic procedures from personal case facts', () => {
-  const state = emptyConversationState();
+  const state = {
+    ...emptyConversationState(),
+    currentTopic: 'return',
+    recentTurns: [{ user: 'I mean the return', assistant: '' }],
+  };
   const corrected = normalizeUnderstanding(
     output({
       intent: 'case_lookup',
