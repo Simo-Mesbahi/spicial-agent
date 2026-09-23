@@ -100,7 +100,11 @@ The governed live plan currently measures:
 - all 10 natural-generation scenarios;
 - all 70 factual-grounding scenarios.
 
-The runner caps the qualification budget before executing. Missing metrics never count as passing.
+The manual workflow performs the 20-query hybrid retrieval qualification **before** the completion-heavy stages. A fresh, configuration-bound retrieval report must satisfy every per-query recall/precision requirement before it can be reused by the full qualification. This prevents spending the 100 + 10 + 70 completion calls when multilingual retrieval is not yet release-ready.
+
+For the Gemini free-tier qualification baseline, completion calls are paced start-to-start with a 6500 ms minimum interval. Pacing is deterministic and qualification-only; it does **not** retry a failed provider call and therefore does not silently exceed the governed call budget. Gemini structured understanding, generation and factual validation use strict `json_schema` output for this qualification baseline.
+
+The runner caps the qualification budget before executing: at most 100 structured completions, 10 generation completions, 70 grounding completions and 20 embedding calls. Missing metrics, transient provider failures and malformed verdicts never count as passing.
 
 Natural-generation qualification additionally requires explicit human review of:
 
