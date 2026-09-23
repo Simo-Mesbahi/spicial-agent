@@ -74,7 +74,7 @@ function explicitResponseLanguage(message: string): ConversationLanguage | null 
     ['fr', /\b(?:réponds?|reponds?|continue|parle)\b.{0,30}\bfran[cç]ais\b|\ben français\b/u],
     ['en', /\b(?:answer|respond|continue|keep|speak)\b.{0,30}\benglish\b|\bin english\b/u],
     ['de', /\b(?:antworte|antworten|weiter|sprich)\b.{0,30}\bdeutsch\b|\bauf deutsch\b/u],
-    ['es', /\b(?:responde|contin[uú]a|habla)\b.{0,30}\bespañol\b|\ben español\b/u],
+    ['es', /\b(?:responde|contin[uú]a|seguimos|habla)\b.{0,30}\bespañol\b|\ben español\b/u],
     ['ar', /(?:أجب|اجب|تكلم|تحدث|نكمل).{0,30}(?:بالعربية|عربي)/u],
   ];
   return rules.find(([, pattern]) => pattern.test(q))?.[0] ?? null;
@@ -197,8 +197,9 @@ export function normalizeUnderstanding(
   if (
     state.activeCaseId &&
     u.requiresCase &&
-    personalFact &&
-    u.intent === 'information'
+    (personalFact || u.referencesPreviousTurn) &&
+    u.intent === 'information' &&
+    !explicitExplainOnly(message)
   ) {
     u.intent = 'case_lookup';
     u.requiresKnowledge = false;
@@ -224,9 +225,9 @@ export function normalizeUnderstanding(
 
   if (
     u.intent === 'information' &&
-    u.subIntent === 'procedure' &&
     !state.activeCaseId &&
-    candidates.length === 0
+    candidates.length === 0 &&
+    !personalFact
   ) {
     u.requiresCase = false;
     u.requiresKnowledge = true;
