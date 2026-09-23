@@ -163,6 +163,40 @@ test('semantic normalization separates generic procedures from personal case fac
   assert.equal(personal.intent, 'case_lookup');
   assert.equal(personal.requiresCase, true);
   assert.equal(personal.requiresKnowledge, false);
+
+  const pronoun = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'general',
+      requiresCase: true,
+      requiresKnowledge: true,
+      referencesPreviousTurn: true,
+      reference: 'active',
+    }),
+    'what about its spare part?',
+    active,
+    [{ id: 'case-a', reference: 'SAV-1', product: 'TV', kind: 'repair' }],
+  );
+  assert.equal(pronoun.intent, 'case_lookup');
+  assert.equal(pronoun.requiresKnowledge, false);
+
+  const generic = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'general',
+      topic: 'delivery',
+      requiresCase: true,
+      requiresKnowledge: false,
+    }),
+    'my parcel is incomplete',
+    emptyConversationState(),
+    [],
+  );
+  assert.equal(generic.intent, 'information');
+  assert.equal(generic.requiresCase, false);
+  assert.equal(generic.requiresKnowledge, true);
 });
 
 test('semantic normalization safely handles handoff withdrawal and action refusal', () => {
