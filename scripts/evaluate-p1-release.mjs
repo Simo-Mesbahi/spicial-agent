@@ -226,11 +226,11 @@ function reusedRetrievalMatchesEnvironment(report) {
     createdAt >= Date.now() - 30 * 60_000;
   return (
     fresh &&
-    configuration.queryContract === 'canonical_fr_from_multilingual_source' &&
+    configuration.queryContract === contract.retrieval.queryContract &&
     configuration.embeddingProvider === process.env.EMBEDDING_PROVIDER &&
     configuration.embeddingModel === process.env.EMBEDDING_MODEL &&
     configuration.embeddingRevision === (process.env.EMBEDDING_REVISION ?? '1') &&
-    configuration.corpusLocale === (process.env.RAG_CORPUS_LOCALE ?? 'fr-FR') &&
+    configuration.corpusLocale === (process.env.RAG_CORPUS_LOCALE ?? contract.retrieval.corpusLocale) &&
     configuration.market === (process.env.RAG_MARKET ?? 'GLOBAL') &&
     configuration.minSimilarity === Number(process.env.RAG_MIN_SIMILARITY ?? '0.7') &&
     configuration.minLexicalScore === Number(process.env.RAG_MIN_LEXICAL_SCORE ?? '3')
