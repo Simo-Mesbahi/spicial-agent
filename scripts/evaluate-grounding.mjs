@@ -8,6 +8,7 @@ import {
   groundingFixture,
   validateGroundingCorpus,
 } from '../evals/grounding.mjs';
+import { liveCompletionPacer } from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
 const options = {
   live: false,
@@ -68,10 +69,12 @@ else {
   const { validateNaturalDraft, providerTrace } = await import(
     'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
   );
-  const DB = database();
+  const DB = database(),
+    pacing = liveCompletionPacer();
   try {
     const results = [];
     for (const scenario of selected) {
+      await pacing.beforeCall();
       const trace = providerTrace();
       const fixture = groundingFixture(scenario);
       const diagnostics = await validateNaturalDraft(
@@ -116,6 +119,7 @@ else {
           data: 'synthetic',
           releaseAllowed: false,
           coverage,
+          pacingIntervalMs: pacing.intervalMs,
           measuredScenarios: results.length,
           metrics: {
             falseSupportRate: negatives.length ? falseSupport / negatives.length : null,
