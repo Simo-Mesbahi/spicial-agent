@@ -80,6 +80,14 @@ export type KnowledgeSearchResult = {
     candidateCount: number;
     latencyMs: number;
     embedding: EmbeddingTrace;
+    evaluationProbe?: {
+      candidateFloor: number;
+      vectorCandidates: Array<{
+        documentId: string;
+        title: string;
+        similarity: number;
+      }>;
+    };
   };
   scope: 'supabase_published' | 'legacy_demo' | 'supabase_unavailable' | 'not_required';
 };
