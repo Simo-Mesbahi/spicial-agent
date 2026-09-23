@@ -65,8 +65,6 @@ export type FactualReport = z.infer<typeof factualReportSchema>;
 
 const factualTransportSentenceSchema = z
   .object({
-    index: z.number().int().min(0).max(5),
-    kind: z.enum(kinds),
     verdict: z.enum(verdicts),
     issues: z.array(z.enum(factualIssues)).max(factualIssues.length),
   })
@@ -113,9 +111,9 @@ export const factualReportJsonSchema = object({
 });
 
 /**
- * The model judges semantics only. Provenance is server-owned and comes from the
- * already-validated draft evidenceRefs; the provider never gets authority to invent
- * or relabel citations. This also keeps Gemini's provider schema intentionally small.
+ * The model judges semantics only. Sentence identity, factual/courtesy classification
+ * and provenance are server-owned and reconstructed from the already-validated draft.
+ * The provider never gets authority to invent indexes, evidence identity or citations.
  */
 export const factualTransportJsonSchema = object({
   language: { type: 'string', enum: [...languages, 'unknown'] },
@@ -124,8 +122,6 @@ export const factualTransportJsonSchema = object({
     minItems: 1,
     maxItems: 6,
     items: object({
-      index: { type: 'integer', minimum: 0, maximum: 5 },
-      kind: { type: 'string', enum: kinds },
       verdict: { type: 'string', enum: verdicts },
       issues: {
         type: 'array',
@@ -183,16 +179,16 @@ function canonicalFactualReport(
 
   const report = {
     language: transport.data.language,
-    sentences: transport.data.sentences.map((sentence, position) => ({
-      index: sentence.index,
-      kind: sentence.kind,
-      verdict: sentence.verdict,
-      issues: sentence.issues,
-      citations:
-        sentence.kind === 'courtesy'
-          ? []
-          : draft.sentences[position].evidenceRefs.map((ref) => canonicalCitation(ref, refs)),
-    })),
+    sentences: transport.data.sentences.map((sentence, position) => {
+      const evidenceRefs = draft.sentences[position].evidenceRefs;
+      return {
+        index: position,
+        kind: evidenceRefs.length ? 'factual' : 'courtesy',
+        verdict: sentence.verdict,
+        issues: sentence.issues,
+        citations: evidenceRefs.map((ref) => canonicalCitation(ref, refs)),
+      };
+    }),
   };
   const parsed = factualReportSchema.safeParse(report);
   if (!parsed.success) throw new ValidationError('invalid_verdict');
@@ -418,10 +414,13 @@ export async function validateNaturalDraft(
       (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
     if (!['json_schema', 'json_object', 'prompt'].includes(requestedFormat))
       throw new ProviderError('configuration');
-    // Gemini OpenAI-compat structured output has repeatedly rejected this judge schema
-    // in hosted qualification. Keep transport simple and make local Zod authoritative.
+    // Older Gemini compatibility models rejected the previous judge schema. The
+    // current 3.5 Flash-Lite contract is deliberately minimal and can use structured
+    // output; older allowlisted Gemini models keep the prompt-constrained fallback.
+    const geminiStructuredJudge =
+      settings.provider === 'gemini' && settings.model === 'gemini-3.5-flash-lite';
     const format =
-      settings.provider === 'gemini' && requestedFormat === 'json_schema'
+      settings.provider === 'gemini' && requestedFormat === 'json_schema' && !geminiStructuredJudge
         ? 'prompt'
         : requestedFormat;
     if (!(await reserveValidation(env, pack.scope.organizationId))) {
