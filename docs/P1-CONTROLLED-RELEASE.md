@@ -100,7 +100,7 @@ The governed live plan currently measures:
 - all 10 natural-generation scenarios;
 - all 70 factual-grounding scenarios.
 
-The manual workflow performs the 20-query hybrid retrieval qualification **before** the completion-heavy stages. A fresh, configuration-bound retrieval report must satisfy every per-query recall/precision requirement before it can be reused by the full qualification. This prevents spending the 100 + 10 + 70 completion calls when multilingual retrieval is not yet release-ready.
+The manual workflow performs the 20-query hybrid retrieval qualification **before** the completion-heavy stages. Each scenario starts from an authored FR/EN/DE/ES/AR customer utterance but exercises the reviewed French retrieval query used at the actual structured-orchestrator → `fr-FR` corpus boundary. A fresh report is bound to the `canonical_fr_from_multilingual_source` query contract, provider/model/revision, locale, market and relevance thresholds; an older raw-query report is rejected. Every per-query recall/precision requirement must pass before the report can be reused by the full qualification. This prevents spending the 100 + 10 + 70 completion calls when the production retrieval path is not release-ready.
 
 For the Gemini free-tier qualification baseline, completion calls are paced start-to-start with a 6500 ms minimum interval. Pacing is deterministic and qualification-only; it does **not** retry a failed provider call and therefore does not silently exceed the governed call budget. Gemini structured understanding, generation and factual validation use strict `json_schema` output for this qualification baseline.
 
