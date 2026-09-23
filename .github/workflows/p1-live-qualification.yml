@@ -68,6 +68,8 @@ jobs:
       LLM_MODEL: ${{ inputs.llm_model }}
       LLM_BUDGET_MODE: ${{ inputs.budget_mode }}
       LLM_DAILY_LIMIT: '100'
+      LLM_STRUCTURED_OUTPUT: json_schema
+      P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       EMBEDDING_PROVIDER: ${{ inputs.embedding_provider }}
@@ -76,6 +78,8 @@ jobs:
       EMBEDDING_REVISION: '1'
       EMBEDDING_SEND_DIMENSIONS: 'false'
       RAG_MODE: hybrid
+      RAG_MIN_SIMILARITY: '0.55'
+      RAG_MIN_LEXICAL_SCORE: '3'
       LLM_ORCHESTRATOR: structured
       LLM_GENERATION_MODE: shadow
       LLM_VALIDATION_MODE: shadow
@@ -218,10 +222,20 @@ jobs:
           }, null, 2));
           NODE
 
+      - name: Qualify live hybrid retrieval before completion spend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/evaluate-retrieval.mjs \
+            --live \
+            --max-queries 20 \
+            --output outputs/p1-live/retrieval.json
+          node scripts/check-retrieval-qualification.mjs outputs/p1-live/retrieval.json
+
       - name: Run bounded live qualification
         id: live
         continue-on-error: true
-        run: npm run eval:p1:release -- --live --confirm P1_RELEASE
+        run: npm run eval:p1:release -- --live --confirm P1_RELEASE --reuse-retrieval
 
       - name: Verify automated qualification gate
         run: |
