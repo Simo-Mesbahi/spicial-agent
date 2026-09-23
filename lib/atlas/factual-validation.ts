@@ -395,11 +395,17 @@ export async function validateNaturalDraft(
       throw new ProviderError('configuration');
     }
     if (settings.provider === 'demo' || !settings.base) throw new ProviderError('configuration');
-    const format =
+    const requestedFormat =
       env.LLM_STRUCTURED_OUTPUT?.trim() ||
       (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
-    if (!['json_schema', 'json_object', 'prompt'].includes(format))
+    if (!['json_schema', 'json_object', 'prompt'].includes(requestedFormat))
       throw new ProviderError('configuration');
+    // Gemini OpenAI-compat structured output has repeatedly rejected this judge schema
+    // in hosted qualification. Keep transport simple and make local Zod authoritative.
+    const format =
+      settings.provider === 'gemini' && requestedFormat === 'json_schema'
+        ? 'prompt'
+        : requestedFormat;
     if (!(await reserveValidation(env, pack.scope.organizationId))) {
       diagnostics.reason = 'budget_exhausted';
       return diagnostics;
@@ -423,7 +429,8 @@ export async function validateNaturalDraft(
               instructions +
               (format === 'json_schema'
                 ? ''
-                : '\nJSON schema: ' + JSON.stringify(factualTransportJsonSchema)),
+                : '\nReturn ONLY JSON matching this schema exactly: ' +
+                  JSON.stringify(factualTransportJsonSchema)),
           },
           { role: 'user', content: JSON.stringify({ draft, evidence: generationEvidence(pack) }) },
         ],
