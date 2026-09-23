@@ -86,8 +86,8 @@ function explicitHandoffWithdrawal(message: string) {
   return (
     /\b(?:attends?|finalement)\b.{0,40}\b(?:aide[- ]?moi ici|reste avec moi|continue ici)\b/u.test(q) ||
     /\b(?:wait|actually)\b.{0,40}\b(?:help me here|stay with me|continue here)\b/u.test(q) ||
-    /\b(?:warte|doch)\b.{0,40}\b(?:hilf mir hier|bleib.*bei mir|weiter hier)\b/u.test(q) ||
-    /\b(?:espera|mejor)\b.{0,40}\b(?:ay[uú]dame aqu[ií]|qu[eé]date conmigo|sigue aqu[ií])\b/u.test(q) ||
+    /(?:^|\s)(?:warte|doch)(?:\s|$).{0,40}(?:hilf mir.{0,20}hier|bleib.{0,20}bei mir|weiter hier)/u.test(q) ||
+    /(?:^|\s)(?:espera|mejor)(?:\s|$).{0,40}(?:ay[uú]dame aqu[ií]|qu[eé]date conmigo|sigue aqu[ií])/u.test(q) ||
     /(?:انتظر|في الواقع).{0,40}(?:ساعدني هنا|ابق معي|تابع هنا)/u.test(message)
   );
 }
@@ -128,10 +128,10 @@ function explicitDecisionLater(message: string) {
 function strongCorrectionCue(message: string) {
   const q = message.trim().toLowerCase();
   return (
-    /\b(?:pas du|tu as mal compris|oui voilà|oui voila)\b/u.test(q) ||
+    /(?:pas du|tu as mal compris|oui (?:voilà|voila))/u.test(q) ||
     /\b(?:not a|not the|you misunderstood|yes exactly)\b/u.test(q) ||
     /\b(?:nicht eine|du hast mich falsch verstanden|ja genau)\b/u.test(q) ||
-    /\b(?:no del|no me entendiste|sí eso|si eso)\b/u.test(q) ||
+    /(?:no del|no me entendiste|sí eso|si eso)/u.test(q) ||
     /(?:وليس|فهمتني خطأ|نعم هذا)/u.test(message)
   );
 }
@@ -142,7 +142,7 @@ function referenceContinuationCue(message: string) {
     /\b(?:je parle|je veux dire)\b/u.test(q) ||
     /\b(?:i mean|i still mean)\b/u.test(q) ||
     /\b(?:ich meine|ich meine immer noch)\b/u.test(q) ||
-    /\b(?:hablo de|sigo hablando)\b/u.test(q) ||
+    /(?:hablo de(?:l| la| los| las)?|sigo hablando)/u.test(q) ||
     /(?:أقصد|أتحدث عن|ما زلت أتحدث)/u.test(message)
   );
 }
