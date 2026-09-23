@@ -75,12 +75,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       assert.equal(sentenceSchema.properties.citationRefs, undefined);
       assert.equal(sentenceSchema.properties.citationQuotes, undefined);
       assert.equal(sentenceSchema.properties.citations, undefined);
-      assert.deepEqual(Object.keys(sentenceSchema.properties), [
-        'index',
-        'kind',
-        'verdict',
-        'issues',
-      ]);
+      assert.deepEqual(Object.keys(sentenceSchema.properties), ['verdict', 'issues']);
       assert.equal(p.max_completion_tokens, 1200);
       assert.equal(p.tools, undefined);
       assert.equal(p.messages.length, 2);
@@ -89,7 +84,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
         /PRIVATE-KEY|organizationId|requestId|expectedSupported|expectedIssue|rubric/,
       );
       assert.match(p.messages[0].content, /ALL its factual assertions/);
-      assert.match(p.messages[0].content, /server owns provenance/i);
+      assert.match(p.messages[0].content, /server owns sentence identity/i);
       return response(verdict(language));
     });
     const trace = providerTrace(),
@@ -545,6 +540,36 @@ for (const [provider, settings, format] of [
       'supported_candidate',
     );
   });
+test('Factual audit Gemini 3.5 uses minimal structured output for the semantic judge', async (t) => {
+  const c = setup(t);
+  Object.assign(c.env, {
+    LLM_PROVIDER: 'gemini',
+    GEMINI_API_KEY: 'test',
+    GEMINI_MODEL: 'gemini-3.5-flash-lite',
+    LLM_BUDGET_MODE: 'free',
+    LLM_STRUCTURED_OUTPUT: 'json_schema',
+  });
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const p = JSON.parse(init.body);
+    assert.equal(p.response_format?.type, 'json_schema');
+    assert.equal(p.response_format.json_schema.name, 'factual_validation');
+    const sentenceSchema = p.response_format.json_schema.schema.properties.sentences.items;
+    assert.deepEqual(Object.keys(sentenceSchema.properties), ['verdict', 'issues']);
+    assert.equal(sentenceSchema.properties.index, undefined);
+    assert.equal(sentenceSchema.properties.kind, undefined);
+    assert.equal(sentenceSchema.properties.citations, undefined);
+    assert.doesNotMatch(p.messages[0].content, /Return ONLY JSON matching this schema exactly/);
+    return response({
+      language: 'fr',
+      sentences: [{ verdict: 'supported', issues: [] }],
+    });
+  });
+  const r = await validateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(r.outcome, 'supported_candidate');
+  assert.equal(r.reason, null);
+  assert.equal(r.calls, 1);
+});
+
 test('Factual audit keeps provenance server-owned for provider transport verdicts', async (t) => {
   const c = setup(t);
   t.mock.method(globalThis, 'fetch', async () =>
@@ -552,8 +577,6 @@ test('Factual audit keeps provenance server-owned for provider transport verdict
       language: 'fr',
       sentences: [
         {
-          index: 0,
-          kind: 'factual',
           verdict: 'supported',
           issues: [],
         },
@@ -570,8 +593,6 @@ test('Factual audit keeps provenance server-owned for provider transport verdict
       language: 'fr',
       sentences: [
         {
-          index: 0,
-          kind: 'factual',
           verdict: 'supported',
           issues: [],
           citationRefs: ['case.secret'],
