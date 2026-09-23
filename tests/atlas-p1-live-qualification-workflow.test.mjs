@@ -75,6 +75,17 @@ test('P1.7 live workflow paces completions without hidden provider retries', asy
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
 });
 
+test('P1.7 grounding qualification fails fast on systemic request rejection', async () => {
+  const grounding = await readFile('scripts/evaluate-grounding.mjs', 'utf8');
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(grounding, /rejectedStreak >= 3/);
+  assert.match(grounding, /repeated_upstream_request_rejected/);
+  assert.match(grounding, /systemicTransportFailure/);
+  assert.match(release, /partial\?\.systemicTransportFailure/);
+  assert.match(release, /if \(partial\?\.systemicTransportFailure\) break/);
+});
+
 test('P1.7 live workflow remains fail-closed until human review', async () => {
   const source = await readFile(workflowPath, 'utf8');
 
