@@ -72,9 +72,15 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       const p = JSON.parse(init.body);
       assert.equal(p.response_format.json_schema.name, 'factual_validation');
       const sentenceSchema = p.response_format.json_schema.schema.properties.sentences.items;
-      assert.ok(sentenceSchema.properties.citationRefs);
-      assert.ok(sentenceSchema.properties.citationQuotes);
+      assert.equal(sentenceSchema.properties.citationRefs, undefined);
+      assert.equal(sentenceSchema.properties.citationQuotes, undefined);
       assert.equal(sentenceSchema.properties.citations, undefined);
+      assert.deepEqual(Object.keys(sentenceSchema.properties), [
+        'index',
+        'kind',
+        'verdict',
+        'issues',
+      ]);
       assert.equal(p.max_completion_tokens, 1200);
       assert.equal(p.tools, undefined);
       assert.equal(p.messages.length, 2);
@@ -83,7 +89,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
         /PRIVATE-KEY|organizationId|requestId|expectedSupported|expectedIssue|rubric/,
       );
       assert.match(p.messages[0].content, /ALL its factual assertions/);
-      assert.match(p.messages[0].content, /parallel arrays of equal length/);
+      assert.match(p.messages[0].content, /server owns provenance/i);
       return response(verdict(language));
     });
     const trace = providerTrace(),
@@ -494,8 +500,9 @@ for (const [provider, settings, format] of [
       GEMINI_API_KEY: 'test',
       GEMINI_MODEL: 'gemini-2.5-flash-lite',
       LLM_BUDGET_MODE: 'free',
+      LLM_STRUCTURED_OUTPUT: 'json_schema',
     },
-    'json_schema',
+    null,
   ],
   [
     'compatible',
@@ -526,14 +533,10 @@ for (const [provider, settings, format] of [
       const p = JSON.parse(init.body);
       assert.equal(p.response_format?.type ?? null, format);
       if (provider === 'gemini') {
-        const schema = p.response_format.json_schema.schema;
-        const sentence = schema.properties.sentences.items;
-        assert.ok(sentence.properties.citationRefs);
-        assert.ok(sentence.properties.citationQuotes);
-        assert.equal(sentence.properties.citations, undefined);
-        assert.equal(sentence.properties.citationRefs.items.type, 'string');
-        assert.equal(sentence.properties.citationQuotes.items.type, 'string');
-        assert.equal(sentence.additionalProperties, false);
+        assert.equal(p.response_format, undefined);
+        assert.match(p.messages[0].content, /Return ONLY JSON matching this schema exactly/);
+        assert.match(p.messages[0].content, /"verdict"/);
+        assert.doesNotMatch(p.messages[0].content, /citationRefs|citationQuotes/);
       }
       return response(verdict());
     });
@@ -542,7 +545,7 @@ for (const [provider, settings, format] of [
       'supported_candidate',
     );
   });
-test('Factual audit reconstructs canonical citations from the flattened provider transport', async (t) => {
+test('Factual audit keeps provenance server-owned for provider transport verdicts', async (t) => {
   const c = setup(t);
   t.mock.method(globalThis, 'fetch', async () =>
     response({
@@ -553,8 +556,6 @@ test('Factual audit reconstructs canonical citations from the flattened provider
           kind: 'factual',
           verdict: 'supported',
           issues: [],
-          citationRefs: ['case.confirmedEta'],
-          citationQuotes: ['null'],
         },
       ],
     }),
@@ -573,8 +574,7 @@ test('Factual audit reconstructs canonical citations from the flattened provider
           kind: 'factual',
           verdict: 'supported',
           issues: [],
-          citationRefs: ['case.confirmedEta'],
-          citationQuotes: [],
+          citationRefs: ['case.secret'],
         },
       ],
     }),
