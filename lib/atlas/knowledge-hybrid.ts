@@ -160,7 +160,7 @@ export async function searchHybridKnowledge(
       market = env.RAG_MARKET ?? 'GLOBAL';
     if (!/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || !/^[A-Z0-9][A-Z0-9_-]{1,15}$/.test(market))
       throw new ProviderError('configuration');
-    const minSimilarity = numeric(env.RAG_MIN_SIMILARITY, 0.7, 0, 1),
+    const minSimilarity = numeric(env.RAG_MIN_SIMILARITY, 0.55, 0, 1),
       minLexical = numeric(env.RAG_MIN_LEXICAL_SCORE, 3, 0, 100);
     let vector: number[] | null = null,
       space: string | null = null;
