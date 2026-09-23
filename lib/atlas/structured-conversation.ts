@@ -7,6 +7,7 @@ import {
 } from './conversation-intelligence';
 import { redacted, normalized, type Article } from './domain';
 import { modelSettings } from './model-policy';
+import { structuredSchemaForProvider } from './structured-output';
 import {
   completionPayload,
   providerCompletion,
@@ -253,6 +254,7 @@ export async function understandConversation(
     (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
   if (!['json_schema', 'json_object', 'prompt'].includes(format))
     throw new ProviderError('configuration');
+  const providerSchema = structuredSchemaForProvider(settings.provider, understandingJsonSchema);
   const messages = [
     {
       role: 'system',
@@ -283,7 +285,7 @@ export async function understandConversation(
                   json_schema: {
                     name: 'conversation_understanding',
                     strict: true,
-                    schema: understandingJsonSchema,
+                    schema: providerSchema,
                   },
                 }
               : { type: 'json_object' },
