@@ -59,6 +59,7 @@ Information about a possible action is NOT action intent. Refusing an action is 
 Handoff can be withdrawn; "wait, help me here first" / "stay with me here" means requiresHuman=false, information, and conversationRepair=true.
 requiresHuman is true only when the current user actually wants a human. Never claim anything was sent, booked, approved or changed.
 Generic return/refund/warranty procedures remain information with requiresCase=false unless the user asks for a specific case status, ETA or reason. Possessive wording alone does not create case access.
+A plain problem statement such as an incomplete parcel is not itself a status lookup: without an authorized active/candidate case, keep information + requiresCase=false and give generic next-step guidance. For an already-authorized active case, questions about that case's quote and the consequences of accepting it are case-specific: keep intent=information but requiresCase=true and requiresKnowledge=true.
 language MUST describe the current message language; do not default to the session language or French. preferredResponseLanguage changes only on an explicit language request.
 retrievalQuery is a short standalone French search query for the current French corpus, based only on the request/context; no invented facts.
 For business, actions, handoff, safety, policy, status, amounts, dates or case selection, leave response empty: the server supplies verified text.
@@ -257,6 +258,18 @@ export function normalizeUnderstanding(
   }
 
   const personalFact = ['status', 'eta', 'reason'].includes(u.subIntent);
+
+  // A quote tied to an already-authorized active case is a case-specific artifact.
+  // Keep the question informational (not an action), but require the fresh case plus
+  // published procedure evidence before answering.
+  if (state.activeCaseId && u.intent === 'information' && u.topic === 'quote') {
+    u.requiresCase = true;
+    u.requiresKnowledge = true;
+    u.guidance = 'business_direct';
+    u.requiresClarification = false;
+    u.requiresHuman = false;
+    u.response = '';
+  }
   if (
     state.activeCaseId &&
     u.requiresCase &&
@@ -283,12 +296,10 @@ export function normalizeUnderstanding(
     u.guidance = 'business_direct';
   }
 
-  if (
-    u.intent === 'information' &&
-    !state.activeCaseId &&
-    candidates.length === 0 &&
-    !personalFact
-  ) {
+  if (u.intent === 'information' && !state.activeCaseId && candidates.length === 0) {
+    // "information" is the generic-help path. A personal lookup must be expressed
+    // as case_lookup; do not force verification merely because the model mislabeled
+    // a problem description as status/eta/reason.
     u.requiresCase = false;
     u.requiresKnowledge = true;
   }
