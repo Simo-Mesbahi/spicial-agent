@@ -138,7 +138,7 @@ for (const [language, response] of [
 }
 for (const [provider, format] of [
   ['openai', 'json_schema'],
-  ['gemini', 'json_object'],
+  ['gemini', 'json_schema'],
   ['ollama', 'json_object'],
   ['compatible', 'prompt'],
 ]) {
