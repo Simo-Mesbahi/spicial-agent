@@ -71,7 +71,7 @@ export async function understandConversation(
   const settings = modelSettings(env);
   const format =
     env.LLM_STRUCTURED_OUTPUT?.trim() ||
-    (settings.provider === 'openai' ? 'json_schema' : 'json_object');
+    (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
   if (!['json_schema', 'json_object', 'prompt'].includes(format))
     throw new ProviderError('configuration');
   const messages = [
