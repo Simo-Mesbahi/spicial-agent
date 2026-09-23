@@ -20,6 +20,8 @@ export const p1ReleaseQualificationContract = Object.freeze({
     requiredMetricAccuracy: 1,
   },
   retrieval: {
+    queryContract: 'canonical_fr_from_multilingual_source',
+    corpusLocale: 'fr-FR',
     requiredQueries: 20,
     completionCalls: 0,
     minimumHybridRecallAtK: 1,
