@@ -121,7 +121,7 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
     GEMINI_API_KEY: 'test-generation-key',
     LLM_BUDGET_MODE: 'approved',
     EMBEDDING_PROVIDER: 'gemini',
-    EMBEDDING_MODEL: 'gemini-embedding-001',
+    EMBEDDING_MODEL: 'gemini-embedding-2',
     EMBEDDING_API_KEY: 'test-embedding-key',
   });
   const input = {
@@ -158,7 +158,7 @@ test('canary cohort assignment is stable, secret-salted and bounded', async () =
       GEMINI_API_KEY: 'test-generation-key',
       LLM_BUDGET_MODE: 'approved',
       EMBEDDING_PROVIDER: 'gemini',
-      EMBEDDING_MODEL: 'gemini-embedding-001',
+      EMBEDDING_MODEL: 'gemini-embedding-2',
       EMBEDDING_API_KEY: 'test-embedding-key',
     }),
     input,
@@ -393,7 +393,7 @@ test('release readiness fails closed unless structured, hybrid, generation, vali
     GEMINI_API_KEY: 'test-generation-key',
     LLM_BUDGET_MODE: 'approved',
     EMBEDDING_PROVIDER: 'gemini',
-    EMBEDDING_MODEL: 'gemini-embedding-001',
+    EMBEDDING_MODEL: 'gemini-embedding-2',
     EMBEDDING_API_KEY: 'test-embedding-key',
   });
   assert.equal((await releaseConfigurationState(base)).releaseReady, true);
