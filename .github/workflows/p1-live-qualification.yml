@@ -22,7 +22,7 @@ on:
       llm_model:
         description: 'Exact approved model identifier'
         required: true
-        default: gemini-3.1-flash-lite
+        default: gemini-3.5-flash-lite
         type: string
       embedding_provider:
         description: 'Provider used for 768-dimensional retrieval embeddings'
