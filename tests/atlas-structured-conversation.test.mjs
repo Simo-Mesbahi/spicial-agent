@@ -100,6 +100,104 @@ const stateOf = (db) =>
   JSON.parse(db.sql.prepare('SELECT payload FROM conversation_states').get().payload);
 
 
+test('semantic normalization treats repair as contextual, not a generic phrase trigger', () => {
+  const fresh = emptyConversationState();
+  const first = normalizeUnderstanding(
+    output({
+      intent: 'information',
+      topic: 'return',
+      requiresKnowledge: true,
+      conversationRepair: true,
+    }),
+    'I mean the return',
+    fresh,
+    [],
+  );
+  assert.equal(first.intent, 'information');
+  assert.equal(first.requiresCase, false);
+  assert.equal(first.conversationRepair, false);
+
+  const afterTurn = {
+    ...emptyConversationState(),
+    currentTopic: 'return',
+    recentTurns: [{ user: 'return', assistant: '' }],
+  };
+  const misunderstood = normalizeUnderstanding(
+    output({
+      intent: 'information',
+      topic: 'return',
+      requiresKnowledge: true,
+      conversationRepair: false,
+    }),
+    'no you misunderstood me',
+    afterTurn,
+    [],
+  );
+  assert.equal(misunderstood.intent, 'clarification');
+  assert.equal(misunderstood.guidance, 'clarify');
+  assert.equal(misunderstood.requiresClarification, true);
+  assert.equal(misunderstood.requiresCase, false);
+  assert.equal(misunderstood.conversationRepair, true);
+
+  const corrected = normalizeUnderstanding(
+    output({
+      intent: 'case_lookup',
+      subIntent: 'status',
+      topic: 'refund',
+      requiresCase: true,
+      requiresKnowledge: false,
+      conversationRepair: false,
+    }),
+    'I mean the refund for that return',
+    afterTurn,
+    [],
+  );
+  assert.equal(corrected.intent, 'information');
+  assert.equal(corrected.requiresCase, false);
+  assert.equal(corrected.requiresKnowledge, true);
+  assert.equal(corrected.conversationRepair, true);
+});
+
+test('semantic normalization does not carry repair across resolved handoff or active-case coreference', () => {
+  const active = {
+    ...emptyConversationState(),
+    activeCaseId: 'case-a',
+    recentTurns: [{ user: 'where is my TV?', assistant: '' }],
+  };
+  const coreference = normalizeUnderstanding(
+    output({
+      intent: 'case_lookup',
+      subIntent: 'status',
+      requiresCase: true,
+      conversationRepair: true,
+      reference: 'active',
+    }),
+    'I still mean the TV',
+    active,
+    [{ id: 'case-a', reference: 'SAV-1', product: 'TV', kind: 'repair' }],
+  );
+  assert.equal(coreference.intent, 'case_lookup');
+  assert.equal(coreference.conversationRepair, false);
+
+  const handoffResolved = {
+    ...emptyConversationState(),
+    recentTurns: [{ user: 'wait help me here first', assistant: '' }],
+    pendingHandoff: false,
+  };
+  const parcel = normalizeUnderstanding(
+    output({
+      intent: 'information',
+      requiresKnowledge: true,
+      conversationRepair: true,
+    }),
+    'my parcel is incomplete',
+    handoffResolved,
+    [],
+  );
+  assert.equal(parcel.intent, 'information');
+  assert.equal(parcel.conversationRepair, false);
+});
+
 test('semantic normalization keeps current language independent from default French state', () => {
   const state = emptyConversationState();
   const normalized = normalizeUnderstanding(
@@ -122,7 +220,11 @@ test('semantic normalization keeps current language independent from default Fre
 });
 
 test('semantic normalization separates generic procedures from personal case facts', () => {
-  const state = emptyConversationState();
+  const state = {
+    ...emptyConversationState(),
+    currentTopic: 'return',
+    recentTurns: [{ user: 'I mean the return', assistant: '' }],
+  };
   const corrected = normalizeUnderstanding(
     output({
       intent: 'case_lookup',
@@ -335,6 +437,12 @@ for (const [provider, format] of [
     assert.equal(r.body.metadata.mode, provider);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].payload.response_format?.type, format === 'prompt' ? undefined : format);
+    if (provider === 'gemini') {
+      const schema = calls[0].payload.response_format.json_schema.schema;
+      assert.equal(schema.properties.selectedCaseId.minLength, undefined);
+      assert.equal(schema.properties.selectedCaseId.maxLength, undefined);
+      assert.equal(schema.additionalProperties, false);
+    }
   });
 }
 for (const [name, invalid] of [

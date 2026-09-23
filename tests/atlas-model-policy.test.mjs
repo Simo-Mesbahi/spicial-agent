@@ -89,6 +89,21 @@ test('Gemini free mode is a narrow allowlist with a separate secret', () => {
   assert.ok(!JSON.stringify(publicConfig).includes('gemini-secret'));
 });
 
+test('Provider timeout override is bounded and server-owned', () => {
+  const base = {
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_API_KEY: 'gemini-secret',
+  };
+  assert.equal(modelSettings(base).timeoutMs, 20000);
+  assert.equal(modelSettings({ ...base, LLM_REQUEST_TIMEOUT_MS: '30000' }).timeoutMs, 30000);
+  for (const value of ['999', '60001', 'NaN', '2.5'])
+    assert.throws(
+      () => modelSettings({ ...base, LLM_REQUEST_TIMEOUT_MS: value }),
+      /Délai fournisseur IA invalide/,
+    );
+});
+
 test('Multiple providers can be configured together while remaining explicitly allowlisted', () => {
   const env = {
     LLM_PROVIDER: 'gemini',

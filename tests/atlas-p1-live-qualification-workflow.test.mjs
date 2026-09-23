@@ -46,6 +46,9 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   }
 
   assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
+  assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '30000'/);
+  assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '12000'/);
+  assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'/);
   assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
 

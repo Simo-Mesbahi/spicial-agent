@@ -6,6 +6,7 @@ export type ModelEnvironment = {
   LLM_BASE_URL?: string;
   LLM_API_KEY?: string;
   LLM_BUDGET_MODE?: string;
+  LLM_REQUEST_TIMEOUT_MS?: string;
 
   GEMINI_MODEL?: string;
   GEMINI_API_KEY?: string;
@@ -28,6 +29,14 @@ export const providerIds = ['demo', 'gemini', 'ollama', 'openai', 'compatible'] 
 export type ProviderId = (typeof providerIds)[number];
 
 const geminiBase = 'https://generativelanguage.googleapis.com/v1beta/openai';
+
+function requestTimeout(raw: string | undefined, fallback: number) {
+  if (!raw?.trim()) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1000 || value > 60000)
+    throw new Error('Délai fournisseur IA invalide.');
+  return value;
+}
 
 function isProviderId(value: string): value is ProviderId {
   return (providerIds as readonly string[]).includes(value);
@@ -92,7 +101,7 @@ export function modelSettings(env: ModelEnvironment) {
     throw new Error('Politique de budget IA invalide.');
 
   if (provider === 'demo')
-    return { provider, budgetMode, model: null, base: null, key: null, timeoutMs: 20000 };
+    return { provider, budgetMode, model: null, base: null, key: null, timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000) };
 
   if (provider === 'ollama')
     return {
@@ -101,7 +110,7 @@ export function modelSettings(env: ModelEnvironment) {
       model: localModelName(configuredModel(env, 'ollama')),
       base: localBase(env.OLLAMA_BASE_URL || env.LLM_BASE_URL || undefined),
       key: null,
-      timeoutMs: 40000,
+      timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 40000),
     };
 
   if (provider === 'gemini') {
@@ -121,7 +130,7 @@ export function modelSettings(env: ModelEnvironment) {
       model,
       base: geminiBase,
       key: env.GEMINI_API_KEY,
-      timeoutMs: 20000,
+      timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000),
     };
   }
 
@@ -143,7 +152,7 @@ export function modelSettings(env: ModelEnvironment) {
       model,
       base: 'https://api.openai.com/v1',
       key: env.OPENAI_API_KEY,
-      timeoutMs: 20000,
+      timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000),
     };
   }
 
@@ -162,7 +171,7 @@ export function modelSettings(env: ModelEnvironment) {
     model,
     base: base.replace(/\/$/, ''),
     key,
-    timeoutMs: 20000,
+    timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000),
   };
 }
 

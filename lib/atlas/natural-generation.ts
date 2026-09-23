@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AtlasEnv } from './api';
 import { redacted } from './domain';
 import { modelSettings } from './model-policy';
+import { structuredSchemaForProvider } from './structured-output';
 import {
   completionPayload,
   providerCompletion,
@@ -22,6 +23,7 @@ import { languages, topics, understandingSchema } from './conversation-contract'
 export type GenerationSettings = {
   LLM_GENERATION_MODE?: string;
   LLM_GENERATION_DAILY_LIMIT?: string;
+  LLM_GENERATION_TIMEOUT_MS?: string;
 };
 export const naturalDraftSchema = z
   .object({
@@ -159,6 +161,14 @@ async function reserveGeneration(env: AtlasEnv, organizationId: string) {
       .first(),
   );
 }
+function generationTimeout(raw: string | undefined) {
+  if (!raw?.trim()) return 5000;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1000 || value > 20000)
+    throw new ProviderError('configuration');
+  return value;
+}
+
 /** One optional draft call. No retries. Release authority lives exclusively in p1-release.ts. */
 export async function generateNaturalDraft(
   env: AtlasEnv,
@@ -232,6 +242,7 @@ export async function generateNaturalDraft(
     }
     assertEvidenceContext(pack, input.context);
     const evidence = generationEvidence(pack);
+    const providerSchema = structuredSchemaForProvider(settings.provider, naturalDraftJsonSchema);
     const payload = {
       ...completionPayload(
         env,
@@ -260,14 +271,18 @@ export async function generateNaturalDraft(
                     json_schema: {
                       name: 'natural_response_draft',
                       strict: true,
-                      schema: naturalDraftJsonSchema,
+                      schema: providerSchema,
                     },
                   }
                 : { type: 'json_object' },
           }),
     };
     // Leave time for subsequent authorization refresh; never extend evidence TTL.
-    const timeoutMs = Math.min(5000, settings.timeoutMs, Date.parse(pack.expiresAt) - Date.now());
+    const timeoutMs = Math.min(
+      generationTimeout(env.LLM_GENERATION_TIMEOUT_MS),
+      settings.timeoutMs,
+      Date.parse(pack.expiresAt) - Date.now(),
+    );
     if (timeoutMs < 100) throw new EvidencePackError('evidence_expired');
     const result = await providerCompletion(env, payload, AbortSignal.timeout(timeoutMs), trace);
     assertEvidenceContext(pack, input.context);
