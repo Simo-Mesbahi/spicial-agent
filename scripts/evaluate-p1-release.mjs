@@ -300,17 +300,24 @@ if (live) {
     const remaining = contract.grounding.requiredScenarios - offset;
     const maxCases = Math.min(20, remaining);
     if (maxCases <= 0) continue;
-    executions.push(
-      runNode('scripts/evaluate-grounding.mjs', [
-        '--live',
-        '--offset',
-        String(offset),
-        '--max-cases',
-        String(maxCases),
-        '--output',
-        paths.grounding[index],
-      ]),
-    );
+    const groundingRun = runNode('scripts/evaluate-grounding.mjs', [
+      '--live',
+      '--offset',
+      String(offset),
+      '--max-cases',
+      String(maxCases),
+      '--output',
+      paths.grounding[index],
+    ]);
+    executions.push(groundingRun);
+    if (groundingRun.status !== 0) {
+      try {
+        const partial = await readJson(paths.grounding[index]);
+        if (partial?.systemicTransportFailure) break;
+      } catch {
+        // The normal report-read gate below records unreadable artifacts fail-closed.
+      }
+    }
   }
 }
 
