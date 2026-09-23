@@ -16,7 +16,7 @@ The model receives an instruction message and a separate JSON data message. Docu
 
 The output is strict JSON: declared response language and at most six sentences, each at most 500 characters, with bounded evidence references. References use aliases such as `case.status`, `case.confirmedEta` and `knowledge.0`. Unknown, duplicated or missing-all references, extra fields, wrong declared language, empty/partial outputs and unexpected tool calls are rejected. A declared language match does not prove the prose is actually in that language. Semantic entailment, real language quality and naturalness remain evaluation work.
 
-OpenAI strict JSON schema, compatible JSON-object mode and prompt-only mode reuse the existing configured provider transport. OpenAI, Gemini, compatible and local Ollama paths have mock contract tests. No new SDK or fallback provider is introduced. Actual model compatibility still requires a live test.
+OpenAI strict JSON schema, Gemini strict JSON schema, compatible JSON-object mode and prompt-only mode reuse the existing configured provider transport. For Gemini, the provider-facing schema is sanitized to the documented supported JSON Schema subset before transport; local Zod parsing retains the full bounds and object-shape constraints and remains authoritative. OpenAI, Gemini, compatible and local Ollama paths have mock contract tests. No new SDK or fallback provider is introduced. Actual model compatibility still requires a live test.
 
 ## Spending and latency
 
