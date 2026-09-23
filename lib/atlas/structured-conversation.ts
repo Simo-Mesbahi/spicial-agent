@@ -2,7 +2,7 @@ import type { EvidencePack } from './evidence-pack';
 import type { AtlasEnv } from './api';
 import type { ConversationLanguage } from './conversation-intelligence';
 import {
-  detectConversationLanguage,
+  detectConversationLanguageHint,
   localizedProcedureReply,
 } from './conversation-intelligence';
 import { redacted, normalized, type Article } from './domain';
@@ -71,11 +71,11 @@ Confidence is calibrated; use requiresClarification when uncertain. No hidden re
 function explicitResponseLanguage(message: string): ConversationLanguage | null {
   const q = message.trim().toLowerCase();
   const rules: Array<[ConversationLanguage, RegExp]> = [
-    ['fr', /\b(?:réponds?|reponds?|continue|parle)\b.{0,30}\bfran[cç]ais\b|\ben français\b/u],
-    ['en', /\b(?:answer|respond|continue|keep|speak)\b.{0,30}\benglish\b|\bin english\b/u],
-    ['de', /\b(?:antworte|antworten|weiter|sprich)\b.{0,30}\bdeutsch\b|\bauf deutsch\b/u],
-    ['es', /\b(?:responde|contin[uú]a|seguimos|habla)\b.{0,30}\bespañol\b|\ben español\b/u],
-    ['ar', /(?:أجب|اجب|تكلم|تحدث|نكمل).{0,30}(?:بالعربية|عربي)/u],
+    ['fr', /\b(?:réponds?|reponds?|continue|parle|discussion|chat)\b.{0,30}\bfran[cç]ais\b|\ben français\b/u],
+    ['en', /\b(?:answer|respond|reply|continue|keep|speak|chat)\b.{0,30}\benglish\b|\bin english\b/u],
+    ['de', /\b(?:antworte|antworten|weiter|sprich|chat)\b.{0,30}\bdeutsch\b|\bauf deutsch\b/u],
+    ['es', /\b(?:responde|contin[uú]a|seguimos|habla|chat)\b.{0,30}\bespañol\b|\ben español\b/u],
+    ['ar', /(?:أجب|اجب|تكلم|تحدث|نكمل|الدردشة).{0,30}(?:بالعربية|عربي)/u],
   ];
   return rules.find(([, pattern]) => pattern.test(q))?.[0] ?? null;
 }
@@ -147,7 +147,7 @@ export function normalizeUnderstanding(
 ): Understanding {
   const u = { ...input, style: { ...input.style } };
   const priorMessages = state.recentTurns.map((turn) => turn.user);
-  u.language = detectConversationLanguage(message, priorMessages);
+  u.language = detectConversationLanguageHint(message, priorMessages) ?? input.language;
   u.preferredResponseLanguage = explicitResponseLanguage(message);
 
   if (explicitHandoffWithdrawal(message) && state.pendingHandoff) {
