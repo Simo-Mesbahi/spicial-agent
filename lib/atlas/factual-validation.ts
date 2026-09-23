@@ -23,6 +23,7 @@ import { languages } from './conversation-contract';
 export type ValidationSettings = {
   LLM_VALIDATION_MODE?: string;
   LLM_VALIDATION_DAILY_LIMIT?: string;
+  LLM_VALIDATION_TIMEOUT_MS?: string;
 };
 export const factualIssues = [
   'date',
@@ -231,6 +232,14 @@ function assess(
     return { outcome: 'abstained', reason: 'uncertain_claim', issues };
   return { outcome: 'supported_candidate', reason: null, issues: [] };
 }
+function validationTimeout(raw: string | undefined) {
+  if (!raw?.trim()) return 4000;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1000 || value > 20000)
+    throw new ProviderError('configuration');
+  return value;
+}
+
 /** Semantic audit. Even a positive result has NO authority to release a draft by itself. */
 export async function validateNaturalDraft(
   env: AtlasEnv,
@@ -310,7 +319,7 @@ export async function validateNaturalDraft(
       return diagnostics;
     }
     const timeoutMs = Math.min(
-      4000,
+      validationTimeout(env.LLM_VALIDATION_TIMEOUT_MS),
       settings.timeoutMs,
       Date.parse(pack.expiresAt) - Date.now(),
       Date.parse(current.expiresAt) - Date.now(),
