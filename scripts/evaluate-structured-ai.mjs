@@ -240,7 +240,7 @@ const percentile = (q) =>
     ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * q))]
     : null;
 const sum = (key) => rows.reduce((total, r) => total + (r[key] ?? 0), 0);
-const usageComplete = rows.every((r) => r.usageComplete) && discardedUsageComplete;
+const usageComplete = rows.every((r) => r.usageComplete);
 const report = {
   schema: 1,
   kind: 'live-provider-synthetic-data',
@@ -259,6 +259,7 @@ const report = {
     discardedProviderCalls,
     retriedScenarios,
     maximumScenarioRetries: retryLimit,
+    retryUsageComplete: discardedUsageComplete,
     fallbackCount: rows.filter((r) => r.fallback).length,
     apiFailures: rows.filter((r) => r.status !== 200).length,
     groundingRejections: rows.filter((r) => r.guardRejected).length,
@@ -268,7 +269,7 @@ const report = {
     latencyMs: { p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99) },
     pacingIntervalMs: pacing.intervalMs,
     estimatedCostUsd:
-      usageComplete && inputRate !== null && outputRate !== null
+      usageComplete && discardedUsageComplete && inputRate !== null && outputRate !== null
         ? (sum('inputTokens') * inputRate + sum('outputTokens') * outputRate) / 1e6
         : null,
   },
