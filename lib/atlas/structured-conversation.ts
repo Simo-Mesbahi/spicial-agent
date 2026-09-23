@@ -125,14 +125,44 @@ function explicitDecisionLater(message: string) {
   );
 }
 
-function correctionCue(message: string) {
+function strongCorrectionCue(message: string) {
   const q = message.trim().toLowerCase();
   return (
-    /\b(?:je parle|je veux dire|pas du|tu as mal compris|oui voilà|oui voila)\b/u.test(q) ||
-    /\b(?:i mean|not a|not the|you misunderstood|yes exactly)\b/u.test(q) ||
-    /\b(?:ich meine|nicht eine|du hast mich falsch verstanden|ja genau)\b/u.test(q) ||
-    /\b(?:hablo de|no del|no me entendiste|sí eso|si eso)\b/u.test(q) ||
-    /(?:أقصد|أتحدث عن|وليس|فهمتني خطأ|نعم هذا)/u.test(message)
+    /\b(?:pas du|tu as mal compris|oui voilà|oui voila)\b/u.test(q) ||
+    /\b(?:not a|not the|you misunderstood|yes exactly)\b/u.test(q) ||
+    /\b(?:nicht eine|du hast mich falsch verstanden|ja genau)\b/u.test(q) ||
+    /\b(?:no del|no me entendiste|sí eso|si eso)\b/u.test(q) ||
+    /(?:وليس|فهمتني خطأ|نعم هذا)/u.test(message)
+  );
+}
+
+function referenceContinuationCue(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:je parle|je veux dire)\b/u.test(q) ||
+    /\b(?:i mean|i still mean)\b/u.test(q) ||
+    /\b(?:ich meine|ich meine immer noch)\b/u.test(q) ||
+    /\b(?:hablo de|sigo hablando)\b/u.test(q) ||
+    /(?:أقصد|أتحدث عن|ما زلت أتحدث)/u.test(message)
+  );
+}
+
+function explicitMisunderstanding(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:non\s+)?tu as mal compris\b/u.test(q) ||
+    /\b(?:no\s+)?you misunderstood(?: me)?\b/u.test(q) ||
+    /\b(?:nein\s+)?du hast mich falsch verstanden\b/u.test(q) ||
+    /\bno me entendiste\b/u.test(q) ||
+    /(?:لا\s+)?لقد فهمتني خطأ|فهمتني خطأ/u.test(message)
+  );
+}
+
+function genericPolicyCue(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:retour|remboursement|livraison|garantie|échange|echange|return|refund|delivery|warranty|exchange|rückgabe|erstattung|lieferung|garantie|umtausch|devolución|devolucion|reembolso|entrega|garantía|garantia|cambio)\b/u.test(q) ||
+    /(?:إرجاع|استرداد|توصيل|ضمان|استبدال)/u.test(message)
   );
 }
 
@@ -148,10 +178,17 @@ export function normalizeUnderstanding(
 ): Understanding {
   const u = { ...input, style: { ...input.style } };
   const priorMessages = state.recentTurns.map((turn) => turn.user);
+  const handoffWithdrawal = explicitHandoffWithdrawal(message) && state.pendingHandoff;
+  const actionRefusal = explicitActionRefusal(message);
+  const strongRepair = strongCorrectionCue(message);
+  const continuationRepair =
+    referenceContinuationCue(message) &&
+    state.recentTurns.length > 0 &&
+    !state.activeCaseId;
   u.language = detectConversationLanguageHint(message, priorMessages) ?? input.language;
   u.preferredResponseLanguage = explicitResponseLanguage(message);
 
-  if (explicitHandoffWithdrawal(message) && state.pendingHandoff) {
+  if (handoffWithdrawal) {
     u.intent = 'information';
     u.requiresHuman = false;
     u.guidance = 'business_direct';
@@ -162,7 +199,7 @@ export function normalizeUnderstanding(
     u.response = '';
   }
 
-  if (explicitActionRefusal(message)) {
+  if (actionRefusal) {
     u.intent = 'preference';
     u.requiresHuman = false;
     u.guidance = 'none';
@@ -192,7 +229,18 @@ export function normalizeUnderstanding(
     u.response = '';
   }
 
-  if (correctionCue(message)) u.conversationRepair = true;
+  u.conversationRepair =
+    handoffWithdrawal || actionRefusal || strongRepair || continuationRepair;
+
+  if (explicitMisunderstanding(message)) {
+    u.intent = 'clarification';
+    u.requiresHuman = false;
+    u.guidance = 'clarify';
+    u.requiresClarification = true;
+    u.requiresCase = false;
+    u.requiresKnowledge = false;
+    u.response = '';
+  }
 
   const personalFact = ['status', 'eta', 'reason'].includes(u.subIntent);
   if (
@@ -211,17 +259,14 @@ export function normalizeUnderstanding(
     !state.activeCaseId &&
     candidates.length === 0 &&
     u.conversationRepair &&
-    !personalFact
+    !explicitMisunderstanding(message) &&
+    (genericPolicyCue(message) || (strongRepair && Boolean(state.currentTopic)))
   ) {
     u.requiresCase = false;
-    if (u.intent === 'case_lookup' || (u.intent === 'clarification' && u.topic)) {
-      u.intent = u.topic ? 'information' : 'clarification';
-    }
-    if (u.intent === 'information') {
-      u.requiresKnowledge = true;
-      u.requiresClarification = false;
-      u.guidance = 'business_direct';
-    }
+    u.intent = 'information';
+    u.requiresKnowledge = true;
+    u.requiresClarification = false;
+    u.guidance = 'business_direct';
   }
 
   if (
