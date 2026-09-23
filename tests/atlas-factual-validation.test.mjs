@@ -71,6 +71,10 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
     t.mock.method(globalThis, 'fetch', async (_url, init) => {
       const p = JSON.parse(init.body);
       assert.equal(p.response_format.json_schema.name, 'factual_validation');
+      const sentenceSchema = p.response_format.json_schema.schema.properties.sentences.items;
+      assert.ok(sentenceSchema.properties.citationRefs);
+      assert.ok(sentenceSchema.properties.citationQuotes);
+      assert.equal(sentenceSchema.properties.citations, undefined);
       assert.equal(p.max_completion_tokens, 1200);
       assert.equal(p.tools, undefined);
       assert.equal(p.messages.length, 2);
@@ -79,6 +83,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
         /PRIVATE-KEY|organizationId|requestId|expectedSupported|expectedIssue|rubric/,
       );
       assert.match(p.messages[0].content, /ALL its factual assertions/);
+      assert.match(p.messages[0].content, /parallel arrays of equal length/);
       return response(verdict(language));
     });
     const trace = providerTrace(),
@@ -523,8 +528,11 @@ for (const [provider, settings, format] of [
       if (provider === 'gemini') {
         const schema = p.response_format.json_schema.schema;
         const sentence = schema.properties.sentences.items;
-        assert.equal(sentence.properties.citations.items.properties.ref.minLength, undefined);
-        assert.equal(sentence.properties.citations.items.properties.quote.maxLength, undefined);
+        assert.ok(sentence.properties.citationRefs);
+        assert.ok(sentence.properties.citationQuotes);
+        assert.equal(sentence.properties.citations, undefined);
+        assert.equal(sentence.properties.citationRefs.items.type, 'string');
+        assert.equal(sentence.properties.citationQuotes.items.type, 'string');
         assert.equal(sentence.additionalProperties, false);
       }
       return response(verdict());
@@ -534,6 +542,47 @@ for (const [provider, settings, format] of [
       'supported_candidate',
     );
   });
+test('Factual audit reconstructs canonical citations from the flattened provider transport', async (t) => {
+  const c = setup(t);
+  t.mock.method(globalThis, 'fetch', async () =>
+    response({
+      language: 'fr',
+      sentences: [
+        {
+          index: 0,
+          kind: 'factual',
+          verdict: 'supported',
+          issues: [],
+          citationRefs: ['case.confirmedEta'],
+          citationQuotes: ['null'],
+        },
+      ],
+    }),
+  );
+  const result = await validateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.outcome, 'supported_candidate');
+
+  t.mock.restoreAll();
+  c.env.DB.sql.exec('DELETE FROM rate_buckets');
+  t.mock.method(globalThis, 'fetch', async () =>
+    response({
+      language: 'fr',
+      sentences: [
+        {
+          index: 0,
+          kind: 'factual',
+          verdict: 'supported',
+          issues: [],
+          citationRefs: ['case.confirmedEta'],
+          citationQuotes: [],
+        },
+      ],
+    }),
+  );
+  const invalid = await validateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(invalid.reason, 'invalid_verdict');
+});
+
 for (const [name, mock, reason] of [
   [
     'network',
