@@ -46,7 +46,7 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   }
 
   assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
-  assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '30000'/);
+  assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '45000'/);
   assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
@@ -83,6 +83,8 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /transientFallbackReasons/);
   assert.match(structured, /systemicRateLimitThreshold = 3/);
   assert.match(structured, /provider_quota_exhausted/);
+  assert.match(structured, /if \(m\.fallback\) break/);
+  assert.match(structured, /while \(true\)/);
   assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
