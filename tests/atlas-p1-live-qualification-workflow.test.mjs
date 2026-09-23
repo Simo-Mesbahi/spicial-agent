@@ -51,6 +51,7 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
+  assert.match(source, /default: gemini-3\.5-flash-lite/);
   assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
 
   const retrievalPreflightIndex = source.indexOf(
@@ -80,6 +81,9 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
   assert.match(structured, /discardedProviderCalls/);
   assert.match(structured, /transientFallbackReasons/);
+  assert.match(structured, /systemicRateLimitThreshold = 3/);
+  assert.match(structured, /provider_quota_exhausted/);
+  assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
   assert.match(contract, /maximumTotalCompletionCalls: 210/);
