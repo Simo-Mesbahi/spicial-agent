@@ -84,7 +84,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
         /PRIVATE-KEY|organizationId|requestId|expectedSupported|expectedIssue|rubric/,
       );
       assert.match(p.messages[0].content, /ALL its factual assertions/);
-      assert.match(p.messages[0].content, /server owns provenance/i);
+      assert.match(p.messages[0].content, /server owns sentence identity/i);
       return response(verdict(language));
     });
     const trace = providerTrace(),
