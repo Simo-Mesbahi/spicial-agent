@@ -128,7 +128,6 @@ const transientFallbackReasons = new Set([
   'network_or_timeout',
   'upstream_unavailable',
 ]);
-const systemicRateLimitThreshold = 3;
 
 const rows = [],
   pacing = liveCompletionPacer(),
@@ -190,6 +189,13 @@ async function runScenario(scenario) {
         // Synthetic outputs make human review possible; neither prompts nor credentials are logged.
         response: response.body.content ?? null,
       });
+
+      // A provider fallback makes the remainder of this multi-turn attempt
+      // semantically contaminated: later turns would execute against a state
+      // that never received the expected structured understanding. Stop the
+      // attempt immediately and either retry the whole scenario from a fresh DB
+      // (for recoverable transport failures) or fail closed.
+      if (m.fallback) break;
     }
     return attemptRows;
   } finally {
@@ -199,27 +205,30 @@ async function runScenario(scenario) {
 
 console.info = () => {};
 try {
-  for (const scenario of selected) {
-    let scenarioRows = await runScenario(scenario);
-    const rateLimited = scenarioRows.filter(
-      (row) => row.fallback && row.fallbackReason === 'upstream_rate_limited',
-    ).length;
-    if (rateLimited >= systemicRateLimitThreshold) {
-      rows.push(...scenarioRows);
-      systemicTransportFailure = 'provider_quota_exhausted';
-      break;
-    }
+  scenarioLoop: for (const scenario of selected) {
+    let scenarioRows;
+    while (true) {
+      scenarioRows = await runScenario(scenario);
 
-    const transient = scenarioRows.some(
-      (row) => row.fallback && transientFallbackReasons.has(row.fallbackReason),
-    );
-    if (transient && retriedScenarios < retryLimit) {
+      const rateLimited = scenarioRows.some(
+        (row) => row.fallback && row.fallbackReason === 'upstream_rate_limited',
+      );
+      if (rateLimited) {
+        rows.push(...scenarioRows);
+        systemicTransportFailure = 'provider_rate_limited';
+        break scenarioLoop;
+      }
+
+      const transient = scenarioRows.some(
+        (row) => row.fallback && transientFallbackReasons.has(row.fallbackReason),
+      );
+      if (!transient || retriedScenarios >= retryLimit) break;
+
       retriedScenarios++;
       discardedProviderCalls += scenarioRows.reduce((n, row) => n + (row.providerCalls ?? 0), 0);
       discardedInputTokens += scenarioRows.reduce((n, row) => n + (row.inputTokens ?? 0), 0);
       discardedOutputTokens += scenarioRows.reduce((n, row) => n + (row.outputTokens ?? 0), 0);
       discardedUsageComplete &&= scenarioRows.every((row) => row.usageComplete);
-      scenarioRows = await runScenario(scenario);
     }
     rows.push(...scenarioRows);
   }
@@ -271,7 +280,6 @@ const report = {
     maximumScenarioRetries: retryLimit,
     retryUsageComplete: discardedUsageComplete,
     systemicTransportFailure,
-    systemicRateLimitThreshold,
     fallbackCount: rows.filter((r) => r.fallback).length,
     apiFailures: rows.filter((r) => r.status !== 200).length,
     groundingRejections: rows.filter((r) => r.guardRejected).length,
