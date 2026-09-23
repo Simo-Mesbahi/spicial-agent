@@ -128,7 +128,6 @@ const transientFallbackReasons = new Set([
   'network_or_timeout',
   'upstream_unavailable',
 ]);
-const systemicRateLimitThreshold = 3;
 
 const rows = [],
   pacing = liveCompletionPacer(),
@@ -211,12 +210,12 @@ try {
     while (true) {
       scenarioRows = await runScenario(scenario);
 
-      const rateLimited = scenarioRows.filter(
+      const rateLimited = scenarioRows.some(
         (row) => row.fallback && row.fallbackReason === 'upstream_rate_limited',
-      ).length;
-      if (rateLimited >= systemicRateLimitThreshold) {
+      );
+      if (rateLimited) {
         rows.push(...scenarioRows);
-        systemicTransportFailure = 'provider_quota_exhausted';
+        systemicTransportFailure = 'provider_rate_limited';
         break scenarioLoop;
       }
 
@@ -281,7 +280,6 @@ const report = {
     maximumScenarioRetries: retryLimit,
     retryUsageComplete: discardedUsageComplete,
     systemicTransportFailure,
-    systemicRateLimitThreshold,
     fallbackCount: rows.filter((r) => r.fallback).length,
     apiFailures: rows.filter((r) => r.status !== 200).length,
     groundingRejections: rows.filter((r) => r.guardRejected).length,
