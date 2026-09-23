@@ -21,7 +21,7 @@ export function liveCompletionPacer(env = process.env) {
       const now = Date.now();
       const waitMs = lastStartedAt
         ? Math.max(0, intervalMs - (now - lastStartedAt))
-        : intervalMs;
+        : 0;
       if (waitMs) await sleep(waitMs);
       lastStartedAt = Date.now();
     },
