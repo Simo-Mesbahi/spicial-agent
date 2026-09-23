@@ -24,7 +24,12 @@ export type ModelEnvironment = {
 };
 
 export const localModel = 'qwen3:4b';
-export const geminiModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'] as const;
+export const geminiModels = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+] as const;
 export const providerIds = ['demo', 'gemini', 'ollama', 'openai', 'compatible'] as const;
 export type ProviderId = (typeof providerIds)[number];
 
@@ -63,7 +68,7 @@ export function enabledProviders(env: ModelEnvironment): ProviderId[] {
 export function configuredModel(env: ModelEnvironment, provider: ProviderId): string {
   const activeOverride = env.LLM_PROVIDER === provider ? env.LLM_MODEL?.trim() : '';
   if (activeOverride) return activeOverride;
-  if (provider === 'gemini') return env.GEMINI_MODEL?.trim() || 'gemini-3.1-flash-lite';
+  if (provider === 'gemini') return env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite';
   if (provider === 'openai') return env.OPENAI_MODEL?.trim() || '';
   if (provider === 'ollama') return env.OLLAMA_MODEL?.trim() || localModel;
   if (provider === 'compatible') return env.COMPATIBLE_MODEL?.trim() || '';

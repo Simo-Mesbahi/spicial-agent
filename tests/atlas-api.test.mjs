@@ -732,7 +732,7 @@ test('Gemini free adapter uses only its fixed endpoint and redacted conversation
     });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.metadata.mode, 'gemini');
-    assert.equal(captured[0].model, 'gemini-3.1-flash-lite');
+    assert.equal(captured[0].model, 'gemini-3.5-flash-lite');
     assert.equal(captured[0].max_completion_tokens, 1200);
     assert.equal(captured[0].reasoning_effort, 'minimal');
     assert.ok(!('strict' in captured[0].tools[0].function));
