@@ -417,6 +417,26 @@ test('Refresh after verifier invalidates changed data, session expiry and a chan
     'evidence_expired',
   );
 });
+test('Factual timeout accepts a bounded live qualification override', async (t) => {
+  const c = setup(t);
+  c.env.LLM_VALIDATION_TIMEOUT_MS = '12000';
+  let requested = null;
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, 'timeout', (ms) => {
+    requested = ms;
+    return timeout(1000);
+  });
+  t.mock.method(globalThis, 'fetch', async () => response(verdict()));
+  const r = await validateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(r.outcome, 'supported_candidate');
+  assert.equal(requested, 12000);
+  for (const value of ['999', '20001', 'bad']) {
+    c.env.LLM_VALIDATION_TIMEOUT_MS = value;
+    const invalid = await validateNaturalDraft(c.env, c.input, providerTrace());
+    assert.equal(invalid.reason, 'configuration');
+  }
+});
+
 test('Factual timeout is at most four seconds, no retry; missing usage remains unknown', async (t) => {
   const c = setup(t);
   let requested;
@@ -500,6 +520,13 @@ for (const [provider, settings, format] of [
     t.mock.method(globalThis, 'fetch', async (_url, init) => {
       const p = JSON.parse(init.body);
       assert.equal(p.response_format?.type ?? null, format);
+      if (provider === 'gemini') {
+        const schema = p.response_format.json_schema.schema;
+        const sentence = schema.properties.sentences.items;
+        assert.equal(sentence.properties.citations.items.properties.ref.minLength, undefined);
+        assert.equal(sentence.properties.citations.items.properties.quote.maxLength, undefined);
+        assert.equal(sentence.additionalProperties, false);
+      }
       return response(verdict());
     });
     assert.equal(
