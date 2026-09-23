@@ -10,6 +10,7 @@ import {
 } from './evidence-pack';
 import { generationEvidence, naturalDraftSchema, type NaturalDraft } from './natural-generation';
 import { modelSettings } from './model-policy';
+import { structuredSchemaForProvider } from './structured-output';
 import {
   completionPayload,
   providerCompletion,
@@ -316,6 +317,7 @@ export async function validateNaturalDraft(
       input.context.sessionExpiresAt - Date.now(),
     );
     if (timeoutMs < 100) throw new EvidencePackError('evidence_expired');
+    const providerSchema = structuredSchemaForProvider(settings.provider, factualReportJsonSchema);
     const payload = {
       ...completionPayload(
         env,
@@ -344,7 +346,7 @@ export async function validateNaturalDraft(
                     json_schema: {
                       name: 'factual_validation',
                       strict: true,
-                      schema: factualReportJsonSchema,
+                      schema: providerSchema,
                     },
                   }
                 : { type: 'json_object' },
