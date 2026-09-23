@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AtlasEnv } from './api';
 import { redacted } from './domain';
 import { modelSettings } from './model-policy';
+import { structuredSchemaForProvider } from './structured-output';
 import {
   completionPayload,
   providerCompletion,
@@ -232,6 +233,7 @@ export async function generateNaturalDraft(
     }
     assertEvidenceContext(pack, input.context);
     const evidence = generationEvidence(pack);
+    const providerSchema = structuredSchemaForProvider(settings.provider, naturalDraftJsonSchema);
     const payload = {
       ...completionPayload(
         env,
@@ -260,7 +262,7 @@ export async function generateNaturalDraft(
                     json_schema: {
                       name: 'natural_response_draft',
                       strict: true,
-                      schema: naturalDraftJsonSchema,
+                      schema: providerSchema,
                     },
                   }
                 : { type: 'json_object' },
