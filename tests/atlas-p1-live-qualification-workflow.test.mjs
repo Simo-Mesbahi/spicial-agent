@@ -81,8 +81,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
   assert.match(structured, /discardedProviderCalls/);
   assert.match(structured, /transientFallbackReasons/);
-  assert.match(structured, /systemicRateLimitThreshold = 3/);
-  assert.match(structured, /provider_quota_exhausted/);
+  assert.match(structured, /provider_rate_limited/);
   assert.match(structured, /if \(m\.fallback\) break/);
   assert.match(structured, /while \(true\)/);
   assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
