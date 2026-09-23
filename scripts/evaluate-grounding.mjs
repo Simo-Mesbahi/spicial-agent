@@ -73,6 +73,8 @@ else {
     pacing = liveCompletionPacer();
   try {
     const results = [];
+    let rejectedStreak = 0;
+    let systemicTransportFailure = null;
     for (const scenario of selected) {
       await pacing.beforeCall();
       const trace = providerTrace();
@@ -96,6 +98,18 @@ else {
         diagnostics,
         providerAttempts: trace.attempts,
       });
+
+      if (diagnostics.reason === 'upstream_request_rejected') rejectedStreak++;
+      else rejectedStreak = 0;
+
+      if (['upstream_auth', 'configuration'].includes(diagnostics.reason)) {
+        systemicTransportFailure = diagnostics.reason;
+        break;
+      }
+      if (rejectedStreak >= 3) {
+        systemicTransportFailure = 'repeated_upstream_request_rejected';
+        break;
+      }
     }
     const negatives = results.filter((r) => !r.expectedSupported),
       positives = results.filter((r) => r.expectedSupported);
@@ -120,7 +134,9 @@ else {
           releaseAllowed: false,
           coverage,
           pacingIntervalMs: pacing.intervalMs,
+          requestedScenarios: selected.length,
           measuredScenarios: results.length,
+          systemicTransportFailure,
           metrics: {
             falseSupportRate: negatives.length ? falseSupport / negatives.length : null,
             supportedRecall: positives.length
@@ -140,6 +156,7 @@ else {
         status,
         output: options.output,
         calls: results.reduce((n, r) => n + r.diagnostics.calls, 0),
+        systemicTransportFailure,
         failures: results
           .filter((r) => r.diagnostics.reason !== null)
           .map((r) => ({
