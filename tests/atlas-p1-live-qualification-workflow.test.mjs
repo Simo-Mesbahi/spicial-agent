@@ -45,10 +45,31 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
     assert.ok(verification.includes(command), `missing pre-spend gate: ${command}`);
   }
 
+  assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
+  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'/);
+  assert.match(source, /RAG_MIN_SIMILARITY: '0.55'/);
+
+  const retrievalPreflightIndex = source.indexOf(
+    'Qualify live hybrid retrieval before completion spend',
+  );
+  assert.ok(retrievalPreflightIndex > verifyIndex);
+  assert.ok(retrievalPreflightIndex < liveIndex);
+  assert.match(source, /scripts\/evaluate-retrieval\.mjs/);
+  assert.match(source, /scripts\/check-retrieval-qualification\.mjs/);
   assert.match(
     source,
-    /npm run eval:p1:release -- --live --confirm P1_RELEASE/,
+    /npm run eval:p1:release -- --live --confirm P1_RELEASE --reuse-retrieval/,
   );
+});
+
+test('P1.7 live workflow paces completions without hidden provider retries', async () => {
+  const source = await readFile(workflowPath, 'utf8');
+  const pacing = await readFile('scripts/lib/live-eval-pacing.mjs', 'utf8');
+
+  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'/);
+  assert.match(pacing, /start-to-start pacing/);
+  assert.match(pacing, /never retries provider calls/);
+  assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
 });
 
 test('P1.7 live workflow remains fail-closed until human review', async () => {
