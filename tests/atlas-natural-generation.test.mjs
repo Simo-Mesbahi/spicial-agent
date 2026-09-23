@@ -115,6 +115,12 @@ for (const [provider, env, format] of [
     t.mock.method(globalThis, 'fetch', async (_url, init) => {
       const p = JSON.parse(init.body);
       assert.equal(p.response_format?.type ?? null, format);
+      if (provider === 'gemini') {
+        const schema = p.response_format.json_schema.schema;
+        assert.equal(schema.properties.sentences.items.properties.text.minLength, undefined);
+        assert.equal(schema.properties.sentences.items.properties.text.maxLength, undefined);
+        assert.equal(schema.properties.sentences.items.additionalProperties, false);
+      }
       return response(draft('fr'));
     });
     assert.ok((await generateNaturalDraft(c.env, c.input, providerTrace())).draft);
@@ -358,6 +364,26 @@ test('Generation evaluation is dry by default, bounded and multilingual', () => 
       stdio: 'pipe',
     }),
   );
+});
+
+test('Draft timeout accepts a bounded live qualification override', async (t) => {
+  const c = setup(t);
+  c.env.LLM_GENERATION_TIMEOUT_MS = '12000';
+  let requested = null;
+  const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, 'timeout', (ms) => {
+    requested = ms;
+    return originalTimeout(1000);
+  });
+  t.mock.method(globalThis, 'fetch', async () => response(draft('fr')));
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+  assert.equal(requested, 12000);
+  for (const value of ['999', '20001', 'bad']) {
+    c.env.LLM_GENERATION_TIMEOUT_MS = value;
+    const invalid = await generateNaturalDraft(c.env, c.input, providerTrace());
+    assert.equal(invalid.diagnostics.reason, 'configuration');
+  }
 });
 
 test('Draft timeout is bounded and normalizes without retry', async (t) => {
