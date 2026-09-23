@@ -32,6 +32,7 @@ const failed = rows
     precisionAtK: row.hybrid?.precisionAtK ?? null,
     outcome: row.hybrid?.retrieval?.outcome ?? null,
     embeddingError: row.hybrid?.retrieval?.embedding?.error ?? null,
+    expectedProbeSimilarities: row.hybrid?.expectedProbeSimilarities ?? [],
   }));
 
 const createdAt = Date.parse(report.createdAt ?? '');

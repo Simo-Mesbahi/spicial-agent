@@ -47,7 +47,7 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
 
   assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'/);
-  assert.match(source, /RAG_MIN_SIMILARITY: '0.55'/);
+  assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
 
   const retrievalPreflightIndex = source.indexOf(
     'Qualify live hybrid retrieval before completion spend',

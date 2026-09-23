@@ -1,7 +1,10 @@
 import type { EvidencePack } from './evidence-pack';
 import type { AtlasEnv } from './api';
 import type { ConversationLanguage } from './conversation-intelligence';
-import { localizedProcedureReply } from './conversation-intelligence';
+import {
+  detectConversationLanguageHint,
+  localizedProcedureReply,
+} from './conversation-intelligence';
 import { redacted, normalized, type Article } from './domain';
 import { modelSettings } from './model-policy';
 import {
@@ -51,8 +54,11 @@ Case selection: selectedCaseId must be a candidate ID or null, never a guessed r
 reference=other when the active case is rejected; select when a candidate is identified; active for a clear continuation; ambiguous if unresolved; none otherwise.
 Never reuse the rejected case. Ask one minimal question when candidates cannot be distinguished.
 Generic policies use information and requiresKnowledge, not a customer's case. Personal status/ETA requiresCase.
-Information about a possible action is NOT action intent. Handoff can be withdrawn; a request to continue here requiresHuman=false.
+Information about a possible action is NOT action intent. Refusing an action is a preference, not refusal of business guidance.
+Handoff can be withdrawn; "wait, help me here first" / "stay with me here" means requiresHuman=false, information, and conversationRepair=true.
 requiresHuman is true only when the current user actually wants a human. Never claim anything was sent, booked, approved or changed.
+Generic return/refund/warranty procedures remain information with requiresCase=false unless the user asks for a specific case status, ETA or reason. Possessive wording alone does not create case access.
+language MUST describe the current message language; do not default to the session language or French. preferredResponseLanguage changes only on an explicit language request.
 retrievalQuery is a short standalone French search query for the current French corpus, based only on the request/context; no invented facts.
 For business, actions, handoff, safety, policy, status, amounts, dates or case selection, leave response empty: the server supplies verified text.
 For casual/assistant_meta/off_topic/preference and NON-business clarification, response is a concise natural answer or question in the response language.
@@ -60,6 +66,179 @@ Never put a business promise, status, eligibility, payment, warranty, personal d
 For dangerous requests, refuse help with harm. Avoid medical/legal/financial instructions; offer appropriate human assistance.
 Do not invent feelings or real-world experiences; friendly social courtesy is fine. Do not repeat a generic SAV invitation.
 Confidence is calibrated; use requiresClarification when uncertain. No hidden reasoning in output.`;
+
+
+function explicitResponseLanguage(message: string): ConversationLanguage | null {
+  const q = message.trim().toLowerCase();
+  const rules: Array<[ConversationLanguage, RegExp]> = [
+    ['fr', /\b(?:réponds?|reponds?|continue|parle|discussion|chat)\b.{0,30}\bfran[cç]ais\b|\ben français\b/u],
+    ['en', /\b(?:answer|respond|reply|continue|keep|speak|chat)\b.{0,30}\benglish\b|\bin english\b/u],
+    ['de', /\b(?:antworte|antworten|weiter|sprich|chat)\b.{0,30}\bdeutsch\b|\bauf deutsch\b/u],
+    ['es', /\b(?:responde|contin[uú]a|seguimos|habla|chat)\b.{0,30}\bespañol\b|\ben español\b/u],
+    ['ar', /(?:أجب|اجب|تكلم|تحدث|نكمل|الدردشة).{0,30}(?:بالعربية|عربي)/u],
+  ];
+  return rules.find(([, pattern]) => pattern.test(q))?.[0] ?? null;
+}
+
+function explicitHandoffWithdrawal(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:attends?|finalement)\b.{0,40}\b(?:aide[- ]?moi ici|reste avec moi|continue ici)\b/u.test(q) ||
+    /\b(?:wait|actually)\b.{0,40}\b(?:help me here|stay with me|continue here)\b/u.test(q) ||
+    /\b(?:warte|doch)\b.{0,40}\b(?:hilf mir hier|bleib.*bei mir|weiter hier)\b/u.test(q) ||
+    /\b(?:espera|mejor)\b.{0,40}\b(?:ay[uú]dame aqu[ií]|qu[eé]date conmigo|sigue aqu[ií])\b/u.test(q) ||
+    /(?:انتظر|في الواقع).{0,40}(?:ساعدني هنا|ابق معي|تابع هنا)/u.test(message)
+  );
+}
+
+function explicitActionRefusal(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:je ne te demande pas|ne fais|aucune action|n['’]accepte pas)\b/u.test(q) ||
+    /\b(?:i am not asking you|i'm not asking you|do not take any action|don't take any action)\b/u.test(q) ||
+    /\b(?:ich bitte dich nicht|keine aktion|nicht.*annehmen)\b/u.test(q) ||
+    /\b(?:no te estoy pidiendo|no hagas ninguna acci[oó]n|no lo aceptes)\b/u.test(q) ||
+    /(?:أنا لا أطلب منك|لا تنفذ أي إجراء|لا تقبل)/u.test(message)
+  );
+}
+
+function explicitExplainOnly(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:explique seulement|explique juste)\b/u.test(q) ||
+    /\b(?:just explain|explain only)\b/u.test(q) ||
+    /\b(?:nur erkl[aä]ren|erkl[aä]r nur)\b/u.test(q) ||
+    /\b(?:solo expl[ií]calo|solo explica)\b/u.test(q) ||
+    /(?:فقط اشرح|اشرح فقط)/u.test(message)
+  );
+}
+
+function explicitDecisionLater(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:je déciderai|je deciderai).{0,20}\bplus tard\b/u.test(q) ||
+    /\bi will decide later\b/u.test(q) ||
+    /\bich entscheide sp[aä]ter\b/u.test(q) ||
+    /\bdecidir[eé] m[aá]s tarde\b/u.test(q) ||
+    /سأقرر لاحق/u.test(message)
+  );
+}
+
+function correctionCue(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:je parle|je veux dire|pas du|tu as mal compris|oui voilà|oui voila)\b/u.test(q) ||
+    /\b(?:i mean|not a|not the|you misunderstood|yes exactly)\b/u.test(q) ||
+    /\b(?:ich meine|nicht eine|du hast mich falsch verstanden|ja genau)\b/u.test(q) ||
+    /\b(?:hablo de|no del|no me entendiste|sí eso|si eso)\b/u.test(q) ||
+    /(?:أقصد|أتحدث عن|وليس|فهمتني خطأ|نعم هذا)/u.test(message)
+  );
+}
+
+/**
+ * Enforce server-owned semantic invariants after schema validation.
+ * This is deliberately narrow: it never invents business facts or case access.
+ */
+export function normalizeUnderstanding(
+  input: Understanding,
+  message: string,
+  state: ConversationState,
+  candidates: CaseCandidate[],
+): Understanding {
+  const u = { ...input, style: { ...input.style } };
+  const priorMessages = state.recentTurns.map((turn) => turn.user);
+  u.language = detectConversationLanguageHint(message, priorMessages) ?? input.language;
+  u.preferredResponseLanguage = explicitResponseLanguage(message);
+
+  if (explicitHandoffWithdrawal(message) && state.pendingHandoff) {
+    u.intent = 'information';
+    u.requiresHuman = false;
+    u.guidance = 'business_direct';
+    u.guidancePreference = 'keep';
+    u.conversationRepair = true;
+    u.requiresClarification = false;
+    if (!state.activeCaseId) u.requiresCase = false;
+    u.response = '';
+  }
+
+  if (explicitActionRefusal(message)) {
+    u.intent = 'preference';
+    u.requiresHuman = false;
+    u.guidance = 'none';
+    u.guidancePreference = 'keep';
+    u.conversationRepair = true;
+    u.requiresClarification = false;
+    u.requiresKnowledge = false;
+    u.requiresCase = Boolean(state.activeCaseId);
+    u.response = '';
+  } else if (explicitExplainOnly(message)) {
+    u.intent = 'information';
+    u.requiresHuman = false;
+    u.guidance = 'business_direct';
+    u.guidancePreference = 'keep';
+    u.requiresClarification = false;
+    u.requiresCase = Boolean(state.activeCaseId) || u.requiresCase;
+    u.requiresKnowledge = true;
+    u.response = '';
+  } else if (explicitDecisionLater(message)) {
+    u.intent = 'preference';
+    u.requiresHuman = false;
+    u.guidance = 'none';
+    u.guidancePreference = 'keep';
+    u.requiresClarification = false;
+    u.requiresCase = false;
+    u.requiresKnowledge = false;
+    u.response = '';
+  }
+
+  if (correctionCue(message)) u.conversationRepair = true;
+
+  const personalFact = ['status', 'eta', 'reason'].includes(u.subIntent);
+  if (
+    state.activeCaseId &&
+    u.requiresCase &&
+    (personalFact || u.referencesPreviousTurn) &&
+    u.intent === 'information' &&
+    !explicitExplainOnly(message)
+  ) {
+    u.intent = 'case_lookup';
+    u.requiresKnowledge = false;
+    u.guidance = 'business_direct';
+  }
+
+  if (
+    !state.activeCaseId &&
+    candidates.length === 0 &&
+    u.conversationRepair &&
+    !personalFact
+  ) {
+    u.requiresCase = false;
+    if (u.intent === 'case_lookup' || (u.intent === 'clarification' && u.topic)) {
+      u.intent = u.topic ? 'information' : 'clarification';
+    }
+    if (u.intent === 'information') {
+      u.requiresKnowledge = true;
+      u.requiresClarification = false;
+      u.guidance = 'business_direct';
+    }
+  }
+
+  if (
+    u.intent === 'information' &&
+    !state.activeCaseId &&
+    candidates.length === 0 &&
+    !personalFact
+  ) {
+    u.requiresCase = false;
+    u.requiresKnowledge = true;
+  }
+
+  if (u.intent === 'clarification' || u.requiresClarification) {
+    u.guidance = 'clarify';
+  }
+
+  return understandingSchema.parse(u);
+}
 
 export async function understandConversation(
   env: AtlasEnv,
@@ -120,7 +299,8 @@ export async function understandConversation(
   const choice = response.choices[0];
   try {
     if (choice.message.tool_calls?.length) throw new Error('Unexpected tools');
-    return understandingSchema.parse(JSON.parse(choice.message.content ?? ''));
+    const parsed = understandingSchema.parse(JSON.parse(choice.message.content ?? ''));
+    return normalizeUnderstanding(parsed, message, state, candidates);
   } catch {
     const attempt = trace.attempts.at(-1);
     if (attempt) attempt.error = 'invalid_upstream_response';

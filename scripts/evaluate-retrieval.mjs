@@ -55,6 +55,8 @@ if (!options.live) {
       RAG_MODE: 'hybrid',
       RAG_RESULTS: 3,
       EMBEDDING_DAILY_LIMIT: String(scenarios.length),
+      RAG_EVAL_VECTOR_PROBE: 'true',
+      RAG_EVAL_VECTOR_CANDIDATE_FLOOR: '0.3',
     };
     for (const scenario of scenarios) {
       const turns = {};
@@ -70,6 +72,10 @@ if (!options.live) {
         const hits = result.articles.filter((a) =>
           scenario.expectedTitles.includes(a.title),
         ).length;
+        const expectedProbeSimilarities = (result.retrieval?.evaluationProbe?.vectorCandidates ?? [])
+          .filter((candidate) => scenario.expectedTitles.includes(candidate.title))
+          .map((candidate) => candidate.similarity)
+          .sort((a, b) => b - a);
         turns[mode] = {
           scope: result.scope,
           precisionAtK: result.articles.length ? hits / result.articles.length : 0,
@@ -77,6 +83,8 @@ if (!options.live) {
           latencyMs: Math.round(performance.now() - start),
           retrieval: result.retrieval,
           evidence: result.evidence,
+          expectedProbeSimilarities,
+          vectorProbe: result.retrieval?.evaluationProbe ?? null,
           returnedTitles: result.articles.map((a) => a.title),
         };
       }
@@ -104,7 +112,8 @@ if (!options.live) {
       configuration: {
         corpusLocale: cfg.RAG_CORPUS_LOCALE ?? 'fr-FR',
         market: cfg.RAG_MARKET ?? 'GLOBAL',
-        minSimilarity: Number(cfg.RAG_MIN_SIMILARITY ?? '0.55'),
+        minSimilarity: Number(cfg.RAG_MIN_SIMILARITY ?? '0.7'),
+        evaluationCandidateFloor: 0.3,
         minLexicalScore: Number(cfg.RAG_MIN_LEXICAL_SCORE ?? '3'),
         embeddingProvider: cfg.EMBEDDING_PROVIDER ?? null,
         embeddingModel: cfg.EMBEDDING_MODEL ?? null,

@@ -13,7 +13,7 @@ const qualificationEnv = {
   EMBEDDING_REVISION: '1',
   RAG_CORPUS_LOCALE: 'fr-FR',
   RAG_MARKET: 'GLOBAL',
-  RAG_MIN_SIMILARITY: '0.55',
+  RAG_MIN_SIMILARITY: '0.7',
   RAG_MIN_LEXICAL_SCORE: '3',
 };
 
@@ -64,7 +64,7 @@ function report(rows) {
     configuration: {
       corpusLocale: 'fr-FR',
       market: 'GLOBAL',
-      minSimilarity: 0.55,
+      minSimilarity: 0.7,
       minLexicalScore: 3,
       embeddingProvider: 'gemini',
       embeddingModel: 'gemini-embedding-2',

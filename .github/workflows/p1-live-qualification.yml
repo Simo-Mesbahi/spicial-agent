@@ -78,7 +78,7 @@ jobs:
       EMBEDDING_REVISION: '1'
       EMBEDDING_SEND_DIMENSIONS: 'false'
       RAG_MODE: hybrid
-      RAG_MIN_SIMILARITY: '0.55'
+      RAG_MIN_SIMILARITY: '0.7'
       RAG_MIN_LEXICAL_SCORE: '3'
       LLM_ORCHESTRATOR: structured
       LLM_GENERATION_MODE: shadow

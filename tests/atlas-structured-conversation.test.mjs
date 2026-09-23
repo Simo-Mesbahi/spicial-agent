@@ -26,6 +26,7 @@ const {
   planConversation,
   understandingJsonSchema,
   understandingSchema,
+  normalizeUnderstanding,
 } = await import(
   'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
 );
@@ -97,6 +98,182 @@ async function verify(c, row = c.snapshot.cases[0]) {
 }
 const stateOf = (db) =>
   JSON.parse(db.sql.prepare('SELECT payload FROM conversation_states').get().payload);
+
+
+test('semantic normalization keeps current language independent from default French state', () => {
+  const state = emptyConversationState();
+  const normalized = normalizeUnderstanding(
+    output({ language: 'fr', preferredResponseLanguage: 'fr' }),
+    'I mean the return',
+    state,
+    [],
+  );
+  assert.equal(normalized.language, 'en');
+  assert.equal(normalized.preferredResponseLanguage, null);
+
+  const explicit = normalizeUnderstanding(
+    output({ language: 'fr', preferredResponseLanguage: null }),
+    'answer in English please',
+    state,
+    [],
+  );
+  assert.equal(explicit.language, 'en');
+  assert.equal(explicit.preferredResponseLanguage, 'en');
+});
+
+test('semantic normalization separates generic procedures from personal case facts', () => {
+  const state = emptyConversationState();
+  const corrected = normalizeUnderstanding(
+    output({
+      intent: 'case_lookup',
+      subIntent: 'procedure',
+      topic: 'refund',
+      requiresCase: true,
+      requiresKnowledge: false,
+      conversationRepair: false,
+    }),
+    'I mean the refund for that return',
+    state,
+    [],
+  );
+  assert.equal(corrected.intent, 'information');
+  assert.equal(corrected.requiresCase, false);
+  assert.equal(corrected.requiresKnowledge, true);
+  assert.equal(corrected.conversationRepair, true);
+  assert.equal(corrected.guidance, 'business_direct');
+
+  const active = {
+    ...emptyConversationState(),
+    activeCaseId: 'case-a',
+    language: 'en',
+  };
+  const personal = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'reason',
+      requiresCase: true,
+      requiresKnowledge: true,
+      reference: 'active',
+    }),
+    'why is it waiting?',
+    active,
+    [{ id: 'case-a', reference: 'SAV-1', product: 'TV', kind: 'repair' }],
+  );
+  assert.equal(personal.intent, 'case_lookup');
+  assert.equal(personal.requiresCase, true);
+  assert.equal(personal.requiresKnowledge, false);
+
+  const pronoun = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'general',
+      requiresCase: true,
+      requiresKnowledge: true,
+      referencesPreviousTurn: true,
+      reference: 'active',
+    }),
+    'what about its spare part?',
+    active,
+    [{ id: 'case-a', reference: 'SAV-1', product: 'TV', kind: 'repair' }],
+  );
+  assert.equal(pronoun.intent, 'case_lookup');
+  assert.equal(pronoun.requiresKnowledge, false);
+
+  const generic = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'general',
+      topic: 'delivery',
+      requiresCase: true,
+      requiresKnowledge: false,
+    }),
+    'my parcel is incomplete',
+    emptyConversationState(),
+    [],
+  );
+  assert.equal(generic.intent, 'information');
+  assert.equal(generic.requiresCase, false);
+  assert.equal(generic.requiresKnowledge, true);
+});
+
+test('semantic normalization safely handles handoff withdrawal and action refusal', () => {
+  const pending = { ...emptyConversationState(), pendingHandoff: true, language: 'en' };
+  const withdrawn = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'human_handoff',
+      requiresHuman: true,
+      guidance: 'handoff',
+    }),
+    'wait help me here first',
+    pending,
+    [],
+  );
+  assert.equal(withdrawn.intent, 'information');
+  assert.equal(withdrawn.requiresHuman, false);
+  assert.equal(withdrawn.guidance, 'business_direct');
+  assert.equal(withdrawn.conversationRepair, true);
+
+  const active = { ...emptyConversationState(), activeCaseId: 'case-a', language: 'en' };
+  const refused = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'action',
+      guidance: 'business_direct',
+      guidancePreference: 'decline',
+      requiresCase: false,
+      conversationRepair: false,
+    }),
+    'do not take any action',
+    active,
+    [],
+  );
+  assert.equal(refused.intent, 'preference');
+  assert.equal(refused.guidance, 'none');
+  assert.equal(refused.guidancePreference, 'keep');
+  assert.equal(refused.requiresCase, true);
+  assert.equal(refused.conversationRepair, true);
+});
+
+test('semantic normalization keeps explanation-only requests informational and deferral neutral', () => {
+  const active = { ...emptyConversationState(), activeCaseId: 'case-a', language: 'en' };
+  const explain = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'preference',
+      guidance: 'respect_decline',
+      requiresCase: false,
+      requiresKnowledge: false,
+    }),
+    'just explain it',
+    active,
+    [],
+  );
+  assert.equal(explain.intent, 'information');
+  assert.equal(explain.guidance, 'business_direct');
+  assert.equal(explain.requiresCase, true);
+  assert.equal(explain.requiresKnowledge, true);
+
+  const later = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'preference',
+      guidance: 'respect_decline',
+      guidancePreference: 'decline',
+      requiresCase: true,
+    }),
+    'I will decide later',
+    active,
+    [],
+  );
+  assert.equal(later.intent, 'preference');
+  assert.equal(later.guidance, 'none');
+  assert.equal(later.guidancePreference, 'keep');
+  assert.equal(later.requiresCase, false);
+});
 
 test('natural conversational repairs use one call per turn and retain untrusted context', async (t) => {
   const { c, calls, db } = await fixture(t, (_p, n) =>

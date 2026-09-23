@@ -23,10 +23,10 @@ function scoreLanguage(text: string, patterns: RegExp[]) {
   return patterns.reduce((score, pattern) => score + (pattern.test(text) ? 1 : 0), 0);
 }
 
-export function detectConversationLanguage(
+export function detectConversationLanguageHint(
   message: string,
   previousUserMessages: string[] = [],
-): ConversationLanguage {
+): ConversationLanguage | null {
   const text = message.trim();
   if (/\p{Script=Arabic}/u.test(text)) return 'ar';
 
@@ -45,7 +45,14 @@ export function detectConversationLanguage(
     if (prior[0]?.score > 0 && prior[0].score > (prior[1]?.score ?? 0)) return prior[0].language;
   }
 
-  return 'fr';
+  return null;
+}
+
+export function detectConversationLanguage(
+  message: string,
+  previousUserMessages: string[] = [],
+): ConversationLanguage {
+  return detectConversationLanguageHint(message, previousUserMessages) ?? 'fr';
 }
 
 export function casualIntent(message: string): CasualIntent {
