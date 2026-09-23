@@ -78,6 +78,7 @@ const names = [
   'LLM_BUDGET_MODE',
   'LLM_DAILY_LIMIT',
   'LLM_STRUCTURED_OUTPUT',
+  'LLM_REQUEST_TIMEOUT_MS',
   'OPENAI_MODEL',
   'OPENAI_API_KEY',
   'OPENAI_REASONING_EFFORT',
@@ -119,64 +120,98 @@ const inputRate = rate('AI_EVAL_INPUT_USD_PER_MILLION'),
   outputRate = rate('AI_EVAL_OUTPUT_USD_PER_MILLION');
 if ([inputRate, outputRate].some((n) => n !== null && (!Number.isFinite(n) || n < 0)))
   throw new Error('Invalid operator-supplied token pricing');
+const retryLimit = Number(process.env.P1_STRUCTURED_MAX_SCENARIO_RETRIES ?? '0');
+if (!Number.isInteger(retryLimit) || retryLimit < 0 || retryLimit > 6)
+  throw new Error('Invalid P1 structured retry budget');
+
+const transientFallbackReasons = new Set([
+  'network_or_timeout',
+  'upstream_rate_limited',
+  'upstream_unavailable',
+]);
+
 const rows = [],
   pacing = liveCompletionPacer(),
   savedInfo = console.info;
+let retriedScenarios = 0,
+  discardedProviderCalls = 0,
+  discardedInputTokens = 0,
+  discardedOutputTokens = 0,
+  discardedUsageComplete = true;
+
+async function runScenario(scenario) {
+  const attemptRows = [];
+  const db = database();
+  try {
+    const c = await client(db, handleApi);
+    Object.assign(c.env, config);
+    let activeCaseId = null;
+    if (scenario.case) {
+      const row =
+        c.snapshot.cases.find((r) => /télé|tele|tv/i.test(r.product)) ?? c.snapshot.cases[0];
+      if (
+        (await c.call('verify', { reference: row.reference, code: row.demoCode })).status !== 200
+      )
+        throw new Error('Synthetic case authorization failed');
+      activeCaseId = row.id;
+    }
+    for (const [index, turn] of scenario.turns.entries()) {
+      await pacing.beforeCall();
+      const started = performance.now();
+      const response = await c.call('chat', { message: turn.message, caseId: activeCaseId });
+      const elapsed = Math.round((performance.now() - started) * 100) / 100;
+      const m = response.body.metadata ?? {},
+        actual = m.understanding;
+      if (m.orchestrator === 'structured') activeCaseId = m.selectedCaseId;
+      const checks = Object.fromEntries(
+        Object.entries(turn.target).map(([key, expected]) => [
+          key,
+          actual ? actual[key] === expected : null,
+        ]),
+      );
+      attemptRows.push({
+        id: `${scenario.id}/${index + 1}`,
+        expected: turn.target,
+        actual: actual ?? null,
+        checks,
+        status: response.status,
+        fallback: m.fallback ?? null,
+        fallbackReason: m.fallbackReason ?? null,
+        plan: m.plan ?? null,
+        guardRejected: m.groundingFailure ?? null,
+        tools: m.executedTools ?? [],
+        providerCalls: m.providerCalls ?? 0,
+        inputTokens: m.inputTokens ?? null,
+        outputTokens: m.outputTokens ?? null,
+        usageComplete: m.usageComplete ?? false,
+        latencyMs: elapsed,
+        serverResponseReadyMs: m.latencyMs ?? null,
+        // Synthetic outputs make human review possible; neither prompts nor credentials are logged.
+        response: response.body.content ?? null,
+      });
+    }
+    return attemptRows;
+  } finally {
+    db.sql.close();
+  }
+}
+
 console.info = () => {};
 try {
   for (const scenario of selected) {
-    const db = database();
-    try {
-      const c = await client(db, handleApi);
-      Object.assign(c.env, config);
-      let activeCaseId = null;
-      if (scenario.case) {
-        const row =
-          c.snapshot.cases.find((r) => /télé|tele|tv/i.test(r.product)) ?? c.snapshot.cases[0];
-        if (
-          (await c.call('verify', { reference: row.reference, code: row.demoCode })).status !== 200
-        )
-          throw new Error('Synthetic case authorization failed');
-        activeCaseId = row.id;
-      }
-      for (const [index, turn] of scenario.turns.entries()) {
-        await pacing.beforeCall();
-        const started = performance.now();
-        const response = await c.call('chat', { message: turn.message, caseId: activeCaseId });
-        const elapsed = Math.round((performance.now() - started) * 100) / 100;
-        const m = response.body.metadata ?? {},
-          actual = m.understanding;
-        if (m.orchestrator === 'structured') activeCaseId = m.selectedCaseId;
-        const checks = Object.fromEntries(
-          Object.entries(turn.target).map(([key, expected]) => [
-            key,
-            actual ? actual[key] === expected : null,
-          ]),
-        );
-        rows.push({
-          id: `${scenario.id}/${index + 1}`,
-          expected: turn.target,
-          actual: actual ?? null,
-          checks,
-          status: response.status,
-          fallback: m.fallback ?? null,
-          fallbackReason: m.fallbackReason ?? null,
-          plan: m.plan ?? null,
-          guardRejected: m.groundingFailure ?? null,
-          tools: m.executedTools ?? [],
-          providerCalls: m.providerCalls ?? 0,
-          inputTokens: m.inputTokens ?? null,
-          outputTokens: m.outputTokens ?? null,
-          usageComplete: m.usageComplete ?? false,
-          latencyMs: elapsed,
-          serverResponseReadyMs: m.latencyMs ?? null,
-          // Synthetic outputs make human review possible; neither prompts nor credentials are logged.
-          response: response.body.content ?? null,
-        });
-      }
-    } finally {
-      db.sql.close();
+    let scenarioRows = await runScenario(scenario);
+    const transient = scenarioRows.some(
+      (row) => row.fallback && transientFallbackReasons.has(row.fallbackReason),
+    );
+    if (transient && retriedScenarios < retryLimit) {
+      retriedScenarios++;
+      discardedProviderCalls += scenarioRows.reduce((n, row) => n + (row.providerCalls ?? 0), 0);
+      discardedInputTokens += scenarioRows.reduce((n, row) => n + (row.inputTokens ?? 0), 0);
+      discardedOutputTokens += scenarioRows.reduce((n, row) => n + (row.outputTokens ?? 0), 0);
+      discardedUsageComplete &&= scenarioRows.every((row) => row.usageComplete);
+      scenarioRows = await runScenario(scenario);
     }
+    rows.push(...scenarioRows);
   }
 } finally {
   console.info = savedInfo;
@@ -205,7 +240,7 @@ const percentile = (q) =>
     ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * q))]
     : null;
 const sum = (key) => rows.reduce((total, r) => total + (r[key] ?? 0), 0);
-const usageComplete = rows.every((r) => r.usageComplete);
+const usageComplete = rows.every((r) => r.usageComplete) && discardedUsageComplete;
 const report = {
   schema: 1,
   kind: 'live-provider-synthetic-data',
@@ -219,13 +254,17 @@ const report = {
   limits: { maxTurns, maxProviderCalls: turns * (mode === 'structured' ? 1 : 3) },
   metrics,
   operational: {
-    providerCalls: sum('providerCalls'),
+    providerCalls: sum('providerCalls') + discardedProviderCalls,
+    finalProviderCalls: sum('providerCalls'),
+    discardedProviderCalls,
+    retriedScenarios,
+    maximumScenarioRetries: retryLimit,
     fallbackCount: rows.filter((r) => r.fallback).length,
     apiFailures: rows.filter((r) => r.status !== 200).length,
     groundingRejections: rows.filter((r) => r.guardRejected).length,
     usageComplete,
-    inputTokens: sum('inputTokens'),
-    outputTokens: sum('outputTokens'),
+    inputTokens: sum('inputTokens') + discardedInputTokens,
+    outputTokens: sum('outputTokens') + discardedOutputTokens,
     latencyMs: { p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99) },
     pacingIntervalMs: pacing.intervalMs,
     estimatedCostUsd:
