@@ -6,6 +6,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { database, client } from '../tests/helpers/atlas-fixture.mjs';
 import { preP1Scenarios } from '../evals/pre-p1-conversations.mjs';
+import { liveCompletionPacer } from './lib/live-eval-pacing.mjs';
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
@@ -119,6 +120,7 @@ const inputRate = rate('AI_EVAL_INPUT_USD_PER_MILLION'),
 if ([inputRate, outputRate].some((n) => n !== null && (!Number.isFinite(n) || n < 0)))
   throw new Error('Invalid operator-supplied token pricing');
 const rows = [],
+  pacing = liveCompletionPacer(),
   savedInfo = console.info;
 console.info = () => {};
 try {
@@ -138,6 +140,7 @@ try {
         activeCaseId = row.id;
       }
       for (const [index, turn] of scenario.turns.entries()) {
+        await pacing.beforeCall();
         const started = performance.now();
         const response = await c.call('chat', { message: turn.message, caseId: activeCaseId });
         const elapsed = Math.round((performance.now() - started) * 100) / 100;
@@ -224,6 +227,7 @@ const report = {
     inputTokens: sum('inputTokens'),
     outputTokens: sum('outputTokens'),
     latencyMs: { p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99) },
+    pacingIntervalMs: pacing.intervalMs,
     estimatedCostUsd:
       usageComplete && inputRate !== null && outputRate !== null
         ? (sum('inputTokens') * inputRate + sum('outputTokens') * outputRate) / 1e6
