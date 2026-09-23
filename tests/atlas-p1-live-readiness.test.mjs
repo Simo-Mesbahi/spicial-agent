@@ -62,6 +62,7 @@ function report(rows) {
   return {
     createdAt: new Date().toISOString(),
     configuration: {
+      queryContract: 'canonical_fr_from_multilingual_source',
       corpusLocale: 'fr-FR',
       market: 'GLOBAL',
       minSimilarity: 0.7,
@@ -89,6 +90,20 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   );
   assert.equal(passed.status, 0, passed.stderr);
   assert.equal(JSON.parse(passed.stdout).status, 'retrieval_qualified');
+
+  const staleContract = report(Array.from({ length: 20 }, (_, i) => retrievalRow(i)));
+  staleContract.configuration.queryContract = 'raw_multilingual_query';
+  await writeFile(path, JSON.stringify(staleContract));
+  const rejectedContract = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedContract.status, 0);
+  assert.equal(
+    JSON.parse(rejectedContract.stdout).configurationMatchesEnvironment,
+    false,
+  );
 
   const unsafe = Array.from({ length: 20 }, (_, i) =>
     retrievalRow(i, i === 7 ? { hybrid: { recallAtK: 0 } } : {}),
