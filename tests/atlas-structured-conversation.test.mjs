@@ -198,6 +198,69 @@ test('semantic normalization does not carry repair across resolved handoff or ac
   assert.equal(parcel.conversationRepair, false);
 });
 
+test('semantic normalization covers live multilingual correction and handoff phrases', () => {
+  const correctionState = {
+    ...emptyConversationState(),
+    currentTopic: 'return',
+    recentTurns: [{ user: 'hablo de la devolución', assistant: '' }],
+  };
+  const spanish = normalizeUnderstanding(
+    output({
+      language: 'es',
+      intent: 'case_lookup',
+      subIntent: 'status',
+      topic: 'refund',
+      requiresCase: true,
+      requiresKnowledge: true,
+    }),
+    'hablo del reembolso de esa devolución',
+    correctionState,
+    [],
+  );
+  assert.equal(spanish.intent, 'information');
+  assert.equal(spanish.requiresCase, false);
+  assert.equal(spanish.requiresKnowledge, true);
+  assert.equal(spanish.conversationRepair, true);
+
+  const french = normalizeUnderstanding(
+    output({
+      language: 'fr',
+      intent: 'information',
+      topic: 'refund',
+      requiresKnowledge: true,
+    }),
+    'oui voilà maintenant réponds',
+    {
+      ...emptyConversationState(),
+      currentTopic: 'refund',
+      recentTurns: [{ user: 'je parle du remboursement', assistant: '' }],
+    },
+    [],
+  );
+  assert.equal(french.conversationRepair, true);
+
+  for (const [message, language] of [
+    ['warte hilf mir zuerst hier', 'de'],
+    ['espera ayúdame aquí primero', 'es'],
+  ]) {
+    const withdrawn = normalizeUnderstanding(
+      output({
+        language,
+        intent: 'human_handoff',
+        requiresHuman: true,
+        guidance: 'handoff',
+      }),
+      message,
+      { ...emptyConversationState(), pendingHandoff: true, language },
+      [],
+    );
+    assert.equal(withdrawn.intent, 'information');
+    assert.equal(withdrawn.requiresHuman, false);
+    assert.equal(withdrawn.guidance, 'business_direct');
+    assert.equal(withdrawn.conversationRepair, true);
+  }
+});
+
 test('semantic normalization keeps current language independent from default French state', () => {
   const state = emptyConversationState();
   const normalized = normalizeUnderstanding(
