@@ -85,6 +85,15 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumTotalCompletionCalls: 210/);
 });
 
+test('P1.7 structured evaluator forwards the governed provider timeout into runtime env', async () => {
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+
+  assert.match(structured, /'LLM_REQUEST_TIMEOUT_MS'/);
+  assert.match(structured, /Object\.assign\(c\.env, config\)/);
+  assert.match(structured, /P1_STRUCTURED_MAX_SCENARIO_RETRIES/);
+  assert.match(structured, /runScenario\(scenario\)/);
+});
+
 test('P1.7 grounding qualification fails fast on systemic request rejection', async () => {
   const grounding = await readFile('scripts/evaluate-grounding.mjs', 'utf8');
   const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
