@@ -583,6 +583,22 @@ test('Factual audit keeps provenance server-owned for provider transport verdict
   assert.equal(invalid.reason, 'invalid_verdict');
 });
 
+test('Factual audit rejects canonical supported verdicts that relabel server-owned provenance', async (t) => {
+  const c = setup(t);
+  t.mock.method(globalThis, 'fetch', async () =>
+    response(
+      verdict('fr', {
+        citations: [{ ref: 'case.status', quote: JSON.stringify(c.input.pack.caseFacts.status) }],
+      }),
+    ),
+  );
+  const r = await validateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(r.outcome, 'abstained');
+  assert.equal(r.reason, 'invalid_verdict');
+  assert.equal(r.calls, 1);
+  assert.equal(r.released, false);
+});
+
 for (const [name, mock, reason] of [
   [
     'network',

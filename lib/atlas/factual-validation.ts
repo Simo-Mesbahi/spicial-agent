@@ -156,7 +156,25 @@ function canonicalFactualReport(
   refs: Record<string, unknown>,
 ): FactualReport {
   const canonical = factualReportSchema.safeParse(value);
-  if (canonical.success) return canonical.data;
+  if (canonical.success) {
+    if (canonical.data.sentences.length !== draft.sentences.length)
+      throw new ValidationError('invalid_verdict');
+    for (const [position, sentence] of canonical.data.sentences.entries()) {
+      if (sentence.kind !== 'factual' || sentence.verdict !== 'supported') continue;
+      const expected = draft.sentences[position].evidenceRefs.map((ref) =>
+        canonicalCitation(ref, refs),
+      );
+      if (
+        sentence.citations.length !== expected.length ||
+        sentence.citations.some(
+          (citation, index) =>
+            citation.ref !== expected[index].ref || citation.quote !== expected[index].quote,
+        )
+      )
+        throw new ValidationError('invalid_verdict');
+    }
+    return canonical.data;
+  }
 
   const transport = factualTransportSchema.safeParse(value);
   if (!transport.success) throw new ValidationError('invalid_verdict');
