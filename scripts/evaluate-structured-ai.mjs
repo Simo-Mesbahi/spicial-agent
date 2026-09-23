@@ -123,6 +123,9 @@ if ([inputRate, outputRate].some((n) => n !== null && (!Number.isFinite(n) || n 
 const retryLimit = Number(process.env.P1_STRUCTURED_MAX_SCENARIO_RETRIES ?? '0');
 if (!Number.isInteger(retryLimit) || retryLimit < 0 || retryLimit > 6)
   throw new Error('Invalid P1 structured retry budget');
+const retryBackoffMs = Number(process.env.P1_STRUCTURED_RETRY_BACKOFF_MS ?? '0');
+if (!Number.isInteger(retryBackoffMs) || retryBackoffMs < 0 || retryBackoffMs > 30000)
+  throw new Error('Invalid P1 structured retry backoff');
 
 const transientFallbackReasons = new Set([
   'network_or_timeout',
@@ -229,6 +232,11 @@ try {
       discardedInputTokens += scenarioRows.reduce((n, row) => n + (row.inputTokens ?? 0), 0);
       discardedOutputTokens += scenarioRows.reduce((n, row) => n + (row.outputTokens ?? 0), 0);
       discardedUsageComplete &&= scenarioRows.every((row) => row.usageComplete);
+
+      // A timeout/503 often reflects a short provider-side brownout. The start-to-start
+      // pacer has already elapsed during long failures, so add an explicit bounded
+      // cooldown before rebuilding and retrying the scenario from clean state.
+      if (retryBackoffMs) await new Promise((resolve) => setTimeout(resolve, retryBackoffMs));
     }
     rows.push(...scenarioRows);
   }
@@ -278,6 +286,7 @@ const report = {
     discardedProviderCalls,
     retriedScenarios,
     maximumScenarioRetries: retryLimit,
+    retryBackoffMs,
     retryUsageComplete: discardedUsageComplete,
     systemicTransportFailure,
     fallbackCount: rows.filter((r) => r.fallback).length,

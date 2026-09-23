@@ -46,11 +46,12 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   }
 
   assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
-  assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '45000'/);
+  assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '60000'/);
   assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
+  assert.match(source, /P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /default: gemini-3\.5-flash-lite/);
   assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
 
@@ -79,6 +80,8 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(pacing, /never retries provider calls/);
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
+  assert.match(structured, /retryBackoffMs/);
+  assert.match(structured, /setTimeout\(resolve, retryBackoffMs\)/);
   assert.match(structured, /discardedProviderCalls/);
   assert.match(structured, /transientFallbackReasons/);
   assert.match(structured, /provider_rate_limited/);
@@ -96,6 +99,7 @@ test('P1.7 structured evaluator forwards the governed provider timeout into runt
   assert.match(structured, /'LLM_REQUEST_TIMEOUT_MS'/);
   assert.match(structured, /Object\.assign\(c\.env, config\)/);
   assert.match(structured, /P1_STRUCTURED_MAX_SCENARIO_RETRIES/);
+  assert.match(structured, /P1_STRUCTURED_RETRY_BACKOFF_MS/);
   assert.match(structured, /runScenario\(scenario\)/);
 });
 

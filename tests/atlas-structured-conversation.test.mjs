@@ -187,7 +187,9 @@ test('semantic normalization does not carry repair across resolved handoff or ac
   const parcel = normalizeUnderstanding(
     output({
       intent: 'information',
-      requiresKnowledge: true,
+      subIntent: 'status',
+      requiresCase: true,
+      requiresKnowledge: false,
       conversationRepair: true,
     }),
     'my parcel is incomplete',
@@ -195,6 +197,8 @@ test('semantic normalization does not carry repair across resolved handoff or ac
     [],
   );
   assert.equal(parcel.intent, 'information');
+  assert.equal(parcel.requiresCase, false);
+  assert.equal(parcel.requiresKnowledge, true);
   assert.equal(parcel.conversationRepair, false);
 });
 
@@ -415,6 +419,25 @@ test('semantic normalization safely handles handoff withdrawal and action refusa
 
 test('semantic normalization keeps explanation-only requests informational and deferral neutral', () => {
   const active = { ...emptyConversationState(), activeCaseId: 'case-a', language: 'en' };
+
+  const quote = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'procedure',
+      topic: 'quote',
+      guidance: 'business_direct',
+      requiresCase: false,
+      requiresKnowledge: true,
+    }),
+    'I want to know what happens if I accept the quote',
+    active,
+    [{ id: 'case-a', reference: 'SAV-1', product: 'TV', kind: 'repair' }],
+  );
+  assert.equal(quote.intent, 'information');
+  assert.equal(quote.requiresCase, true);
+  assert.equal(quote.requiresKnowledge, true);
+  assert.equal(quote.guidance, 'business_direct');
   const explain = normalizeUnderstanding(
     output({
       language: 'en',
