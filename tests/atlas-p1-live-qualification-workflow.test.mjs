@@ -86,6 +86,20 @@ test('P1.7 grounding qualification fails fast on systemic request rejection', as
   assert.match(release, /if \(partial\?\.systemicTransportFailure\) break/);
 });
 
+test('P1.7 release runner uses one of the 70 grounding calls as an early factual smoke', async () => {
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(release, /\{ offset: 0, maxCases: 1 \}/);
+  assert.match(release, /\{ offset: 1, maxCases: 19 \}/);
+  assert.match(release, /\{ offset: 20, maxCases: 20 \}/);
+  assert.match(release, /\{ offset: 40, maxCases: 20 \}/);
+  assert.match(release, /\{ offset: 60, maxCases: 10 \}/);
+  assert.match(release, /let continueQualification = smokeRun\.status === 0/);
+  assert.match(release, /continueQualification = structuredRun\.status === 0/);
+  assert.match(release, /continueQualification = generationRun\.status === 0/);
+  assert.doesNotMatch(release, /groundingCalls:\s*contract\.grounding\.requiredScenarios\s*\+\s*1/);
+});
+
 test('P1.7 live workflow remains fail-closed until human review', async () => {
   const source = await readFile(workflowPath, 'utf8');
 
