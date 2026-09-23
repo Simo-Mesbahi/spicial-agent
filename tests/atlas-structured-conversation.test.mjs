@@ -239,9 +239,19 @@ test('semantic normalization covers live multilingual correction and handoff phr
   );
   assert.equal(french.conversationRepair, true);
 
-  for (const [message, language] of [
-    ['warte hilf mir zuerst hier', 'de'],
-    ['espera ayúdame aquí primero', 'es'],
+  for (const [message, language, state] of [
+    ['warte hilf mir zuerst hier', 'de', { ...emptyConversationState(), pendingHandoff: true, language: 'de' }],
+    ['espera ayúdame aquí primero', 'es', { ...emptyConversationState(), pendingHandoff: true, language: 'es' }],
+    [
+      'انتظر ساعدني هنا أولا',
+      'ar',
+      {
+        ...emptyConversationState(),
+        pendingHandoff: false,
+        language: 'ar',
+        recentTurns: [{ user: 'أريد التحدث مع موظف', assistant: '' }],
+      },
+    ],
   ]) {
     const withdrawn = normalizeUnderstanding(
       output({
@@ -251,7 +261,7 @@ test('semantic normalization covers live multilingual correction and handoff phr
         guidance: 'handoff',
       }),
       message,
-      { ...emptyConversationState(), pendingHandoff: true, language },
+      state,
       [],
     );
     assert.equal(withdrawn.intent, 'information');

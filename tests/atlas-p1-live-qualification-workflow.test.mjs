@@ -49,7 +49,8 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '30000'/);
   assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '12000'/);
   assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
-  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'/);
+  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
   assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
 
   const retrievalPreflightIndex = source.indexOf(
@@ -65,14 +66,32 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   );
 });
 
-test('P1.7 live workflow paces completions without hidden provider retries', async () => {
+test('P1.7 live workflow paces calls and keeps retries scenario-level and explicit', async () => {
   const source = await readFile(workflowPath, 'utf8');
   const pacing = await readFile('scripts/lib/live-eval-pacing.mjs', 'utf8');
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+  const contract = await readFile('evals/p1-release-contract.mjs', 'utf8');
 
-  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '6500'/);
+  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
   assert.match(pacing, /start-to-start pacing/);
   assert.match(pacing, /never retries provider calls/);
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
+  assert.match(structured, /maximumScenarioRetries: retryLimit/);
+  assert.match(structured, /discardedProviderCalls/);
+  assert.match(structured, /transientFallbackReasons/);
+  assert.match(contract, /maximumScenarioRetries: 6/);
+  assert.match(contract, /maximumRetryCompletionCalls: 30/);
+  assert.match(contract, /maximumTotalCompletionCalls: 210/);
+});
+
+test('P1.7 structured evaluator forwards the governed provider timeout into runtime env', async () => {
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+
+  assert.match(structured, /'LLM_REQUEST_TIMEOUT_MS'/);
+  assert.match(structured, /Object\.assign\(c\.env, config\)/);
+  assert.match(structured, /P1_STRUCTURED_MAX_SCENARIO_RETRIES/);
+  assert.match(structured, /runScenario\(scenario\)/);
 });
 
 test('P1.7 grounding qualification fails fast on systemic request rejection', async () => {
@@ -84,6 +103,20 @@ test('P1.7 grounding qualification fails fast on systemic request rejection', as
   assert.match(grounding, /systemicTransportFailure/);
   assert.match(release, /partial\?\.systemicTransportFailure/);
   assert.match(release, /if \(partial\?\.systemicTransportFailure\) break/);
+});
+
+test('P1.7 release runner uses one of the 70 grounding calls as an early factual smoke', async () => {
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(release, /\{ offset: 0, maxCases: 1 \}/);
+  assert.match(release, /\{ offset: 1, maxCases: 19 \}/);
+  assert.match(release, /\{ offset: 20, maxCases: 20 \}/);
+  assert.match(release, /\{ offset: 40, maxCases: 20 \}/);
+  assert.match(release, /\{ offset: 60, maxCases: 10 \}/);
+  assert.match(release, /let continueQualification = smokeRun\.status === 0/);
+  assert.match(release, /continueQualification = structuredRun\.status === 0/);
+  assert.match(release, /continueQualification = generationRun\.status === 0/);
+  assert.doesNotMatch(release, /groundingCalls:\s*contract\.grounding\.requiredScenarios\s*\+\s*1/);
 });
 
 test('P1.7 live workflow remains fail-closed until human review', async () => {

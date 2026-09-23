@@ -42,28 +42,42 @@ if (
     `--structured-turns must be an integer between ${contract.structured.minimumTurns} and ${contract.structured.maximumTurns}`,
   );
 
+const groundingPlan = [
+  { offset: 0, maxCases: 1 },
+  { offset: 1, maxCases: 19 },
+  { offset: 20, maxCases: 20 },
+  { offset: 40, maxCases: 20 },
+  { offset: 60, maxCases: 10 },
+].map((entry) => ({
+  ...entry,
+  path: resolve(
+    `outputs/p1-live/grounding-${String(entry.offset).padStart(2, '0')}.json`,
+  ),
+}));
+
 const paths = {
   structured: resolve('outputs/p1-live/structured.json'),
   retrieval: resolve('outputs/p1-live/retrieval.json'),
   generation: resolve('outputs/p1-live/generation.json'),
-  grounding: [0, 20, 40, 60].map((offset) =>
-    resolve(`outputs/p1-live/grounding-${String(offset).padStart(2, '0')}.json`),
-  ),
+  grounding: groundingPlan.map((entry) => entry.path),
 };
 
 const plannedCalls = {
   structuredCompletionCalls: structuredTurns,
+  structuredRetryCompletionCalls: contract.structured.maximumRetryCompletionCalls,
   generationCalls: contract.generation.requiredScenarios,
   groundingCalls: contract.grounding.requiredScenarios,
   embeddingCalls: contract.retrieval.requiredQueries,
   completionCalls:
     structuredTurns +
+    contract.structured.maximumRetryCompletionCalls +
     contract.generation.requiredScenarios +
     contract.grounding.requiredScenarios,
 };
 
 if (
   plannedCalls.structuredCompletionCalls > contract.liveBudget.maximumStructuredCompletionCalls ||
+  plannedCalls.structuredRetryCompletionCalls > contract.structured.maximumRetryCompletionCalls ||
   plannedCalls.generationCalls > contract.liveBudget.maximumGenerationCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
   plannedCalls.embeddingCalls > contract.liveBudget.maximumEmbeddingCalls ||
@@ -270,8 +284,22 @@ if (live) {
     );
   }
 
-  executions.push(
-    runNode('scripts/evaluate-structured-ai.mjs', [
+  const smoke = groundingPlan[0];
+  const smokeRun = runNode('scripts/evaluate-grounding.mjs', [
+    '--live',
+    '--offset',
+    String(smoke.offset),
+    '--max-cases',
+    String(smoke.maxCases),
+    '--output',
+    smoke.path,
+  ]);
+  executions.push(smokeRun);
+
+  let continueQualification = smokeRun.status === 0;
+
+  if (continueQualification) {
+    const structuredRun = runNode('scripts/evaluate-structured-ai.mjs', [
       '--live',
       '--mode',
       'structured',
@@ -283,44 +311,46 @@ if (live) {
       contract.structured.requiredFamilies.join(','),
       '--output',
       paths.structured,
-    ]),
-  );
+    ]);
+    executions.push(structuredRun);
+    continueQualification = structuredRun.status === 0;
+  }
 
-  executions.push(
-    runNode('scripts/evaluate-generation.mjs', [
+  if (continueQualification) {
+    const generationRun = runNode('scripts/evaluate-generation.mjs', [
       '--live',
       '--max-cases',
       String(contract.generation.requiredScenarios),
       '--output',
       paths.generation,
-    ]),
-  );
-
-  for (const [index, offset] of [0, 20, 40, 60].entries()) {
-    const remaining = contract.grounding.requiredScenarios - offset;
-    const maxCases = Math.min(20, remaining);
-    if (maxCases <= 0) continue;
-    const groundingRun = runNode('scripts/evaluate-grounding.mjs', [
-      '--live',
-      '--offset',
-      String(offset),
-      '--max-cases',
-      String(maxCases),
-      '--output',
-      paths.grounding[index],
     ]);
-    executions.push(groundingRun);
-    if (groundingRun.status !== 0) {
-      try {
-        const partial = await readJson(paths.grounding[index]);
-        if (partial?.systemicTransportFailure) break;
-      } catch {
-        // The normal report-read gate below records unreadable artifacts fail-closed.
+    executions.push(generationRun);
+    continueQualification = generationRun.status === 0;
+  }
+
+  if (continueQualification) {
+    for (const entry of groundingPlan.slice(1)) {
+      const groundingRun = runNode('scripts/evaluate-grounding.mjs', [
+        '--live',
+        '--offset',
+        String(entry.offset),
+        '--max-cases',
+        String(entry.maxCases),
+        '--output',
+        entry.path,
+      ]);
+      executions.push(groundingRun);
+      if (groundingRun.status !== 0) {
+        try {
+          const partial = await readJson(entry.path);
+          if (partial?.systemicTransportFailure) break;
+        } catch {
+          // The normal report-read gate below records unreadable artifacts fail-closed.
+        }
       }
     }
   }
 }
-
 const subprocessFailures = executions
   .filter((run) => run.status !== 0)
   .map((run) => ({
@@ -452,6 +482,11 @@ const structuredGate = Boolean(
     structuredCoverageGate &&
     structured.operational?.apiFailures === contract.structured.apiFailures &&
     structured.operational?.fallbackCount === contract.structured.fallbackCount &&
+    structured.operational?.retriedScenarios <= contract.structured.maximumScenarioRetries &&
+    structured.operational?.discardedProviderCalls <=
+      contract.structured.maximumRetryCompletionCalls &&
+    structured.operational?.providerCalls <=
+      structuredTurns + contract.structured.maximumRetryCompletionCalls &&
     structured.operational?.groundingRejections === contract.structured.groundingRejections &&
     (!contract.structured.requireCompleteUsage || structured.operational?.usageComplete === true) &&
     Object.values(structuredMetrics).every(
