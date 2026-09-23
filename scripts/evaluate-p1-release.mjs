@@ -64,17 +64,20 @@ const paths = {
 
 const plannedCalls = {
   structuredCompletionCalls: structuredTurns,
+  structuredRetryCompletionCalls: contract.structured.maximumRetryCompletionCalls,
   generationCalls: contract.generation.requiredScenarios,
   groundingCalls: contract.grounding.requiredScenarios,
   embeddingCalls: contract.retrieval.requiredQueries,
   completionCalls:
     structuredTurns +
+    contract.structured.maximumRetryCompletionCalls +
     contract.generation.requiredScenarios +
     contract.grounding.requiredScenarios,
 };
 
 if (
   plannedCalls.structuredCompletionCalls > contract.liveBudget.maximumStructuredCompletionCalls ||
+  plannedCalls.structuredRetryCompletionCalls > contract.structured.maximumRetryCompletionCalls ||
   plannedCalls.generationCalls > contract.liveBudget.maximumGenerationCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
   plannedCalls.embeddingCalls > contract.liveBudget.maximumEmbeddingCalls ||
@@ -479,6 +482,11 @@ const structuredGate = Boolean(
     structuredCoverageGate &&
     structured.operational?.apiFailures === contract.structured.apiFailures &&
     structured.operational?.fallbackCount === contract.structured.fallbackCount &&
+    structured.operational?.retriedScenarios <= contract.structured.maximumScenarioRetries &&
+    structured.operational?.discardedProviderCalls <=
+      contract.structured.maximumRetryCompletionCalls &&
+    structured.operational?.providerCalls <=
+      structuredTurns + contract.structured.maximumRetryCompletionCalls &&
     structured.operational?.groundingRejections === contract.structured.groundingRejections &&
     (!contract.structured.requireCompleteUsage || structured.operational?.usageComplete === true) &&
     Object.values(structuredMetrics).every(
