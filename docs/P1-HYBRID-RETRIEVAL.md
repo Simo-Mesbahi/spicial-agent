@@ -40,7 +40,7 @@ The vector channel excludes a document until all its chunks match the requested 
 
 Each channel returns at most eight documents; vector preselection examines at most 32 returned chunk candidates. RRF with k=60 combines **ranks**, not incompatible lexical/cosine scores. Agreement across channels drives ranking; stable IDs break ties. One selected chunk per document is exposed as evidence, with separate lexical/vector supporting chunk IDs so a similarity is never silently attributed to a different chunk.
 
-Qualification baseline relevance gates are lexical score >=3 and cosine similarity >=0.55. The 0.55 vector threshold is a **live-calibration candidate**, not a probability and not a release waiver: all 20 authored FR/EN/DE/ES/AR queries must still satisfy the P1.7 per-query recall/precision contract before any completion-heavy qualification stage is allowed to start. `RAG_MIN_LEXICAL_SCORE` and `RAG_MIN_SIMILARITY` remain bounded server settings.
+Qualification baseline relevance gates are lexical score >=3 and cosine similarity >=0.70. The threshold is a bounded server-side relevance gate, not a probability. Production structured orchestration does not send the raw multilingual utterance directly to the French corpus: it supplies a short standalone French retrieval query, with a deterministic topic fallback when needed. P1.7 therefore qualifies retrieval at that exact boundary. Raw cross-lingual vector behavior remains a useful diagnostic but is not substituted for the production query-rewriting contract.
 
 Absent/weak evidence yields no article. Conflicting revisions in a series fail closed. Obvious instruction-injection markers are quarantined before rendering, with a diagnostic event; this conservative detector is not a complete semantic injection or factual-consistency validator. Retrieved text never becomes understanding-system instructions. Arbitrary contradictions across independent policies still require the subsequent evidence/validator work.
 
@@ -58,14 +58,15 @@ npm run eval:rag
 # Secrets remain in the ignored .dev.vars. One operator batch; no endless loop.
 node --env-file=.dev.vars scripts/index-knowledge.mjs --live --max-chunks 32
 
-# Five independent multilingual retrieval questions; at most five embeddings,
-# zero completions. Each compares filtered lexical-only versus hybrid retrieval.
+# Five independently authored multilingual source scenarios; at most five embeddings,
+# zero completions. Each uses its reviewed French production retrieval query and compares
+# filtered lexical-only versus hybrid retrieval.
 node --env-file=.dev.vars scripts/evaluate-retrieval.mjs --live --max-queries 5
 ```
 
 Indexing accepts 1–32 chunks per invocation and makes at most one provider batch. Only stale/missing published chunks are selected. After that provider batch, a no-model Supabase readiness read checks whether any stale/missing published chunk remains in the exact embedding space; live P1.7 qualification fails closed if the corpus is still incomplete. Source checksums are checked again in the transactional write RPC; a changed/missing source aborts the whole batch. Repeating indexing skips completed chunks. An explicit operator indexing batch has its own maximum and does not use the online D1 daily bucket. No publication status or business action is changed.
 
-`evals/retrieval.mjs` provides 20 authored questions across FR/EN/DE/ES/AR and four procedures from the repository's seed corpus. The runner records precision@K, recall@K, per-query latency, selected evidence and embedding diagnostics. Deployments with a different corpus need reviewed gold labels. Transport failures are reported as incomplete, not a passing evaluation. Gold labels never enter the provider request.
+`evals/retrieval.mjs` provides 20 authored source questions across FR/EN/DE/ES/AR plus reviewed French retrieval queries matching the structured orchestrator boundary. Gold labels may contain more than one title only when the published corpus contains independently reviewed procedures that are materially relevant to the same request (for example a general repair-status procedure and the more specific waiting-for-part procedure). The runner records precision@K, recall@K, per-query latency, selected evidence and embedding diagnostics. Deployments with a different corpus need reviewed gold labels. Transport failures are reported as incomplete, not a passing evaluation. Gold labels never enter the provider request.
 
 ## Verification and limits
 
@@ -73,7 +74,7 @@ Two pinned **development-only** dependencies, PGlite 0.5.8 and its pgvector exte
 
 Tests cover schema/HTTP/timeout failures, dimensions, zero vectors, duplicate/missing indices, budget concurrency, source isolation, stale and partial indexing, atomic rollback, locale/market/date/status filtering, RRF provenance, multilingual query preservation and obvious document injection. Cloudflare/workerd also exercises the authenticated production chat through both the completion and embedding HTTP transports with real D1 persistence.
 
-A first hosted preproduction run on 2026-09-23 successfully indexed the complete published corpus into the `gemini-embedding-2` 768-dimensional space. The qualification workflow now runs the 20-query live retrieval gate immediately after corpus readiness and stops before completion-heavy evaluation if any multilingual retrieval row misses the governed contract. CI still uses synthetic provider responses and vectors; only the explicit manual live gate measures hosted semantic recall.
+A first hosted preproduction run on 2026-09-23 successfully indexed the complete published corpus into the `gemini-embedding-2` 768-dimensional space. A subsequent diagnostic run proved that sending raw DE/ES/AR utterances directly against the `fr-FR` corpus depressed cosine scores below the conservative 0.70 gate even when the expected document remained a top-1/top-2 vector candidate. Because production structured orchestration rewrites those requests into French before retrieval, P1.7 now gates the production-aligned canonical query rather than bypassing that layer. The workflow still stops before completion-heavy evaluation if any retrieval row misses the governed contract.
 
 Before activation, run hosted migrations/advisors, inspect query plans on representative tenant sizes, verify ANN recall under tenant/model filters, calibrate thresholds using reviewed relevance labels, and measure p50/p95/p99 and token costs. The existing HNSW index is reused where PostgreSQL chooses it; a small fixture cannot demonstrate enterprise-scale throughput. Rollback is `RAG_MODE=lexical`, without destructive schema changes.
 

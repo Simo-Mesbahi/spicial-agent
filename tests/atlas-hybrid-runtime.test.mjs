@@ -355,12 +355,25 @@ test('Knowledge indexing reports an incomplete corpus without a second provider 
   assert.equal(embeddingCalls, 1);
 });
 
-test('RAG evaluation is multilingual, independent and dry by default', async () => {
+test('RAG evaluation is production-aligned, multilingual at the source and dry by default', async () => {
   const { retrievalScenarios } = await import('../evals/retrieval.mjs');
   assert.equal(retrievalScenarios.length, 20);
   assert.equal(new Set(retrievalScenarios.map((s) => s.id)).size, 20);
   for (const language of ['fr', 'en', 'de', 'es', 'ar'])
     assert.equal(retrievalScenarios.filter((s) => s.language === language).length, 4);
+  for (const scenario of retrievalScenarios) {
+    assert.equal(typeof scenario.query, 'string');
+    assert.equal(typeof scenario.retrievalQuery, 'string');
+    assert.ok(scenario.retrievalQuery.length >= 10);
+    assert.ok(Array.isArray(scenario.expectedTitles));
+    assert.ok(scenario.expectedTitles.length >= 1);
+    if (scenario.language !== 'fr') assert.notEqual(scenario.query, scenario.retrievalQuery);
+  }
+  const source = await import('node:fs/promises').then(({ readFile }) =>
+    readFile('scripts/evaluate-retrieval.mjs', 'utf8'),
+  );
+  assert.match(source, /scenario\.retrievalQuery/);
+  assert.doesNotMatch(source, /searchKnowledge\([\s\S]{0,120}scenario\.query/);
   const dry = spawnSync(process.execPath, ['scripts/evaluate-retrieval.mjs'], { encoding: 'utf8' });
   assert.equal(dry.status, 0);
   const report = JSON.parse(dry.stdout);
