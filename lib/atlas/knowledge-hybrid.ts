@@ -17,6 +17,8 @@ export type HybridSettings = EmbeddingEnv & {
   RAG_MARKET?: string;
   RAG_MIN_SIMILARITY?: string;
   RAG_MIN_LEXICAL_SCORE?: string;
+  RAG_EVAL_VECTOR_CANDIDATE_FLOOR?: string;
+  RAG_EVAL_VECTOR_PROBE?: string;
 };
 export type KnowledgeEnvironment = SupabaseRuntimeEnv &
   HybridSettings & { DB?: Database; RAG_RESULTS?: number; RAG_MIN_ANCHORS?: number };
@@ -160,8 +162,12 @@ export async function searchHybridKnowledge(
       market = env.RAG_MARKET ?? 'GLOBAL';
     if (!/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || !/^[A-Z0-9][A-Z0-9_-]{1,15}$/.test(market))
       throw new ProviderError('configuration');
-    const minSimilarity = numeric(env.RAG_MIN_SIMILARITY, 0.55, 0, 1),
-      minLexical = numeric(env.RAG_MIN_LEXICAL_SCORE, 3, 0, 100);
+    const minSimilarity = numeric(env.RAG_MIN_SIMILARITY, 0.7, 0, 1),
+      minLexical = numeric(env.RAG_MIN_LEXICAL_SCORE, 3, 0, 100),
+      evaluationProbe = env.RAG_EVAL_VECTOR_PROBE === 'true',
+      candidateFloor = evaluationProbe
+        ? numeric(env.RAG_EVAL_VECTOR_CANDIDATE_FLOOR, minSimilarity, 0, minSimilarity)
+        : minSimilarity;
     let vector: number[] | null = null,
       space: string | null = null;
     try {
@@ -187,7 +193,7 @@ export async function searchHybridKnowledge(
         p_market: market,
         p_embedding_space: space,
         p_embedding: vector ? JSON.stringify(vector) : null,
-        p_min_similarity: minSimilarity,
+        p_min_similarity: candidateFloor,
       },
     });
     const parsed = z.array(candidateSchema).max(16).safeParse(raw);
@@ -230,6 +236,20 @@ export async function searchHybridKnowledge(
     );
     if (safeRows.length !== rows.length)
       telemetry.fallbackReason = 'document_instruction_quarantined';
+    if (evaluationProbe) {
+      telemetry.evaluationProbe = {
+        candidateFloor,
+        vectorCandidates: safeRows
+          .filter((row) => row.channel === 'vector')
+          .sort((a, b) => b.rank - a.rank || a.document_id.localeCompare(b.document_id))
+          .slice(0, 8)
+          .map((row) => ({
+            documentId: row.document_id,
+            title: row.title,
+            similarity: row.rank,
+          })),
+      };
+    }
     const selected = fuseCandidates(safeRows, minLexical, minSimilarity).slice(0, limit);
     result.scope = 'supabase_published';
     result.provenance = {
