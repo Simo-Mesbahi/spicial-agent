@@ -18,6 +18,8 @@ export const p1ReleaseQualificationContract = Object.freeze({
     groundingRejections: 0,
     requireCompleteUsage: true,
     requiredMetricAccuracy: 1,
+    maximumScenarioRetries: 6,
+    maximumRetryCompletionCalls: 30,
   },
   retrieval: {
     queryContract: 'canonical_fr_from_multilingual_source',
@@ -46,7 +48,7 @@ export const p1ReleaseQualificationContract = Object.freeze({
     maximumGenerationCalls: 10,
     maximumGroundingCalls: 70,
     maximumEmbeddingCalls: 20,
-    maximumTotalCompletionCalls: 180,
+    maximumTotalCompletionCalls: 210,
   },
   releaseRule:
     'All automated gates must pass and every generation scenario must have an explicit human review approval. Missing metrics never count as passing.',
