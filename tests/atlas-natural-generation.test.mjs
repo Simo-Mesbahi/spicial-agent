@@ -85,7 +85,7 @@ for (const [provider, env, format] of [
   [
     'gemini',
     { LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'PRIVATE', GEMINI_MODEL: 'gemini-2.5-flash-lite' },
-    'json_object',
+    'json_schema',
   ],
   [
     'compatible',

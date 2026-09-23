@@ -470,7 +470,7 @@ for (const [provider, settings, format] of [
       GEMINI_MODEL: 'gemini-2.5-flash-lite',
       LLM_BUDGET_MODE: 'free',
     },
-    'json_object',
+    'json_schema',
   ],
   [
     'compatible',

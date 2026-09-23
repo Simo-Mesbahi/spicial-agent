@@ -82,7 +82,34 @@ if (!options.live) {
       }
       results.push({ id: scenario.id, language: scenario.language, ...turns });
     }
+    const perLanguage = Object.fromEntries(
+      ['fr', 'en', 'de', 'es', 'ar'].map((language) => {
+        const rows = results.filter((row) => row.language === language);
+        return [
+          language,
+          {
+            queries: rows.length,
+            hybridRecallAtK:
+              rows.length ? rows.reduce((sum, row) => sum + row.hybrid.recallAtK, 0) / rows.length : null,
+            hybridPrecisionAtK:
+              rows.length
+                ? rows.reduce((sum, row) => sum + row.hybrid.precisionAtK, 0) / rows.length
+                : null,
+          },
+        ];
+      }),
+    );
     const report = {
+      createdAt: new Date().toISOString(),
+      configuration: {
+        corpusLocale: cfg.RAG_CORPUS_LOCALE ?? 'fr-FR',
+        market: cfg.RAG_MARKET ?? 'GLOBAL',
+        minSimilarity: Number(cfg.RAG_MIN_SIMILARITY ?? '0.55'),
+        minLexicalScore: Number(cfg.RAG_MIN_LEXICAL_SCORE ?? '3'),
+        embeddingProvider: cfg.EMBEDDING_PROVIDER ?? null,
+        embeddingModel: cfg.EMBEDDING_MODEL ?? null,
+        embeddingRevision: cfg.EMBEDDING_REVISION ?? '1',
+      },
       status: results.every(
         (r) =>
           r.lexical.scope === 'supabase_published' &&
@@ -93,6 +120,17 @@ if (!options.live) {
         ? 'completed'
         : 'incomplete',
       completionCalls: 0,
+      metrics: {
+        hybridRecallAtK:
+          results.length
+            ? results.reduce((sum, row) => sum + row.hybrid.recallAtK, 0) / results.length
+            : null,
+        hybridPrecisionAtK:
+          results.length
+            ? results.reduce((sum, row) => sum + row.hybrid.precisionAtK, 0) / results.length
+            : null,
+        perLanguage,
+      },
       results,
       note: 'Transport and retrieval relevance only. Review the corpus labels; no claim about conversation naturalness or semantic factual consistency.',
     };

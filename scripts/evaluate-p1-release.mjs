@@ -12,8 +12,11 @@ const value = (flag, fallback = null) =>
 
 const live = args.includes('--live');
 const finalizeExisting = args.includes('--finalize-existing');
+const reuseRetrieval = args.includes('--reuse-retrieval');
 if (live && finalizeExisting)
   throw new Error('Choose either --live or --finalize-existing, never both.');
+if (reuseRetrieval && !live)
+  throw new Error('--reuse-retrieval is valid only with --live.');
 
 const structuredTurns = Number(value('--structured-turns', String(contract.structured.minimumTurns)));
 const qualificationReportPath = resolve(
@@ -187,6 +190,52 @@ function git(args) {
   return (result.stdout ?? '').trim();
 }
 
+function retrievalRowPasses(row) {
+  const hybrid = row?.hybrid ?? {};
+  const lexical = row?.lexical ?? {};
+  const embedding = hybrid.retrieval?.embedding;
+  return (
+    hybrid.scope === 'supabase_published' &&
+    lexical.scope === 'supabase_published' &&
+    hybrid.recallAtK >= contract.retrieval.minimumHybridRecallAtK &&
+    hybrid.precisionAtK >= contract.retrieval.minimumHybridPrecisionAtK &&
+    (contract.retrieval.allowRecallRegressionVsLexical ||
+      hybrid.recallAtK >= lexical.recallAtK) &&
+    (!contract.retrieval.requireEmbeddingSuccess ||
+      (embedding?.calls === 1 && embedding?.error === null))
+  );
+}
+
+function retrievalReportPasses(report) {
+  const rows = Array.isArray(report?.results) ? report.results : [];
+  return Boolean(
+    report &&
+      report.status === 'completed' &&
+      report.completionCalls === contract.retrieval.completionCalls &&
+      rows.length === contract.retrieval.requiredQueries &&
+      rows.every(retrievalRowPasses),
+  );
+}
+
+function reusedRetrievalMatchesEnvironment(report) {
+  const configuration = report?.configuration ?? {};
+  const createdAt = Date.parse(report?.createdAt ?? '');
+  const fresh =
+    Number.isFinite(createdAt) &&
+    createdAt <= Date.now() + 5 * 60_000 &&
+    createdAt >= Date.now() - 30 * 60_000;
+  return (
+    fresh &&
+    configuration.embeddingProvider === process.env.EMBEDDING_PROVIDER &&
+    configuration.embeddingModel === process.env.EMBEDDING_MODEL &&
+    configuration.embeddingRevision === (process.env.EMBEDDING_REVISION ?? '1') &&
+    configuration.corpusLocale === (process.env.RAG_CORPUS_LOCALE ?? 'fr-FR') &&
+    configuration.market === (process.env.RAG_MARKET ?? 'GLOBAL') &&
+    configuration.minSimilarity === Number(process.env.RAG_MIN_SIMILARITY ?? '0.55') &&
+    configuration.minLexicalScore === Number(process.env.RAG_MIN_LEXICAL_SCORE ?? '3')
+  );
+}
+
 function sourceTreeState() {
   const treeSha = git(['rev-parse', 'HEAD^{tree}']);
   const trackedChanges = git(['status', '--porcelain', '--untracked-files=no']);
@@ -202,6 +251,24 @@ function sourceTreeState() {
 const executions = [];
 
 if (live) {
+  if (reuseRetrieval) {
+    const preflight = await readJson(paths.retrieval);
+    if (!retrievalReportPasses(preflight) || !reusedRetrievalMatchesEnvironment(preflight))
+      throw new Error(
+        'Reused retrieval preflight is stale, misconfigured, or below the P1.7 release contract.',
+      );
+  } else {
+    executions.push(
+      runNode('scripts/evaluate-retrieval.mjs', [
+        '--live',
+        '--max-queries',
+        String(contract.retrieval.requiredQueries),
+        '--output',
+        paths.retrieval,
+      ]),
+    );
+  }
+
   executions.push(
     runNode('scripts/evaluate-structured-ai.mjs', [
       '--live',
@@ -215,16 +282,6 @@ if (live) {
       contract.structured.requiredFamilies.join(','),
       '--output',
       paths.structured,
-    ]),
-  );
-
-  executions.push(
-    runNode('scripts/evaluate-retrieval.mjs', [
-      '--live',
-      '--max-queries',
-      String(contract.retrieval.requiredQueries),
-      '--output',
-      paths.retrieval,
     ]),
   );
 
@@ -399,27 +456,7 @@ const structuredGate = Boolean(
 );
 
 const retrievalRows = retrieval?.results ?? [];
-const retrievalGate = Boolean(
-  retrieval &&
-    retrieval.status === 'completed' &&
-    retrieval.completionCalls === contract.retrieval.completionCalls &&
-    retrievalRows.length === contract.retrieval.requiredQueries &&
-    retrievalRows.every((row) => {
-      const hybrid = row.hybrid ?? {};
-      const lexical = row.lexical ?? {};
-      const embedding = hybrid.retrieval?.embedding;
-      return (
-        hybrid.scope === 'supabase_published' &&
-        lexical.scope === 'supabase_published' &&
-        hybrid.recallAtK >= contract.retrieval.minimumHybridRecallAtK &&
-        hybrid.precisionAtK >= contract.retrieval.minimumHybridPrecisionAtK &&
-        (contract.retrieval.allowRecallRegressionVsLexical ||
-          hybrid.recallAtK >= lexical.recallAtK) &&
-        (!contract.retrieval.requireEmbeddingSuccess ||
-          (embedding?.calls === 1 && embedding?.error === null))
-      );
-    }),
-);
+const retrievalGate = retrievalReportPasses(retrieval);
 
 const generationRows = generation?.results ?? [];
 const generationGate = Boolean(

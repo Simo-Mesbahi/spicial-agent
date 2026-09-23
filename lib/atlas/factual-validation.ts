@@ -301,7 +301,7 @@ export async function validateNaturalDraft(
     if (settings.provider === 'demo' || !settings.base) throw new ProviderError('configuration');
     const format =
       env.LLM_STRUCTURED_OUTPUT?.trim() ||
-      (settings.provider === 'openai' ? 'json_schema' : 'json_object');
+      (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
     if (!['json_schema', 'json_object', 'prompt'].includes(format))
       throw new ProviderError('configuration');
     if (!(await reserveValidation(env, pack.scope.organizationId))) {

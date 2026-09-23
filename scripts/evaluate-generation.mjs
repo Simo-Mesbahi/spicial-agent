@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
 import { generationScenarios, generationFixture } from '../evals/generation.mjs';
+import { liveCompletionPacer } from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
 const options = { live: false, maxCases: 5, output: 'outputs/generation-evaluation.json' };
 for (let i = 0; i < args.length; i++) {
@@ -48,10 +49,12 @@ if (!options.live) {
   const { generateNaturalDraft, providerTrace } = await import(
     'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
   );
-  const DB = database();
+  const DB = database(),
+    pacing = liveCompletionPacer();
   try {
     const results = [];
     for (const scenario of selected) {
+      await pacing.beforeCall();
       const trace = providerTrace();
       const fixture = generationFixture(scenario);
       const { draft, diagnostics } = await generateNaturalDraft(
@@ -81,7 +84,7 @@ if (!options.live) {
     await mkdir(dirname(options.output), { recursive: true });
     await writeFile(
       options.output,
-      JSON.stringify({ status, data: 'synthetic', releaseAllowed: false, results }, null, 2) + '\n',
+      JSON.stringify({ status, data: 'synthetic', releaseAllowed: false, pacingIntervalMs: pacing.intervalMs, results }, null, 2) + '\n',
     );
     console.log(
       JSON.stringify({

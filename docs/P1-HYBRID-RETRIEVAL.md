@@ -40,7 +40,7 @@ The vector channel excludes a document until all its chunks match the requested 
 
 Each channel returns at most eight documents; vector preselection examines at most 32 returned chunk candidates. RRF with k=60 combines **ranks**, not incompatible lexical/cosine scores. Agreement across channels drives ranking; stable IDs break ties. One selected chunk per document is exposed as evidence, with separate lexical/vector supporting chunk IDs so a similarity is never silently attributed to a different chunk.
 
-Default relevance gates: lexical score >=3 or cosine similarity >=0.7. These are initial rollout parameters, **not calibrated probabilities**; evaluate before activation. `RAG_MIN_LEXICAL_SCORE` and `RAG_MIN_SIMILARITY` are bounded server settings.
+Qualification baseline relevance gates are lexical score >=3 and cosine similarity >=0.55. The 0.55 vector threshold is a **live-calibration candidate**, not a probability and not a release waiver: all 20 authored FR/EN/DE/ES/AR queries must still satisfy the P1.7 per-query recall/precision contract before any completion-heavy qualification stage is allowed to start. `RAG_MIN_LEXICAL_SCORE` and `RAG_MIN_SIMILARITY` remain bounded server settings.
 
 Absent/weak evidence yields no article. Conflicting revisions in a series fail closed. Obvious instruction-injection markers are quarantined before rendering, with a diagnostic event; this conservative detector is not a complete semantic injection or factual-consistency validator. Retrieved text never becomes understanding-system instructions. Arbitrary contradictions across independent policies still require the subsequent evidence/validator work.
 
@@ -73,7 +73,7 @@ Two pinned **development-only** dependencies, PGlite 0.5.8 and its pgvector exte
 
 Tests cover schema/HTTP/timeout failures, dimensions, zero vectors, duplicate/missing indices, budget concurrency, source isolation, stale and partial indexing, atomic rollback, locale/market/date/status filtering, RRF provenance, multilingual query preservation and obvious document injection. Cloudflare/workerd also exercises the authenticated production chat through both the completion and embedding HTTP transports with real D1 persistence.
 
-The live embedding/model evaluation and real Supabase rollout were not run: server credentials were unavailable. Tests use synthetic provider responses and vectors, so they prove mechanics/security, not multilingual semantic recall or an intelligence improvement. Historical conversational evaluation remains independent and unchanged.
+A first hosted preproduction run on 2026-09-23 successfully indexed the complete published corpus into the `gemini-embedding-2` 768-dimensional space. The qualification workflow now runs the 20-query live retrieval gate immediately after corpus readiness and stops before completion-heavy evaluation if any multilingual retrieval row misses the governed contract. CI still uses synthetic provider responses and vectors; only the explicit manual live gate measures hosted semantic recall.
 
 Before activation, run hosted migrations/advisors, inspect query plans on representative tenant sizes, verify ANN recall under tenant/model filters, calibrate thresholds using reviewed relevance labels, and measure p50/p95/p99 and token costs. The existing HNSW index is reused where PostgreSQL chooses it; a small fixture cannot demonstrate enterprise-scale throughput. Rollback is `RAG_MODE=lexical`, without destructive schema changes.
 
