@@ -155,6 +155,9 @@ function canonicalFactualReport(
   draft: NaturalDraft,
   refs: Record<string, unknown>,
 ): FactualReport {
+  const canonical = factualReportSchema.safeParse(value);
+  if (canonical.success) return canonical.data;
+
   const transport = factualTransportSchema.safeParse(value);
   if (!transport.success) throw new ValidationError('invalid_verdict');
   if (transport.data.sentences.length !== draft.sentences.length)
