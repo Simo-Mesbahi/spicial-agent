@@ -92,6 +92,18 @@ function explicitHandoffWithdrawal(message: string) {
   );
 }
 
+function recentHandoffRequest(state: ConversationState) {
+  const recent = state.recentTurns
+    .slice(-2)
+    .map((turn) => turn.user)
+    .join(' ')
+    .toLowerCase();
+  return (
+    /\b(?:conseiller|humain|human|advisor|mitarbeiter|persona)\b/u.test(recent) ||
+    /(?:موظف|مستشار)/u.test(recent)
+  );
+}
+
 function explicitActionRefusal(message: string) {
   const q = message.trim().toLowerCase();
   return (
@@ -178,7 +190,9 @@ export function normalizeUnderstanding(
 ): Understanding {
   const u = { ...input, style: { ...input.style } };
   const priorMessages = state.recentTurns.map((turn) => turn.user);
-  const handoffWithdrawal = explicitHandoffWithdrawal(message) && state.pendingHandoff;
+  const handoffWithdrawal =
+    explicitHandoffWithdrawal(message) &&
+    (state.pendingHandoff || recentHandoffRequest(state));
   const actionRefusal = explicitActionRefusal(message);
   const strongRepair = strongCorrectionCue(message);
   const continuationRepair =
