@@ -95,8 +95,8 @@ else {
       let scenarioRetries = 0;
 
       while (true) {
-        fixture = refreshSyntheticEvidenceFixture(fixture);
         await pacing.beforeCall();
+        fixture = refreshSyntheticEvidenceFixture(fixture);
         const trace = providerTrace();
         diagnostics = await validateNaturalDraft(
           {
