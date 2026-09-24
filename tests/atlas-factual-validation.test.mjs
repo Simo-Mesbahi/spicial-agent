@@ -11,7 +11,7 @@ import {
 const bundle = await build({
   stdin: {
     contents:
-      "export * from './lib/atlas/factual-validation'; export {providerTrace} from './lib/atlas/provider-runtime';",
+      "export * from './lib/atlas/factual-validation'; export {generationEvidence} from './lib/atlas/natural-generation'; export {providerTrace} from './lib/atlas/provider-runtime';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -19,7 +19,7 @@ const bundle = await build({
   format: 'esm',
   write: false,
 });
-const { validateNaturalDraft, revalidateFactualResult, providerTrace } = await import(
+const { validateNaturalDraft, revalidateFactualResult, generationEvidence, providerTrace } = await import(
   'data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64')
 );
 function setup(t, scenario = groundingScenarios[0]) {
@@ -62,6 +62,26 @@ const response = (
     choices: [{ finish_reason, message: { role: 'assistant', content: JSON.stringify(v) } }],
     ...(usage ? { usage } : {}),
   });
+test('Grounding corpus references only evidence aliases present in each scenario pack', () => {
+  assert.deepEqual(validateGroundingCorpus(), {
+    scenarios: 70,
+    families: 14,
+    languages: 5,
+    supported: 15,
+    unsupported: 55,
+  });
+  for (const scenario of groundingScenarios) {
+    const fixture = groundingFixture(scenario);
+    const refs = generationEvidence(fixture.pack).references;
+    for (const sentence of scenario.draft.sentences)
+      for (const ref of sentence.evidenceRefs)
+        assert.ok(
+          Object.hasOwn(refs, ref),
+          `${scenario.id} references missing evidence alias ${ref}`,
+        );
+  }
+});
+
 for (const language of ['fr', 'en', 'de', 'es', 'ar'])
   test(`Factual audit ${language}: bounded independent request and no release authority`, async (t) => {
     const c = setup(
