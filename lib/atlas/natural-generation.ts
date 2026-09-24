@@ -35,7 +35,7 @@ const forbiddenGeneratedMarkup =
   /https?:\/\/|www\.|<\/?[a-z][^>]*>|\[[^\]]+\]\([^\)]+\)|&(?:#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});/iu;
 const forbiddenGeneratedControls = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
 const forbiddenGeneratedInternalIdentifiers =
-  /\b(?:waiting_part|quote_pending|return_requested|return_approved|return_received|refund_pending)\b/iu;
+  /\b(?:waiting_part|quote_pending|complaint_review|refund_pending|return_requested|return_approved|return_received|not_covered|case_not_requested|confirmed_eta|estimated_at|warranty_label|knowledge_unavailable|knowledge_no_match|open_contact|customer_service)\b/iu;
 
 export function safeGeneratedSentenceText(text: string) {
   const normalized = text.trim();
