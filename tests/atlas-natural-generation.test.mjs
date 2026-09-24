@@ -406,7 +406,14 @@ test('Generation evaluation is dry by default, bounded and multilingual', () => 
   for (const language of ['fr', 'en', 'de', 'es', 'ar'])
     assert.equal(generationScenarios.filter((s) => s.language === language).length, 2);
   const report = JSON.parse(
-    execFileSync(process.execPath, ['scripts/evaluate-generation.mjs'], { encoding: 'utf8' }),
+    execFileSync(process.execPath, ['scripts/evaluate-generation.mjs'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        P1_GENERATION_MAX_RETRIES: '0',
+        P1_GENERATION_VALIDATION_MAX_RETRIES: '0',
+      },
+    }),
   );
   assert.equal(report.status, 'dry_run');
   assert.equal(report.maxGenerationCalls, 5);
