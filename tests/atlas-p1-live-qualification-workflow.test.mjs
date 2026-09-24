@@ -281,7 +281,10 @@ test('P1.7 live workflow remains fail-closed until human review', async () => {
 test('P1.7 workflow exports only bounded qualification artifacts and no automatic rollout', async () => {
   const source = await readFile(workflowPath, 'utf8');
 
-  assert.match(source, /actions\/upload-artifact@v4/);
+  assert.match(
+    source,
+    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\s+# v7\.0\.1/,
+  );
   assert.match(source, /path: outputs\/p1-live\//);
   assert.match(source, /retention-days: 7/);
   assert.doesNotMatch(source, /P1_CANARY_PERCENT/);
