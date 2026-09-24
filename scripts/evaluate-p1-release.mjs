@@ -86,9 +86,16 @@ if (
   plannedCalls.structuredCompletionCalls > contract.liveBudget.maximumStructuredCompletionCalls ||
   plannedCalls.structuredRetryCompletionCalls > contract.structured.maximumRetryCompletionCalls ||
   plannedCalls.generationCalls > contract.liveBudget.maximumGenerationCalls ||
+  plannedCalls.generationRetryCompletionCalls >
+    contract.liveBudget.maximumGenerationRetryCalls ||
   plannedCalls.generationValidationCalls >
     contract.liveBudget.maximumGenerationValidationCalls ||
+  plannedCalls.generationValidationRetryCompletionCalls >
+    contract.liveBudget.maximumGenerationValidationRetryCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
+  plannedCalls.groundingRetryCompletionCalls >
+    contract.liveBudget.maximumGroundingRetryCalls ||
+  p1GroundingMaximumRetryCalls !== contract.grounding.maximumRetryCalls ||
   plannedCalls.embeddingCalls > contract.liveBudget.maximumEmbeddingCalls ||
   plannedCalls.completionCalls > contract.liveBudget.maximumTotalCompletionCalls
 )
