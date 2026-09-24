@@ -65,9 +65,13 @@ const plannedCalls = {
   structuredRetryCompletionCalls: contract.structured.maximumRetryCompletionCalls,
   generationCalls: contract.generation.requiredScenarios,
   generationRetryCompletionCalls: contract.generation.maximumGenerationRetryCalls,
+  generationLanguageCorrectionCalls:
+    contract.generation.maximumLanguageCorrectionCalls,
   generationValidationCalls: contract.generation.requiredValidationCalls,
   generationValidationRetryCompletionCalls:
     contract.generation.maximumValidationRetryCalls,
+  generationLanguageCorrectionValidationCalls:
+    contract.generation.maximumLanguageCorrectionCalls,
   groundingCalls: contract.grounding.requiredScenarios,
   groundingRetryCompletionCalls: contract.grounding.maximumRetryCalls,
   embeddingCalls: contract.retrieval.requiredQueries,
@@ -76,8 +80,10 @@ const plannedCalls = {
     contract.structured.maximumRetryCompletionCalls +
     contract.generation.requiredScenarios +
     contract.generation.maximumGenerationRetryCalls +
+    contract.generation.maximumLanguageCorrectionCalls +
     contract.generation.requiredValidationCalls +
     contract.generation.maximumValidationRetryCalls +
+    contract.generation.maximumLanguageCorrectionCalls +
     contract.grounding.requiredScenarios +
     contract.grounding.maximumRetryCalls,
 };
@@ -88,10 +94,14 @@ if (
   plannedCalls.generationCalls > contract.liveBudget.maximumGenerationCalls ||
   plannedCalls.generationRetryCompletionCalls >
     contract.liveBudget.maximumGenerationRetryCalls ||
+  plannedCalls.generationLanguageCorrectionCalls >
+    contract.liveBudget.maximumLanguageCorrectionCalls ||
   plannedCalls.generationValidationCalls >
     contract.liveBudget.maximumGenerationValidationCalls ||
   plannedCalls.generationValidationRetryCompletionCalls >
     contract.liveBudget.maximumGenerationValidationRetryCalls ||
+  plannedCalls.generationLanguageCorrectionValidationCalls >
+    contract.liveBudget.maximumLanguageCorrectionValidationCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
   plannedCalls.groundingRetryCompletionCalls >
     contract.liveBudget.maximumGroundingRetryCalls ||
@@ -343,6 +353,8 @@ if (live) {
       String(contract.generation.maximumGenerationRetryCalls),
       '--max-validation-retries',
       String(contract.generation.maximumValidationRetryCalls),
+      '--max-language-corrections',
+      String(contract.generation.maximumLanguageCorrectionCalls),
       '--output',
       paths.generation,
     ]);
@@ -533,11 +545,15 @@ const generationGate = Boolean(
       contract.generation.maximumGenerationRetryCalls &&
     generation.operational?.validationRetriesUsed <=
       contract.generation.maximumValidationRetryCalls &&
+    generation.operational?.languageCorrectionsUsed <=
+      contract.generation.maximumLanguageCorrectionCalls &&
     generation.operational?.providerCalls <=
       contract.generation.requiredScenarios +
         contract.generation.maximumGenerationRetryCalls +
+        contract.generation.maximumLanguageCorrectionCalls +
         contract.generation.requiredValidationCalls +
-        contract.generation.maximumValidationRetryCalls &&
+        contract.generation.maximumValidationRetryCalls +
+        contract.generation.maximumLanguageCorrectionCalls &&
     generationRows.every(
       (row) =>
         row.draft &&
@@ -546,6 +562,9 @@ const generationGate = Boolean(
         row.diagnostics?.calls === 1 &&
         Number.isInteger(row.generationRetries) &&
         row.generationRetries >= 0 &&
+        Number.isInteger(row.languageCorrections) &&
+        row.languageCorrections >= 0 &&
+        row.languageCorrections <= 1 &&
         row.factualValidation?.outcome === 'supported_candidate' &&
         row.factualValidation?.reason === null &&
         row.factualValidation?.issues?.length === 0 &&
