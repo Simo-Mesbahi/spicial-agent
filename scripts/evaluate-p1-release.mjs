@@ -529,16 +529,29 @@ const generationRows = generation?.results ?? [];
 const generationGate = Boolean(
   generation &&
     generationRows.length === contract.generation.requiredScenarios &&
+    generation.operational?.generationRetriesUsed <=
+      contract.generation.maximumGenerationRetryCalls &&
+    generation.operational?.validationRetriesUsed <=
+      contract.generation.maximumValidationRetryCalls &&
+    generation.operational?.providerCalls <=
+      contract.generation.requiredScenarios +
+        contract.generation.maximumGenerationRetryCalls +
+        contract.generation.requiredValidationCalls +
+        contract.generation.maximumValidationRetryCalls &&
     generationRows.every(
       (row) =>
         row.draft &&
         row.diagnostics?.outcome === 'candidate_generated' &&
         row.diagnostics?.reason === null &&
         row.diagnostics?.calls === 1 &&
+        Number.isInteger(row.generationRetries) &&
+        row.generationRetries >= 0 &&
         row.factualValidation?.outcome === 'supported_candidate' &&
         row.factualValidation?.reason === null &&
         row.factualValidation?.issues?.length === 0 &&
         row.factualValidation?.calls === 1 &&
+        Number.isInteger(row.validationRetries) &&
+        row.validationRetries >= 0 &&
         row.groundedness === true,
     ),
 );
