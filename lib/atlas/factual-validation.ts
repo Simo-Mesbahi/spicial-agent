@@ -8,7 +8,12 @@ import {
   type EvidencePack,
   type EvidenceContext,
 } from './evidence-pack';
-import { generationEvidence, naturalDraftSchema, type NaturalDraft } from './natural-generation';
+import {
+  draftEvidenceBoundaryValid,
+  generationEvidence,
+  naturalDraftSchema,
+  type NaturalDraft,
+} from './natural-generation';
 import { modelSettings } from './model-policy';
 import { structuredSchemaForProvider } from './structured-output';
 import {
@@ -404,6 +409,8 @@ export async function validateNaturalDraft(
     const refs = generationEvidence(pack).references;
     if (draft.language !== pack.responseLanguage)
       throw new ValidationError('output_language_mismatch');
+    if (!draftEvidenceBoundaryValid(draft))
+      throw new ValidationError('invalid_draft');
     if (
       !draft.sentences.some((s) => s.evidenceRefs.length) ||
       draft.sentences.some(
