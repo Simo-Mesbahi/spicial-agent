@@ -77,7 +77,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       const data = JSON.parse(payload.messages[1].content);
       assert.equal(data.evidence.language, language);
       assert.equal(data.evidence.references['case.confirmedEta'], null);
-      assert.equal(data.evidence.references['case.status'], 'waiting_part');
+      assert.equal(data.evidence.references['case.statusLabel'], undefined);
       assert.equal(
         data.evidence.references['case.statusLabel'],
         localizedWaitingPartStatus[language],
@@ -268,7 +268,7 @@ for (const [name, data, reason] of [
     'duplicate citation',
     {
       language: 'fr',
-      sentences: [{ text: 'Statut', evidenceRefs: ['case.status', 'case.status'] }],
+      sentences: [{ text: 'Statut', evidenceRefs: ['case.statusLabel', 'case.statusLabel'] }],
     },
     'unknown_evidence_reference',
   ],
@@ -282,22 +282,22 @@ for (const [name, data, reason] of [
   ['empty response', { language: 'fr', sentences: [] }, 'invalid_upstream_response'],
   [
     'oversized text',
-    { language: 'fr', sentences: [{ text: 'x'.repeat(501), evidenceRefs: ['case.status'] }] },
+    { language: 'fr', sentences: [{ text: 'x'.repeat(501), evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
     'HTML entity text',
-    { language: 'de', sentences: [{ text: 'Die Anfrage wird gepr&uuml;ft.', evidenceRefs: ['case.status'] }] },
+    { language: 'de', sentences: [{ text: 'Die Anfrage wird gepr&uuml;ft.', evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
     'HTML tag text',
-    { language: 'fr', sentences: [{ text: '<b>Statut</b>', evidenceRefs: ['case.status'] }] },
+    { language: 'fr', sentences: [{ text: '<b>Statut</b>', evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
     'markdown link text',
-    { language: 'fr', sentences: [{ text: '[Statut](https://example.com)', evidenceRefs: ['case.status'] }] },
+    { language: 'fr', sentences: [{ text: '[Statut](https://example.com)', evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
@@ -307,7 +307,7 @@ for (const [name, data, reason] of [
       sentences: [
         {
           text: 'Der Status ist waiting_part.',
-          evidenceRefs: ['case.status'],
+          evidenceRefs: ['case.statusLabel'],
         },
       ],
     },
