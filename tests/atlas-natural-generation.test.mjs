@@ -42,6 +42,13 @@ const localizedDraftText = {
   es: 'No hay una fecha confirmada disponible.',
   ar: 'لا يوجد موعد مؤكد متاح.',
 };
+const localizedWaitingPartStatus = {
+  fr: 'En attente de pièce',
+  en: 'Waiting for a part',
+  de: 'Warten auf ein Ersatzteil',
+  es: 'En espera de una pieza',
+  ar: 'في انتظار قطعة غيار',
+};
 const draft = (language) => ({
   language,
   sentences: [{ text: localizedDraftText[language], evidenceRefs: ['case.confirmedEta'] }],
@@ -71,7 +78,10 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       assert.equal(data.evidence.language, language);
       assert.equal(data.evidence.references['case.confirmedEta'], null);
       assert.equal(data.evidence.references['case.status'], 'waiting_part');
-      assert.equal(data.evidence.references['case.statusLabel'], 'En attente de pièce');
+      assert.equal(
+        data.evidence.references['case.statusLabel'],
+        localizedWaitingPartStatus[language],
+      );
       assert.equal(data.guidance.short, true);
       assert.doesNotMatch(
         init.body,
