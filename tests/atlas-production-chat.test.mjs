@@ -706,7 +706,7 @@ test('Production runtime corrects one wrong-language draft and validates only th
       sentences: [
         {
           text: "Toute demande fait l’objet d’un examen et il n'y a aucun remboursement automatique.",
-          evidenceRefs: ['case.status'],
+          evidenceRefs: ['case.statusLabel'],
         },
       ],
     },
@@ -715,7 +715,7 @@ test('Production runtime corrects one wrong-language draft and validates only th
       sentences: [
         {
           text: 'Der Vorgang wird derzeit geprüft.',
-          evidenceRefs: ['case.status'],
+          evidenceRefs: ['case.statusLabel'],
         },
       ],
     },
@@ -924,7 +924,7 @@ test('P1.7 releases natural case prose only after generation, factual validation
     sentences: [
       {
         text: 'Votre dossier est actuellement en diagnostic.',
-        evidenceRefs: ['case.status'],
+        evidenceRefs: ['case.statusLabel'],
       },
     ],
   };
@@ -936,7 +936,7 @@ test('P1.7 releases natural case prose only after generation, factual validation
         kind: 'factual',
         verdict: 'supported',
         issues: [],
-        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+        citations: [{ ref: 'case.statusLabel', quote: '"Diagnostic en cours"' }],
       },
     ],
   };
@@ -967,7 +967,7 @@ test('P1.7 never releases a previously supported draft when the case changes dur
     sentences: [
       {
         text: 'Votre dossier est actuellement en diagnostic.',
-        evidenceRefs: ['case.status'],
+        evidenceRefs: ['case.statusLabel'],
       },
     ],
   };
@@ -979,7 +979,7 @@ test('P1.7 never releases a previously supported draft when the case changes dur
         kind: 'factual',
         verdict: 'supported',
         issues: [],
-        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+        citations: [{ ref: 'case.statusLabel', quote: '"Diagnostic en cours"' }],
       },
     ],
   };
