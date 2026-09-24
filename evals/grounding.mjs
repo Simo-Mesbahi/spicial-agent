@@ -105,7 +105,7 @@ const families = [
     'case',
     false,
     'warranty',
-    'case.warranty',
+    'case.warrantyLabel',
     [
       'La garantie couvre tous les frais.',
       'The warranty covers all costs.',

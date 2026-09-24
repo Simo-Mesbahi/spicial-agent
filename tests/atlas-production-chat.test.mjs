@@ -354,6 +354,15 @@ test('Organization and case bindings reject lateral access before returning fact
   assert.equal(c.remote.providerCalls, 0);
 });
 
+test('Unknown Supabase case status fails closed before provider spend and never leaks raw status', async (t) => {
+  const c = await setup(t);
+  c.remote.case.status = 'private_future_status';
+  const reply = await c.call('chat', question());
+  assert.equal(reply.status, 502);
+  assert.equal(c.remote.providerCalls, 0);
+  assert.doesNotMatch(JSON.stringify(reply.data), /private_future_status/);
+});
+
 test('Strict body, CSRF, same origin and foreign reference checks prevent provider spend', async (t) => {
   const c = await setup(t);
   assert.equal((await c.call('chat', { ...question(), caseId })).status, 400);
@@ -481,10 +490,18 @@ test('Case mapping keeps estimates unconfirmed and validates dates and currencie
   const facts = normalizeCase({ ...snapshot, estimated_at: '2026-10-01T12:00:00Z' }, org);
   assert.equal(facts.confirmedEta, null);
   assert.equal(facts.refund, null);
-  for (const lang of ['fr', 'en', 'de', 'es', 'ar'])
+  for (const lang of ['fr', 'en', 'de', 'es', 'ar']) {
     assert.ok(renderCaseFacts(facts, lang).includes(snapshot.reference));
+    const defensive = renderCaseFacts({ ...facts, status: 'private_future_status' }, lang);
+    assert.doesNotMatch(defensive, /private_future_status/);
+  }
   assert.match(renderCaseFacts(facts, 'fr'), /non confirmée/);
-  for (const changes of [{ updated_at: 'bad' }, { estimated_at: 'bad' }, { currency: 'bad' }])
+  for (const changes of [
+    { updated_at: 'bad' },
+    { estimated_at: 'bad' },
+    { currency: 'bad' },
+    { status: 'private_future_status' },
+  ])
     assert.throws(() => normalizeCase({ ...snapshot, ...changes }, org));
 });
 
@@ -689,7 +706,7 @@ test('Production runtime corrects one wrong-language draft and validates only th
       sentences: [
         {
           text: "Toute demande fait l’objet d’un examen et il n'y a aucun remboursement automatique.",
-          evidenceRefs: ['case.status'],
+          evidenceRefs: ['case.statusLabel'],
         },
       ],
     },
@@ -698,7 +715,7 @@ test('Production runtime corrects one wrong-language draft and validates only th
       sentences: [
         {
           text: 'Der Vorgang wird derzeit geprüft.',
-          evidenceRefs: ['case.status'],
+          evidenceRefs: ['case.statusLabel'],
         },
       ],
     },
@@ -907,7 +924,7 @@ test('P1.7 releases natural case prose only after generation, factual validation
     sentences: [
       {
         text: 'Votre dossier est actuellement en diagnostic.',
-        evidenceRefs: ['case.status'],
+        evidenceRefs: ['case.statusLabel'],
       },
     ],
   };
@@ -919,7 +936,7 @@ test('P1.7 releases natural case prose only after generation, factual validation
         kind: 'factual',
         verdict: 'supported',
         issues: [],
-        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+        citations: [{ ref: 'case.statusLabel', quote: '"Diagnostic en cours"' }],
       },
     ],
   };
@@ -950,7 +967,7 @@ test('P1.7 never releases a previously supported draft when the case changes dur
     sentences: [
       {
         text: 'Votre dossier est actuellement en diagnostic.',
-        evidenceRefs: ['case.status'],
+        evidenceRefs: ['case.statusLabel'],
       },
     ],
   };
@@ -962,7 +979,7 @@ test('P1.7 never releases a previously supported draft when the case changes dur
         kind: 'factual',
         verdict: 'supported',
         issues: [],
-        citations: [{ ref: 'case.status', quote: '"diagnosis"' }],
+        citations: [{ ref: 'case.statusLabel', quote: '"Diagnostic en cours"' }],
       },
     ],
   };

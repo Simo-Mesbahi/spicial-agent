@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const compiled = await build({
-  entryPoints: ['lib/atlas/conversation-intelligence.ts'],
+  stdin: {
+    contents:
+      "export * from './lib/atlas/conversation-intelligence'; export { caseStatuses } from './lib/atlas/case-schema';",
+    resolveDir: process.cwd(),
+  },
   bundle: true,
   platform: 'node',
   format: 'esm',
@@ -20,6 +24,9 @@ const {
   serviceIntentQuery,
   contextualRetrievalQuery,
   conversationRoute,
+  localizedStatusLabel,
+  statusLabels,
+  caseStatuses,
 } = await import(
   'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
 );
@@ -85,6 +92,25 @@ test('routes open conversation separately from business retrieval', () => {
   assert.equal(conversationRoute('Comment fonctionne un retour ?'), 'business');
   assert.equal(conversationRoute('Raconte-moi une blague courte'), 'open');
   assert.equal(conversationRoute('I had a difficult day today'), 'open');
+});
+
+test('production status presentation covers the SQL-constrained contract without leaking raw codes', () => {
+  const languages = ['fr', 'en', 'de', 'es', 'ar'];
+  assert.equal(caseStatuses.length, 19);
+  for (const language of languages) {
+    for (const status of caseStatuses) {
+      const label = localizedStatusLabel(language, status);
+      assert.equal(typeof label, 'string');
+      assert.ok(label.length > 0);
+      assert.notEqual(label, status);
+      assert.equal(statusLabels[language][status], label);
+    }
+  }
+
+  assert.equal(caseStatuses.includes('replacement'), false);
+  assert.notEqual(localizedStatusLabel('fr', 'replacement'), 'replacement');
+  assert.equal(localizedStatusLabel('fr', 'private_future_status'), 'Statut indisponible');
+  assert.doesNotMatch(localizedStatusLabel('fr', 'private_future_status'), /private_future_status/);
 });
 
 test('understands French service intent and contextual follow-ups', () => {

@@ -49,6 +49,20 @@ const localizedWaitingPartStatus = {
   es: 'En espera de una pieza',
   ar: 'في انتظار قطعة غيار',
 };
+const localizedRepairKind = {
+  fr: 'Réparation',
+  en: 'Repair',
+  de: 'Reparatur',
+  es: 'Reparación',
+  ar: 'إصلاح',
+};
+const localizedUnknownWarranty = {
+  fr: 'Prise en charge non confirmée',
+  en: 'Coverage not confirmed',
+  de: 'Deckung nicht bestätigt',
+  es: 'Cobertura no confirmada',
+  ar: 'التغطية غير مؤكدة',
+};
 const draft = (language) => ({
   language,
   sentences: [{ text: localizedDraftText[language], evidenceRefs: ['case.confirmedEta'] }],
@@ -76,11 +90,22 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       assert.equal(payload.response_format.json_schema.name, 'natural_response_draft');
       const data = JSON.parse(payload.messages[1].content);
       assert.equal(data.evidence.language, language);
+      assert.equal(data.evidence.unknowns, undefined);
       assert.equal(data.evidence.references['case.confirmedEta'], null);
-      assert.equal(data.evidence.references['case.status'], 'waiting_part');
+      assert.equal(data.evidence.references['case.kind'], undefined);
+      assert.equal(data.evidence.references['case.status'], undefined);
+      assert.equal(data.evidence.references['case.warranty'], undefined);
+      assert.equal(
+        data.evidence.references['case.kindLabel'],
+        localizedRepairKind[language],
+      );
       assert.equal(
         data.evidence.references['case.statusLabel'],
         localizedWaitingPartStatus[language],
+      );
+      assert.equal(
+        data.evidence.references['case.warrantyLabel'],
+        localizedUnknownWarranty[language],
       );
       assert.equal(data.guidance.short, true);
       assert.doesNotMatch(
@@ -268,7 +293,7 @@ for (const [name, data, reason] of [
     'duplicate citation',
     {
       language: 'fr',
-      sentences: [{ text: 'Statut', evidenceRefs: ['case.status', 'case.status'] }],
+      sentences: [{ text: 'Statut', evidenceRefs: ['case.statusLabel', 'case.statusLabel'] }],
     },
     'unknown_evidence_reference',
   ],
@@ -282,22 +307,22 @@ for (const [name, data, reason] of [
   ['empty response', { language: 'fr', sentences: [] }, 'invalid_upstream_response'],
   [
     'oversized text',
-    { language: 'fr', sentences: [{ text: 'x'.repeat(501), evidenceRefs: ['case.status'] }] },
+    { language: 'fr', sentences: [{ text: 'x'.repeat(501), evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
     'HTML entity text',
-    { language: 'de', sentences: [{ text: 'Die Anfrage wird gepr&uuml;ft.', evidenceRefs: ['case.status'] }] },
+    { language: 'de', sentences: [{ text: 'Die Anfrage wird gepr&uuml;ft.', evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
     'HTML tag text',
-    { language: 'fr', sentences: [{ text: '<b>Statut</b>', evidenceRefs: ['case.status'] }] },
+    { language: 'fr', sentences: [{ text: '<b>Statut</b>', evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
     'markdown link text',
-    { language: 'fr', sentences: [{ text: '[Statut](https://example.com)', evidenceRefs: ['case.status'] }] },
+    { language: 'fr', sentences: [{ text: '[Statut](https://example.com)', evidenceRefs: ['case.statusLabel'] }] },
     'invalid_upstream_response',
   ],
   [
@@ -307,12 +332,26 @@ for (const [name, data, reason] of [
       sentences: [
         {
           text: 'Der Status ist waiting_part.',
-          evidenceRefs: ['case.status'],
+          evidenceRefs: ['case.statusLabel'],
         },
       ],
     },
     'invalid_upstream_response',
   ],
+  [
+    'production internal status identifier',
+    {
+      language: 'en',
+      sentences: [
+        {
+          text: 'The case is complaint_review.',
+          evidenceRefs: ['case.statusLabel'],
+        },
+      ],
+    },
+    'invalid_upstream_response',
+  ],
+
 ])
   test(`Natural generation rejects ${name}`, async (t) => {
     const c = setup(t);
@@ -352,7 +391,7 @@ test('Natural generation rejects the exact run-12 evidence-free factual sentence
       sentences: [
         {
           text: 'Your television repair is currently waiting for a part.',
-          evidenceRefs: ['case.kind', 'case.product', 'case.statusLabel'],
+          evidenceRefs: ['case.kindLabel', 'case.product', 'case.statusLabel'],
         },
         {
           text: 'The return date is currently unknown.',
@@ -375,7 +414,7 @@ test('Natural generation permits only bounded non-factual courtesies without evi
       sentences: [
         {
           text: 'Your television repair is currently waiting for a part.',
-          evidenceRefs: ['case.kind', 'case.product', 'case.statusLabel'],
+          evidenceRefs: ['case.kindLabel', 'case.product', 'case.statusLabel'],
         },
         {
           text: 'Thank you.',

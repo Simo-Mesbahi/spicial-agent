@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { digest } from './embedding-runtime';
 import type { CaseFacts } from './case-adapter';
+import { caseKinds, caseStatuses, warrantyStatuses } from './case-schema';
 import type { KnowledgeSearchResult } from './knowledge-runtime';
 
 const id = z.string().uuid();
@@ -17,11 +18,11 @@ const caseFactsSchema = z
     organizationId: id,
     id,
     reference: z.string().min(6).max(64),
-    kind: z.string().min(2).max(40),
-    status: z.string().min(2).max(50),
+    kind: z.enum(caseKinds),
+    status: z.enum(caseStatuses),
     product: z.string().max(240).nullable(),
     warranty: z
-      .object({ status: z.string().max(40), label: z.string().max(240).nullable() })
+      .object({ status: z.enum(warrantyStatuses), label: z.string().max(240).nullable() })
       .strict(),
     quote: money.nullable(),
     refund: money.nullable(),

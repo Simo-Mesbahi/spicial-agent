@@ -1,5 +1,5 @@
 import type { CaseFacts } from './case-adapter';
-import { statusLabels, type ConversationLanguage } from './conversation-intelligence';
+import { localizedStatusLabel, type ConversationLanguage } from './conversation-intelligence';
 
 export function renderCaseFacts(facts: CaseFacts, language: ConversationLanguage) {
   const labels = {
@@ -70,7 +70,7 @@ export function renderCaseFacts(facts: CaseFacts, language: ConversationLanguage
     );
   return [
     `${labels[0]} : ${facts.reference}`,
-    `${labels[1]} : ${statusLabels[language][facts.status] ?? facts.status}`,
+    `${labels[1]} : ${localizedStatusLabel(language, facts.status)}`,
     facts.product ? `${labels[2]} : ${facts.product}` : '',
     facts.quote ? `${labels[3]} : ${money(facts.quote)}` : '',
     facts.refund ? `${labels[4]} : ${money(facts.refund)}` : '',

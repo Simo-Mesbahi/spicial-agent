@@ -175,7 +175,7 @@ test('release gate emits a supported case draft only after every gate is green',
     sentences: [
       {
         text: 'Votre dossier est actuellement en attente de pièce.',
-        evidenceRefs: ['case.status'],
+        evidenceRefs: ['case.statusLabel'],
       },
     ],
   };
@@ -214,7 +214,7 @@ test('release gate blocks shadow, stale evidence and unsafe candidate formatting
     sentences: [
       {
         text: 'Votre dossier est actuellement en attente de pièce.',
-        evidenceRefs: ['case.status'],
+        evidenceRefs: ['case.statusLabel'],
       },
     ],
   };
@@ -287,7 +287,7 @@ test('release gate blocks shadow, stale evidence and unsafe candidate formatting
         sentences: [
           {
             text: 'Consultez https://evil.example pour votre dossier.',
-            evidenceRefs: ['case.status'],
+            evidenceRefs: ['case.statusLabel'],
           },
         ],
       },
