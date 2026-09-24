@@ -1,5 +1,32 @@
 import { z } from 'zod';
 
+export const caseStatuses = [
+  'deposited',
+  'received',
+  'diagnosis',
+  'waiting_part',
+  'quote_pending',
+  'repairing',
+  'repaired',
+  'replacement',
+  'shipping',
+  'ready',
+  'delivered',
+  'preparing',
+  'transit',
+  'delayed',
+  'return_requested',
+  'return_approved',
+  'return_received',
+  'refund_pending',
+  'refunded',
+  'open',
+  'reviewing',
+  'resolved',
+  'declined',
+] as const;
+export type CaseStatus = (typeof caseStatuses)[number];
+
 export const caseSchema = z
   .object({
     id: z.string().uuid(),
@@ -7,7 +34,7 @@ export const caseSchema = z
     kind: z.string().min(2).max(40),
     title: z.string().min(2).max(180),
     description: z.string().max(6000),
-    status: z.string().min(2).max(50),
+    status: z.enum(caseStatuses),
     warranty_status: z.string().max(40),
     warranty_label: z.string().max(240).nullable(),
     quote_cents: z.number().int().nonnegative().nullable(),
