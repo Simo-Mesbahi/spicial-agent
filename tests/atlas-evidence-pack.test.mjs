@@ -107,6 +107,13 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
   });
 for (const [name, mutate, code] of [
   [
+    'unknown current status',
+    (d) => {
+      d.caseFacts.status = 'private_future_status';
+    },
+    'invalid_evidence',
+  ],
+  [
     'foreign organization',
     (d) => {
       d.caseFacts.organizationId = uuid(9);
