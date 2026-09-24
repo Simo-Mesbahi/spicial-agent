@@ -25,6 +25,21 @@ export type GenerationSettings = {
   LLM_GENERATION_DAILY_LIMIT?: string;
   LLM_GENERATION_TIMEOUT_MS?: string;
 };
+const forbiddenGeneratedMarkup =
+  /https?:\/\/|www\.|<\/?[a-z][^>]*>|\[[^\]]+\]\([^\)]+\)|&(?:#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});/iu;
+const forbiddenGeneratedControls = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
+
+export function safeGeneratedSentenceText(text: string) {
+  const normalized = text.trim();
+  return Boolean(
+    normalized &&
+      normalized.length <= 500 &&
+      redacted(normalized) === normalized &&
+      !forbiddenGeneratedControls.test(normalized) &&
+      !forbiddenGeneratedMarkup.test(normalized)
+  );
+}
+
 export const naturalDraftSchema = z
   .object({
     language: z.enum(languages),
@@ -32,7 +47,7 @@ export const naturalDraftSchema = z
       .array(
         z
           .object({
-            text: z.string().trim().min(1).max(500),
+            text: z.string().trim().min(1).max(500).refine(safeGeneratedSentenceText),
             evidenceRefs: z.array(z.string().min(1).max(80)).max(6),
           })
           .strict(),
