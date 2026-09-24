@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { groundingDecisionPasses } from '../evals/grounding.mjs';
 
 const workflowPath = '.github/workflows/p1-live-qualification.yml';
 
@@ -90,7 +91,8 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
-  assert.match(contract, /maximumTotalCompletionCalls: 210/);
+  assert.match(contract, /maximumGenerationValidationCalls: 10/);
+  assert.match(contract, /maximumTotalCompletionCalls: 220/);
 });
 
 test('P1.7 structured evaluator forwards the governed provider timeout into runtime env', async () => {
@@ -116,16 +118,58 @@ test('P1.7 grounding qualification fails fast on systemic request rejection', as
 
 test('P1.7 release runner uses one of the 70 grounding calls as an early factual smoke', async () => {
   const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+  const plan = await readFile('evals/p1-grounding-plan.mjs', 'utf8');
 
-  assert.match(release, /\{ offset: 0, maxCases: 1 \}/);
-  assert.match(release, /\{ offset: 1, maxCases: 19 \}/);
-  assert.match(release, /\{ offset: 20, maxCases: 20 \}/);
-  assert.match(release, /\{ offset: 40, maxCases: 20 \}/);
-  assert.match(release, /\{ offset: 60, maxCases: 10 \}/);
+  assert.match(plan, /\{ offset: 0, maxCases: 1 \}/);
+  assert.match(plan, /\{ offset: 1, maxCases: 19 \}/);
+  assert.match(plan, /\{ offset: 20, maxCases: 20 \}/);
+  assert.match(plan, /\{ offset: 40, maxCases: 20 \}/);
+  assert.match(plan, /\{ offset: 60, maxCases: 10 \}/);
+  assert.match(release, /p1GroundingPlan\.map/);
   assert.match(release, /let continueQualification = smokeRun\.status === 0/);
   assert.match(release, /continueQualification = structuredRun\.status === 0/);
   assert.match(release, /continueQualification = generationRun\.status === 0/);
   assert.doesNotMatch(release, /groundingCalls:\s*contract\.grounding\.requiredScenarios\s*\+\s*1/);
+});
+
+test('P1.7 generation qualification factually validates every generated candidate', async () => {
+  const generation = await readFile('scripts/evaluate-generation.mjs', 'utf8');
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(generation, /validateNaturalDraft/);
+  assert.match(generation, /LLM_VALIDATION_MODE: 'shadow'/);
+  assert.match(generation, /factualValidation/);
+  assert.match(generation, /groundedness/);
+  assert.match(release, /row\.factualValidation\?\.outcome === 'supported_candidate'/);
+  assert.match(release, /row\.groundedness === true/);
+});
+
+test('P1.7 grounding requires the expected semantic rejection, not any block', () => {
+  const supported = {
+    expectedSupported: true,
+    expectedIssue: null,
+    diagnostics: { outcome: 'supported_candidate', reason: null, issues: [] },
+  };
+  const correctNegative = {
+    expectedSupported: false,
+    expectedIssue: 'date',
+    diagnostics: { outcome: 'blocked', reason: 'unsupported_claim', issues: ['date'] },
+  };
+  const wrongReason = {
+    expectedSupported: false,
+    expectedIssue: 'date',
+    diagnostics: { outcome: 'blocked', reason: 'output_language_mismatch', issues: ['language'] },
+  };
+  const wrongIssue = {
+    expectedSupported: false,
+    expectedIssue: 'date',
+    diagnostics: { outcome: 'blocked', reason: 'unsupported_claim', issues: ['status'] },
+  };
+
+  assert.equal(groundingDecisionPasses(supported), true);
+  assert.equal(groundingDecisionPasses(correctNegative), true);
+  assert.equal(groundingDecisionPasses(wrongReason), false);
+  assert.equal(groundingDecisionPasses(wrongIssue), false);
 });
 
 test('P1.7 live workflow remains fail-closed until human review', async () => {
