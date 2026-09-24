@@ -77,7 +77,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       const data = JSON.parse(payload.messages[1].content);
       assert.equal(data.evidence.language, language);
       assert.equal(data.evidence.references['case.confirmedEta'], null);
-      assert.equal(data.evidence.references['case.statusLabel'], undefined);
+      assert.equal(data.evidence.references['case.status'], undefined);
       assert.equal(
         data.evidence.references['case.statusLabel'],
         localizedWaitingPartStatus[language],
