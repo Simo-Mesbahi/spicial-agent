@@ -21,7 +21,7 @@ import {
 import { languages, topics, understandingSchema } from './conversation-contract';
 import {
   detectConversationLanguageHint,
-  statusLabels,
+  localizedStatusLabel,
 } from './conversation-intelligence';
 
 export type GenerationSettings = {
@@ -222,7 +222,7 @@ export function generationEvidence(pack: EvidencePack) {
     ] as const)
       references[`case.${name}`] = facts[name];
     references['case.statusLabel'] =
-      statusLabels[pack.responseLanguage][facts.status] ?? facts.status;
+      localizedStatusLabel(pack.responseLanguage, facts.status);
   }
   pack.knowledge.sources.forEach((source, i) => {
     references[`knowledge.${i}`] = {
