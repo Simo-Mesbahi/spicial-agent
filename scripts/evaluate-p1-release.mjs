@@ -4,7 +4,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 
-import { groundingDecisionPasses } from '../evals/grounding.mjs';
+import { generationScenarios } from '../evals/generation.mjs';
+import { groundingDecisionPasses, groundingScenarios } from '../evals/grounding.mjs';
 import {
   groundingReportPath,
   p1GroundingMaximumRetryCalls,
@@ -544,9 +545,53 @@ const retrievalRows = retrieval?.results ?? [];
 const retrievalGate = retrievalReportPasses(retrieval);
 
 const generationRows = generation?.results ?? [];
+const expectedGenerationScenarios = generationScenarios.slice(
+  0,
+  contract.generation.requiredScenarios,
+);
+const expectedGenerationById = new Map(
+  expectedGenerationScenarios.map((scenario) => [scenario.id, scenario]),
+);
+const generationIds = generationRows.map((row) => row.id);
+const generationCoverageGate =
+  expectedGenerationScenarios.length === contract.generation.requiredScenarios &&
+  generationRows.length === contract.generation.requiredScenarios &&
+  new Set(generationIds).size === generationIds.length &&
+  generationIds.every((id) => expectedGenerationById.has(id)) &&
+  expectedGenerationScenarios.every((scenario) =>
+    generationIds.includes(scenario.id),
+  ) &&
+  generationRows.every(
+    (row) => expectedGenerationById.get(row.id)?.language === row.language,
+  );
+const generationRetryRows = generationRows.reduce(
+  (total, row) => total + (row.generationRetries ?? 0),
+  0,
+);
+const validationRetryRows = generationRows.reduce(
+  (total, row) => total + (row.validationRetries ?? 0),
+  0,
+);
+const languageCorrectionRows = generationRows.reduce(
+  (total, row) => total + (row.languageCorrections ?? 0),
+  0,
+);
+const generationProviderAttemptRows = generationRows.reduce(
+  (total, row) =>
+    total +
+    (Array.isArray(row.providerAttempts) ? row.providerAttempts.length : 0) +
+    (Array.isArray(row.factualValidationAttempts)
+      ? row.factualValidationAttempts.length
+      : 0),
+  0,
+);
 const generationGate = Boolean(
   generation &&
-    generationRows.length === contract.generation.requiredScenarios &&
+    generationCoverageGate &&
+    generation.operational?.generationRetriesUsed === generationRetryRows &&
+    generation.operational?.validationRetriesUsed === validationRetryRows &&
+    generation.operational?.languageCorrectionsUsed === languageCorrectionRows &&
+    generation.operational?.providerCalls === generationProviderAttemptRows &&
     generation.operational?.generationRetriesUsed <=
       contract.generation.maximumGenerationRetryCalls &&
     generation.operational?.validationRetriesUsed <=
@@ -583,6 +628,13 @@ const generationGate = Boolean(
 
 const groundingRows = groundingReports.flatMap((report) => report.results ?? []);
 const groundingIds = new Set(groundingRows.map((row) => row.id));
+const expectedGroundingIds = new Set(groundingScenarios.map((scenario) => scenario.id));
+const groundingCoverageGate =
+  groundingScenarios.length === contract.grounding.requiredScenarios &&
+  groundingRows.length === contract.grounding.requiredScenarios &&
+  groundingIds.size === contract.grounding.requiredScenarios &&
+  expectedGroundingIds.size === contract.grounding.requiredScenarios &&
+  groundingScenarios.every((scenario) => groundingIds.has(scenario.id));
 const groundingNegatives = groundingRows.filter((row) => !row.expectedSupported);
 const groundingPositives = groundingRows.filter((row) => row.expectedSupported);
 const falseSupports = groundingNegatives.filter(
@@ -627,7 +679,7 @@ const groundingProviderCalls = groundingReports.reduce(
   0,
 );
 const groundingGate = Boolean(
-  groundingRows.length === contract.grounding.requiredScenarios &&
+  groundingCoverageGate &&
     groundingRetryCalls <= contract.grounding.maximumRetryCalls &&
     groundingProviderCalls <=
       contract.grounding.requiredScenarios + contract.grounding.maximumRetryCalls &&
