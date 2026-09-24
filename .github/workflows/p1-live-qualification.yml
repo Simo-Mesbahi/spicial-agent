@@ -212,12 +212,28 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p outputs/p1-live
-          node scripts/index-knowledge.mjs --live --max-chunks 32 | tee outputs/p1-live/knowledge-index.json
+          node scripts/index-knowledge.mjs \
+            --live \
+            --max-chunks 32 \
+            --max-retries 1 \
+            --retry-backoff-ms 15000 \
+            | tee outputs/p1-live/knowledge-index.json
           node - <<'NODE'
           const fs = require('node:fs');
           const result = JSON.parse(fs.readFileSync('outputs/p1-live/knowledge-index.json', 'utf8'));
           if (result.status !== 'indexed') throw new Error('Knowledge indexing did not complete.');
-          if (result.trace?.calls > 1) throw new Error('Knowledge indexing exceeded one provider batch.');
+          if ((result.trace?.calls ?? 0) > 1) {
+            throw new Error('Knowledge indexing final attempt exceeded one provider batch.');
+          }
+          if (result.operational?.maximumRetries !== 1) {
+            throw new Error('Knowledge indexing retry contract is missing or invalid.');
+          }
+          if ((result.operational?.indexingRetries ?? 0) > 1) {
+            throw new Error('Knowledge indexing exceeded its retry budget.');
+          }
+          if ((result.operational?.embeddingCalls ?? 0) > 2) {
+            throw new Error('Knowledge indexing exceeded two total embedding attempts.');
+          }
           if (result.remainingAfterBatch !== false) {
             throw new Error(
               'Published knowledge corpus is not fully indexed in the selected embedding space. ' +
@@ -230,7 +246,8 @@ jobs:
           console.log(JSON.stringify({
             status: 'hybrid_corpus_ready',
             indexed: result.indexed,
-            embeddingCalls: result.trace?.calls ?? 0,
+            embeddingCalls: result.operational?.embeddingCalls ?? 0,
+            indexingRetries: result.operational?.indexingRetries ?? 0,
             embeddingSpace: result.embeddingSpace,
           }, null, 2));
           NODE
