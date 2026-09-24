@@ -1,5 +1,9 @@
 import type { CaseRow } from './api';
-import type { CaseStatus } from './case-schema';
+import type {
+  CaseStatus,
+  ProductionCaseKind,
+  WarrantyStatus,
+} from './case-schema';
 
 export type ConversationLanguage = 'fr' | 'en' | 'de' | 'es' | 'ar';
 export type CasualIntent = 'greeting' | 'wellbeing' | 'thanks' | 'farewell' | 'help' | null;
@@ -144,6 +148,8 @@ const replies: Record<
   Record<Exclude<CasualIntent, null>, { general: string; withCase: (reference: string) => string }>
 > = {
   fr: {
+    opened: 'Dossier ouvert', exchanged: 'Produit échangé',
+    complaint_review: 'Réclamation en cours d’examen', cancelled: 'Dossier annulé',
     greeting: {
       general:
         'Bonjour ! Je suis là pour vous aider, vous renseigner et vous accompagner pour le SAV, vos commandes, retours, livraisons ou toute autre question de service client. Que puis-je faire pour vous ?',
@@ -172,6 +178,8 @@ const replies: Record<
     },
   },
   en: {
+    opened: 'Case opened', exchanged: 'Product exchanged',
+    complaint_review: 'Complaint under review', cancelled: 'Case cancelled',
     greeting: {
       general:
         'Hello! I’m here to help, answer your questions, and guide you with repairs, orders, returns, deliveries, or other customer-service needs. How can I help?',
@@ -200,6 +208,8 @@ const replies: Record<
     },
   },
   de: {
+    opened: 'Vorgang eröffnet', exchanged: 'Produkt ausgetauscht',
+    complaint_review: 'Reklamation wird geprüft', cancelled: 'Vorgang storniert',
     greeting: {
       general:
         'Hallo! Ich bin hier, um Ihnen zu helfen und Sie bei Reparaturen, Bestellungen, Rückgaben, Lieferungen oder anderen Servicefragen zu begleiten. Wie kann ich Ihnen helfen?',
@@ -228,6 +238,8 @@ const replies: Record<
     },
   },
   es: {
+    opened: 'Expediente abierto', exchanged: 'Producto cambiado',
+    complaint_review: 'Reclamación en revisión', cancelled: 'Expediente cancelado',
     greeting: {
       general:
         '¡Hola! Estoy aquí para ayudarle, responder a sus preguntas y acompañarle con reparaciones, pedidos, devoluciones, entregas u otras consultas de atención al cliente. ¿En qué puedo ayudarle?',
@@ -256,6 +268,8 @@ const replies: Record<
     },
   },
   ar: {
+    opened: 'تم فتح الملف', exchanged: 'تم استبدال المنتج',
+    complaint_review: 'الشكوى قيد المراجعة', cancelled: 'تم إلغاء الملف',
     greeting: {
       general:
         'مرحبًا! أنا هنا لمساعدتك والإجابة عن أسئلتك ومرافقتك في ما يخص الإصلاحات والطلبات والإرجاع والتوصيل وخدمة العملاء. كيف يمكنني مساعدتك؟',
@@ -574,7 +588,9 @@ export function conversationRoute(
 }
 
 
-export const statusLabels: Record<ConversationLanguage, Record<CaseStatus, string>> = {
+type StatusPresentationMap = Record<CaseStatus, string> & Record<string, string>;
+
+export const statusLabels: Record<ConversationLanguage, StatusPresentationMap> = {
   fr: {
     deposited: 'Déposé en magasin', received: 'Reçu au SAV', diagnosis: 'Diagnostic en cours',
     waiting_part: 'En attente de pièce', quote_pending: 'Devis à valider', repairing: 'En réparation',
@@ -630,6 +646,107 @@ export const statusLabels: Record<ConversationLanguage, Record<CaseStatus, strin
 function formatMoney(cents: number, language: ConversationLanguage) {
   const locale = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE', es: 'es-ES', ar: 'ar' }[language];
   return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100);
+}
+
+const kindLabels: Record<
+  ConversationLanguage,
+  Record<ProductionCaseKind, string>
+> = {
+  fr: {
+    repair: 'Réparation',
+    exchange: 'Échange',
+    refund: 'Remboursement',
+    complaint: 'Réclamation',
+    delivery: 'Livraison',
+    account: 'Compte client',
+    other: 'Service client',
+  },
+  en: {
+    repair: 'Repair',
+    exchange: 'Exchange',
+    refund: 'Refund',
+    complaint: 'Complaint',
+    delivery: 'Delivery',
+    account: 'Customer account',
+    other: 'Customer service',
+  },
+  de: {
+    repair: 'Reparatur',
+    exchange: 'Umtausch',
+    refund: 'Erstattung',
+    complaint: 'Reklamation',
+    delivery: 'Lieferung',
+    account: 'Kundenkonto',
+    other: 'Kundenservice',
+  },
+  es: {
+    repair: 'Reparación',
+    exchange: 'Cambio',
+    refund: 'Reembolso',
+    complaint: 'Reclamación',
+    delivery: 'Entrega',
+    account: 'Cuenta de cliente',
+    other: 'Atención al cliente',
+  },
+  ar: {
+    repair: 'إصلاح',
+    exchange: 'استبدال',
+    refund: 'استرداد',
+    complaint: 'شكوى',
+    delivery: 'توصيل',
+    account: 'حساب العميل',
+    other: 'خدمة العملاء',
+  },
+};
+
+const warrantyStatusLabels: Record<
+  ConversationLanguage,
+  Record<WarrantyStatus, string>
+> = {
+  fr: {
+    covered: 'Pris en charge',
+    not_covered: 'Non pris en charge',
+    partial: 'Prise en charge partielle',
+    unknown: 'Prise en charge non confirmée',
+  },
+  en: {
+    covered: 'Covered',
+    not_covered: 'Not covered',
+    partial: 'Partially covered',
+    unknown: 'Coverage not confirmed',
+  },
+  de: {
+    covered: 'Abgedeckt',
+    not_covered: 'Nicht abgedeckt',
+    partial: 'Teilweise abgedeckt',
+    unknown: 'Deckung nicht bestätigt',
+  },
+  es: {
+    covered: 'Cubierto',
+    not_covered: 'No cubierto',
+    partial: 'Cobertura parcial',
+    unknown: 'Cobertura no confirmada',
+  },
+  ar: {
+    covered: 'مشمول بالتغطية',
+    not_covered: 'غير مشمول بالتغطية',
+    partial: 'تغطية جزئية',
+    unknown: 'التغطية غير مؤكدة',
+  },
+};
+
+export function localizedCaseKindLabel(
+  language: ConversationLanguage,
+  kind: ProductionCaseKind,
+) {
+  return kindLabels[language][kind];
+}
+
+export function localizedWarrantyStatusLabel(
+  language: ConversationLanguage,
+  status: WarrantyStatus,
+) {
+  return warrantyStatusLabels[language][status];
 }
 
 const unavailableStatusLabels: Record<ConversationLanguage, string> = {
