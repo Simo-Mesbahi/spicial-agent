@@ -1,4 +1,5 @@
 import {
+  assertValidationEvidence,
   validateNaturalDraft,
   revalidateFactualResult,
   type ValidationDiagnostics,
@@ -255,33 +256,20 @@ export async function productionChat(
       let currentPack = generatedFrom;
 
       if (evaluate) {
-        const result = await generateNaturalDraft(
-          env,
-          {
-            pack: generatedFrom,
-            context: evidenceContext,
-            message,
-            guidance: {
-              topic: conversation.state.currentTopic,
-              subIntent: conversation.understanding.subIntent,
-              short: conversation.state.stylePreferences.short,
-              emoji: conversation.state.stylePreferences.emoji,
-            },
-          },
-          trace,
-        );
-        draft = result.draft;
-        generation = result.diagnostics;
+        const guidance = {
+          topic: conversation.state.currentTopic,
+          subIntent: conversation.understanding.subIntent,
+          short: conversation.state.stylePreferences.short,
+          emoji: conversation.state.stylePreferences.emoji,
+        };
+        let languageCorrectionUsed = false;
 
-        // Any provider attempt can consume enough time for a case or published
-        // procedure to change. Refresh before using either a candidate OR the
-        // deterministic fallback. This closes the stale-document window on
-        // provider failures, malformed responses and validation abstentions.
-        if (generation.calls > 0) {
+        const refreshAfterModelCall = async () => {
           try {
             const refreshed = await refreshReleaseEvidence(generatedFrom);
             currentPack = refreshed.pack;
             usedCase = refreshed.authorizedFacts;
+            return true;
           } catch (error) {
             if (error instanceof KnowledgeFreshnessError) {
               freshnessFailure = error.reason;
@@ -295,17 +283,63 @@ export async function productionChat(
                 knowledge: { articles: [], scope: 'supabase_unavailable' },
                 offerContact: false,
               });
-            } else throw error;
+              return false;
+            }
+            throw error;
           }
+        };
+
+        const evidenceStillMatches = async () => {
+          try {
+            await assertValidationEvidence(
+              generatedFrom,
+              currentPack,
+              evidenceContext,
+            );
+            return true;
+          } catch {
+            return false;
+          }
+        };
+
+        const generate = async (correction?: 'language_mismatch') => {
+          const result = await generateNaturalDraft(
+            env,
+            {
+              pack: generatedFrom,
+              context: evidenceContext,
+              message,
+              guidance,
+              ...(correction ? { correction } : {}),
+            },
+            trace,
+          );
+          draft = result.draft;
+          generation = result.diagnostics;
+          if (generation.calls > 0) await refreshAfterModelCall();
+        };
+
+        await generate();
+
+        // A wrong-language draft is safe to regenerate once because the factual
+        // content contract is unchanged. Never regenerate unsupported/uncertain
+        // factual content to hunt for a favorable verdict.
+        if (
+          generation?.reason === 'output_language_mismatch' &&
+          !freshnessFailure &&
+          !languageCorrectionUsed &&
+          (await evidenceStillMatches())
+        ) {
+          languageCorrectionUsed = true;
+          await generate('language_mismatch');
         }
 
-        if (
-          draft &&
-          generation.outcome === 'candidate_generated' &&
-          !freshnessFailure &&
-          (env.LLM_VALIDATION_MODE === 'shadow' ||
-            env.LLM_VALIDATION_MODE === 'release')
-        ) {
+        const validationEnabled =
+          env.LLM_VALIDATION_MODE === 'shadow' ||
+          env.LLM_VALIDATION_MODE === 'release';
+
+        const validate = async () => {
+          if (!draft || generation?.outcome !== 'candidate_generated') return;
           validation = await validateNaturalDraft(
             env,
             {
@@ -316,8 +350,24 @@ export async function productionChat(
             },
             trace,
           );
+        };
 
-          if (validation.calls > 0) {
+        if (!freshnessFailure && validationEnabled) {
+          await validate();
+
+          if (
+            validation?.reason === 'output_language_mismatch' &&
+            !freshnessFailure &&
+            !languageCorrectionUsed &&
+            (await evidenceStillMatches())
+          ) {
+            languageCorrectionUsed = true;
+            await generate('language_mismatch');
+            validation = null;
+            if (!freshnessFailure && validationEnabled) await validate();
+          }
+
+          if (validation?.calls) {
             try {
               // No provider verdict can cross the gate without a second
               // post-validation authorization + publication refresh.
