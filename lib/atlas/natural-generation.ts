@@ -237,7 +237,7 @@ export function generationEvidence(pack: EvidencePack) {
   });
   references['actions.available'] = pack.availableActions;
   references['actions.completed'] = pack.completedActions;
-  return { references, unknowns: pack.unknowns, language: pack.responseLanguage };
+  return { references, language: pack.responseLanguage };
 }
 async function reserveGeneration(env: AtlasEnv, organizationId: string) {
   const limit = Number(env.LLM_GENERATION_DAILY_LIMIT ?? '0');
