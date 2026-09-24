@@ -3,7 +3,11 @@ import { build } from 'esbuild';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
-import { generationScenarios, generationFixture } from '../evals/generation.mjs';
+import {
+  generationScenarios,
+  generationFixture,
+  refreshSyntheticEvidenceFixture,
+} from '../evals/generation.mjs';
 import {
   liveCompletionPacer,
   liveTransientRetryBackoff,
@@ -97,15 +101,17 @@ if (!options.live) {
     async function generateCandidate(fixture, correction, counters) {
       let draft = null;
       let diagnostics = null;
+      let activeFixture = fixture;
       const attempts = [];
       while (true) {
+        activeFixture = refreshSyntheticEvidenceFixture(activeFixture);
         await pacing.beforeCall();
         const trace = providerTrace();
         const generated = await generateNaturalDraft(
           {
             ...process.env,
             DB,
-            SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
+            SUPABASE_ORGANIZATION_ID: activeFixture.context.organizationId,
             LLM_GENERATION_MODE: 'shadow',
             LLM_GENERATION_DAILY_LIMIT: String(
               options.maxCases +
@@ -114,7 +120,7 @@ if (!options.live) {
             ),
           },
           {
-            ...fixture,
+            ...activeFixture,
             ...(correction ? { correction } : {}),
           },
           trace,
@@ -134,20 +140,22 @@ if (!options.live) {
         counters.generationRetries++;
         await retryBackoff.wait();
       }
-      return { draft, diagnostics, attempts };
+      return { draft, diagnostics, attempts, fixture: activeFixture };
     }
 
     async function validateCandidate(fixture, draft, counters) {
       let factualValidation = null;
+      let activeFixture = fixture;
       const attempts = [];
       while (true) {
+        activeFixture = refreshSyntheticEvidenceFixture(activeFixture);
         await pacing.beforeCall();
         const validationTrace = providerTrace();
         factualValidation = await validateNaturalDraft(
           {
             ...process.env,
             DB,
-            SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
+            SUPABASE_ORGANIZATION_ID: activeFixture.context.organizationId,
             LLM_VALIDATION_MODE: 'shadow',
             LLM_VALIDATION_DAILY_LIMIT: String(
               options.maxCases +
@@ -157,9 +165,9 @@ if (!options.live) {
           },
           {
             draft,
-            pack: fixture.pack,
-            currentPack: structuredClone(fixture.pack),
-            context: fixture.context,
+            pack: activeFixture.pack,
+            currentPack: structuredClone(activeFixture.pack),
+            context: activeFixture.context,
           },
           validationTrace,
         );
@@ -175,11 +183,11 @@ if (!options.live) {
         counters.validationRetries++;
         await retryBackoff.wait();
       }
-      return { factualValidation, attempts };
+      return { factualValidation, attempts, fixture: activeFixture };
     }
 
     for (const scenario of selected) {
-      const fixture = generationFixture(scenario);
+      let fixture = generationFixture(scenario);
       const counters = {
         generationRetries: 0,
         validationRetries: 0,
@@ -196,6 +204,7 @@ if (!options.live) {
         const generated = await generateCandidate(fixture, correction, counters);
         draft = generated.draft;
         diagnostics = generated.diagnostics;
+        fixture = generated.fixture;
         providerAttempts.push(...generated.attempts);
 
         if (!draft) {
@@ -214,6 +223,7 @@ if (!options.live) {
 
         const validated = await validateCandidate(fixture, draft, counters);
         factualValidation = validated.factualValidation;
+        fixture = validated.fixture;
         factualValidationAttempts.push(...validated.attempts);
 
         if (
