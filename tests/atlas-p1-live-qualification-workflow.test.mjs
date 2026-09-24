@@ -48,10 +48,16 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
 
   assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
   assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '60000'/);
-  assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '12000'/);
-  assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
+  assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '20000'/);
+  assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '20000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '2500'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
+  assert.match(source, /P1_RETRIEVAL_MAX_RETRIES: '3'/);
+  assert.match(source, /P1_RETRIEVAL_MAX_RATE_LIMIT_RETRIES: '1'/);
+  assert.match(source, /P1_GENERATION_MAX_RETRIES: '3'/);
+  assert.match(source, /P1_GENERATION_VALIDATION_MAX_RETRIES: '3'/);
+  assert.match(source, /P1_GROUNDING_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /default: gemini-3\.5-flash-lite/);
   assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
@@ -76,7 +82,11 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   const contract = await readFile('evals/p1-release-contract.mjs', 'utf8');
 
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '2500'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
+  assert.match(source, /P1_RETRIEVAL_MAX_RETRIES: '3'/);
+  assert.match(source, /P1_GENERATION_MAX_RETRIES: '3'/);
+  assert.match(source, /P1_GENERATION_VALIDATION_MAX_RETRIES: '3'/);
   assert.match(pacing, /start-to-start pacing/);
   assert.match(pacing, /never retries provider calls/);
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
@@ -92,7 +102,30 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
-  assert.match(contract, /maximumTotalCompletionCalls: 220/);
+  assert.match(contract, /maximumGenerationRetryCalls: 3/);
+  assert.match(contract, /maximumGenerationValidationRetryCalls: 3/);
+  assert.match(contract, /maximumGroundingRetryCalls: 9/);
+  assert.match(contract, /maximumEmbeddingCalls: 24/);
+  assert.match(contract, /maximumTotalCompletionCalls: 235/);
+});
+
+test('P1.7 non-structured live retries are explicit, bounded and transport-only', async () => {
+  const retry = await readFile('scripts/lib/live-eval-retry.mjs', 'utf8');
+  const retrieval = await readFile('scripts/evaluate-retrieval.mjs', 'utf8');
+  const generation = await readFile('scripts/evaluate-generation.mjs', 'utf8');
+  const grounding = await readFile('scripts/evaluate-grounding.mjs', 'utf8');
+
+  assert.match(retry, /network_or_timeout/);
+  assert.match(retry, /upstream_unavailable/);
+  assert.doesNotMatch(retry, /upstream_rate_limited['"]/);
+  assert.match(retrieval, /P1_RETRIEVAL_MAX_RATE_LIMIT_RETRIES/);
+  assert.match(retrieval, /provider_rate_limited/);
+  assert.match(generation, /P1_GENERATION_MAX_RETRIES/);
+  assert.match(generation, /P1_GENERATION_VALIDATION_MAX_RETRIES/);
+  assert.match(generation, /provider_rate_limited/);
+  assert.match(grounding, /--max-retries/);
+  assert.match(grounding, /provider_rate_limited/);
+  assert.match(grounding, /transient_retry_budget_exhausted/);
 });
 
 test('P1.7 structured evaluator forwards the governed provider timeout into runtime env', async () => {
@@ -120,15 +153,17 @@ test('P1.7 release runner uses one of the 70 grounding calls as an early factual
   const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
   const plan = await readFile('evals/p1-grounding-plan.mjs', 'utf8');
 
-  assert.match(plan, /\{ offset: 0, maxCases: 1 \}/);
-  assert.match(plan, /\{ offset: 1, maxCases: 19 \}/);
-  assert.match(plan, /\{ offset: 20, maxCases: 20 \}/);
-  assert.match(plan, /\{ offset: 40, maxCases: 20 \}/);
-  assert.match(plan, /\{ offset: 60, maxCases: 10 \}/);
+  assert.match(plan, /\{ offset: 0, maxCases: 1, maxRetries: 1 \}/);
+  assert.match(plan, /\{ offset: 1, maxCases: 19, maxRetries: 2 \}/);
+  assert.match(plan, /\{ offset: 20, maxCases: 20, maxRetries: 2 \}/);
+  assert.match(plan, /\{ offset: 40, maxCases: 20, maxRetries: 2 \}/);
+  assert.match(plan, /\{ offset: 60, maxCases: 10, maxRetries: 2 \}/);
   assert.match(release, /p1GroundingPlan\.map/);
   assert.match(release, /let continueQualification = smokeRun\.status === 0/);
   assert.match(release, /continueQualification = structuredRun\.status === 0/);
   assert.match(release, /continueQualification = generationRun\.status === 0/);
+  assert.match(release, /'--max-retries'/);
+  assert.match(release, /String\(entry\.maxRetries\)/);
   assert.doesNotMatch(release, /groundingCalls:\s*contract\.grounding\.requiredScenarios\s*\+\s*1/);
 });
 
