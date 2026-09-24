@@ -88,7 +88,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(source, /P1_GENERATION_MAX_RETRIES: '3'/);
   assert.match(source, /P1_GENERATION_VALIDATION_MAX_RETRIES: '3'/);
   assert.match(pacing, /start-to-start pacing/);
-  assert.match(pacing, /never retries provider calls/);
+  assert.match(pacing, /never issue or retry/);
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
   assert.match(structured, /retryBackoffMs/);
