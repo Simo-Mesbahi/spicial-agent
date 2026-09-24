@@ -288,6 +288,19 @@ for (const [name, data, reason] of [
     { language: 'fr', sentences: [{ text: '[Statut](https://example.com)', evidenceRefs: ['case.status'] }] },
     'invalid_upstream_response',
   ],
+  [
+    'internal snake-case status identifier',
+    {
+      language: 'de',
+      sentences: [
+        {
+          text: 'Der Status ist waiting_part.',
+          evidenceRefs: ['case.status'],
+        },
+      ],
+    },
+    'invalid_upstream_response',
+  ],
 ])
   test(`Natural generation rejects ${name}`, async (t) => {
     const c = setup(t);

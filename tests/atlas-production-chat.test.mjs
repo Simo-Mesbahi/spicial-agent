@@ -110,6 +110,7 @@ async function setup(t, overrides = {}) {
         },
       ],
     },
+    generationOutputs: null,
     generationStatus: 200,
     afterValidation: () => {},
     validationStatus: 200,
@@ -202,11 +203,15 @@ async function setup(t, overrides = {}) {
             { error: { message: 'PRIVATE DRAFT ERROR' } },
             { status: remote.generationStatus },
           );
+        const generationOutput =
+          Array.isArray(remote.generationOutputs) && remote.generationOutputs.length
+            ? remote.generationOutputs.shift()
+            : remote.generationOutput;
         return Response.json({
           choices: [
             {
               finish_reason: 'stop',
-              message: { role: 'assistant', content: JSON.stringify(remote.generationOutput) },
+              message: { role: 'assistant', content: JSON.stringify(generationOutput) },
             },
           ],
           usage: { prompt_tokens: 80, completion_tokens: 25 },
@@ -658,6 +663,70 @@ test('Shadow generation never releases a schema-valid hallucination and refreshe
   assert.equal(next.status, 200);
   assert.equal(next.data.metadata.providerCalls, 1);
   assert.equal(c.remote.logs.at(-1)[1].generation.reason, 'budget_exhausted');
+});
+
+test('Production runtime corrects one wrong-language draft and validates only the corrected candidate', async (t) => {
+  const c = await setup(t, {
+    P1_RELEASE_MODE: 'shadow',
+    LLM_GENERATION_MODE: 'shadow',
+    LLM_GENERATION_DAILY_LIMIT: '2',
+    LLM_VALIDATION_MODE: 'shadow',
+    LLM_VALIDATION_DAILY_LIMIT: '1',
+  });
+  c.remote.output = output({
+    language: 'de',
+    preferredResponseLanguage: 'de',
+    intent: 'case_lookup',
+    subIntent: 'status',
+    requiresCase: true,
+    reference: 'active',
+    response: '',
+    guidance: 'business_direct',
+  });
+  c.remote.generationOutputs = [
+    {
+      language: 'de',
+      sentences: [
+        {
+          text: "Toute demande fait l’objet d’un examen et il n'y a aucun remboursement automatique.",
+          evidenceRefs: ['case.status'],
+        },
+      ],
+    },
+    {
+      language: 'de',
+      sentences: [
+        {
+          text: 'Der Vorgang wird derzeit geprüft.',
+          evidenceRefs: ['case.status'],
+        },
+      ],
+    },
+  ];
+  c.remote.validationOutput = {
+    language: 'de',
+    sentences: [{ verdict: 'supported', issues: [] }],
+  };
+
+  const reply = await c.call('chat', question('Wie ist der Stand meines Falls?'));
+  assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  assert.equal(c.remote.generationOutputs.length, 0);
+  assert.equal(reply.data.metadata.providerCalls, 4);
+  assert.equal(reply.data.metadata.validation.outcome, 'supported_candidate');
+  assert.doesNotMatch(JSON.stringify(reply.data), /Toute demande|remboursement automatique/);
+
+  const naturalPrompts = c.remote.prompts.filter(
+    (body) => body.response_format?.json_schema?.name === 'natural_response_draft',
+  );
+  assert.equal(naturalPrompts.length, 2);
+  assert.deepEqual(
+    naturalPrompts[0].response_format.json_schema.schema.properties.language.enum,
+    ['de'],
+  );
+  assert.match(
+    naturalPrompts[1].messages[0].content,
+    /previous candidate failed language validation/i,
+  );
 });
 
 test('Revocation during draft generation prevents reply persistence and cleans up the request', async (t) => {
