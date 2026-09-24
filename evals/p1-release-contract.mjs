@@ -33,7 +33,9 @@ export const p1ReleaseQualificationContract = Object.freeze({
   },
   generation: {
     requiredScenarios: 10,
+    requiredValidationCalls: 10,
     requireCandidateForEveryScenario: true,
+    requireFactualValidation: true,
     requireHumanReview: true,
     humanReviewDimensions: ['naturalness', 'language', 'conciseness', 'business_tone'],
   },
@@ -42,13 +44,16 @@ export const p1ReleaseQualificationContract = Object.freeze({
     maximumFalseSupportRate: 0,
     maximumAbstentionRate: 0,
     minimumSupportedRecall: 1,
+    minimumDecisionAccuracy: 1,
+    minimumIssueAccuracy: 1,
   },
   liveBudget: {
     maximumStructuredCompletionCalls: 100,
     maximumGenerationCalls: 10,
+    maximumGenerationValidationCalls: 10,
     maximumGroundingCalls: 70,
     maximumEmbeddingCalls: 20,
-    maximumTotalCompletionCalls: 210,
+    maximumTotalCompletionCalls: 220,
   },
   releaseRule:
     'All automated gates must pass and every generation scenario must have an explicit human review approval. Missing metrics never count as passing.',
