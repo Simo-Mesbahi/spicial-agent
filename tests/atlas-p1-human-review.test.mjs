@@ -41,6 +41,7 @@ async function writeQualification(path, generationRaw, overrides = {}) {
   const artifacts = overrides.artifacts ?? {
     sourceTreeSha: 'a'.repeat(40),
     contractSha256: 'c'.repeat(64),
+    knowledgeIndexSha256: '9'.repeat(64),
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
     generationSha256: sha256(generationRaw),
