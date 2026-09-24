@@ -90,6 +90,7 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       assert.equal(payload.response_format.json_schema.name, 'natural_response_draft');
       const data = JSON.parse(payload.messages[1].content);
       assert.equal(data.evidence.language, language);
+      assert.equal(data.evidence.unknowns, undefined);
       assert.equal(data.evidence.references['case.confirmedEta'], null);
       assert.equal(data.evidence.references['case.kind'], undefined);
       assert.equal(data.evidence.references['case.status'], undefined);
