@@ -52,13 +52,24 @@ const configured =
   configuration.minSimilarity === Number(process.env.RAG_MIN_SIMILARITY ?? '0.7') &&
   configuration.minLexicalScore === Number(process.env.RAG_MIN_LEXICAL_SCORE ?? '3');
 
+const operational = report.operational ?? {};
+const retryEmbeddingCalls =
+  (operational.retryEmbeddingCalls ?? 0) + (operational.rateLimitRetries ?? 0);
+const operationalPassed =
+  operational.systemicTransportFailure === null &&
+  retryEmbeddingCalls <= contract.retrieval.maximumRetryEmbeddingCalls &&
+  operational.maximumRetryEmbeddingCalls ===
+    contract.retrieval.maximumRetryEmbeddingCalls &&
+  operational.embeddingCalls <= contract.liveBudget.maximumEmbeddingCalls;
+
 const passed =
   report.status === 'completed' &&
   report.completionCalls === contract.retrieval.completionCalls &&
   rows.length === contract.retrieval.requiredQueries &&
   failed.length === 0 &&
   fresh &&
-  configured;
+  configured &&
+  operationalPassed;
 
 console.log(
   JSON.stringify(
@@ -67,6 +78,9 @@ console.log(
       queries: rows.length,
       configuration,
       metrics: report.metrics ?? null,
+      operational,
+      retryEmbeddingCalls,
+      operationalPassed,
       failures: failed,
       reportFresh: fresh,
       configurationMatchesEnvironment: configured,
