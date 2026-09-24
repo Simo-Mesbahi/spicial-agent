@@ -86,6 +86,8 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /retryBackoffMs/);
   assert.match(structured, /setTimeout\(resolve, retryBackoffMs\)/);
   assert.match(structured, /discardedProviderCalls/);
+  assert.match(structured, /finalProviderCalls/);
+  assert.match(structured, /retryUsageComplete/);
   assert.match(structured, /transientFallbackReasons/);
   assert.match(structured, /provider_rate_limited/);
   assert.match(structured, /if \(m\.fallback\) break/);
@@ -100,6 +102,18 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
   assert.match(contract, /maximumTotalCompletionCalls: 236/);
+});
+
+test('P1.7 release gate requires complete structured retry telemetry and exact final call accounting', async () => {
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(release, /finalProviderCalls === structuredTurns/);
+  assert.match(
+    release,
+    /providerCalls ===\s*structured\.operational\?\.finalProviderCalls \+\s*structured\.operational\?\.discardedProviderCalls/s,
+  );
+  assert.match(release, /retryUsageComplete === true/);
+  assert.match(release, /usageComplete === true/);
 });
 
 test('P1.7 live resilience is paced and retries only transport failures within explicit budgets', async () => {
