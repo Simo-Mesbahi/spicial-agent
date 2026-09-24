@@ -116,6 +116,13 @@ test('P1.7 release gate requires complete structured retry telemetry and exact f
   assert.match(release, /usageComplete === true/);
 });
 
+test('P1.7 structured evaluator never continues a scenario after a non-200 API response', async () => {
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+
+  assert.match(structured, /response\.status !== 200 \|\| m\.fallback/);
+  assert.match(structured, /semantically unsafe to score/);
+});
+
 test('P1.7 live resilience is paced and retries only transport failures within explicit budgets', async () => {
   const pacing = await readFile('scripts/lib/live-eval-pacing.mjs', 'utf8');
   const retrieval = await readFile('scripts/evaluate-retrieval.mjs', 'utf8');
