@@ -201,7 +201,7 @@ test('human review template rejects qualification mismatch and failed generation
     { cwd: process.cwd(), encoding: 'utf8' },
   );
   assert.notEqual(failed.status, 0);
-  assert.match(failed.stderr, /no valid generated candidate/i);
+  assert.match(failed.stderr, /no factually validated generated candidate/i);
 });
 
 test('release finalizer is no-spend, preserves the live report and verifies exact artifacts and prose', async () => {
