@@ -105,7 +105,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumGenerationRetryCalls: 3/);
   assert.match(contract, /maximumGenerationValidationRetryCalls: 3/);
   assert.match(contract, /maximumGroundingRetryCalls: 9/);
-  assert.match(contract, /maximumEmbeddingCalls: 24/);
+  assert.match(contract, /maximumEmbeddingCalls: 26/);
   assert.match(contract, /maximumTotalCompletionCalls: 235/);
 });
 
