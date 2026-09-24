@@ -337,6 +337,20 @@ for (const [name, data, reason] of [
     },
     'invalid_upstream_response',
   ],
+  [
+    'production internal status identifier',
+    {
+      language: 'en',
+      sentences: [
+        {
+          text: 'The case is complaint_review.',
+          evidenceRefs: ['case.statusLabel'],
+        },
+      ],
+    },
+    'invalid_upstream_response',
+  ],
+
 ])
   test(`Natural generation rejects ${name}`, async (t) => {
     const c = setup(t);
