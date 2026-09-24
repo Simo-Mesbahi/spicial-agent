@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund --strict-allow-scripts
       - run: npm run typecheck
       - run: npm run lint:app
       - run: npm test

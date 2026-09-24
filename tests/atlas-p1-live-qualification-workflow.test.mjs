@@ -21,6 +21,24 @@ test('P1.7 live qualification workflow is manual-only and explicitly acknowledge
   assert.match(source, /cancel-in-progress: false/);
 });
 
+test('dependency install policy is version-pinned and enforced in every CI path', async () => {
+  const [workflow, ci, installScript, pkgSource] = await Promise.all([
+    readFile(workflowPath, 'utf8'),
+    readFile('.github/workflows/ci.yml', 'utf8'),
+    readFile('scripts/install-ci.sh', 'utf8'),
+    readFile('package.json', 'utf8'),
+  ]);
+  const pkg = JSON.parse(pkgSource);
+  assert.deepEqual(pkg.allowScripts, {
+    'esbuild@0.28.2': true,
+    'unrs-resolver@1.11.1': true,
+    'workerd@1.20260828.1': true,
+  });
+  assert.match(workflow, /npm ci --no-audit --no-fund --strict-allow-scripts/);
+  assert.match(ci, /npm ci --no-audit --no-fund --strict-allow-scripts/);
+  assert.match(installScript, /npm_ci_args=\(ci --cache "\$\{expected_cache\}" --strict-allow-scripts\)/);
+});
+
 test('P1.7 live qualification verifies the complete no-spend gate before provider calls', async () => {
   const source = await readFile(workflowPath, 'utf8');
   const verifyIndex = source.indexOf('Verify source before spending provider budget');
