@@ -264,6 +264,21 @@ for (const [name, data, reason] of [
     { language: 'fr', sentences: [{ text: 'x'.repeat(501), evidenceRefs: ['case.status'] }] },
     'invalid_upstream_response',
   ],
+  [
+    'HTML entity text',
+    { language: 'de', sentences: [{ text: 'Die Anfrage wird gepr&uuml;ft.', evidenceRefs: ['case.status'] }] },
+    'invalid_upstream_response',
+  ],
+  [
+    'HTML tag text',
+    { language: 'fr', sentences: [{ text: '<b>Statut</b>', evidenceRefs: ['case.status'] }] },
+    'invalid_upstream_response',
+  ],
+  [
+    'markdown link text',
+    { language: 'fr', sentences: [{ text: '[Statut](https://example.com)', evidenceRefs: ['case.status'] }] },
+    'invalid_upstream_response',
+  ],
 ])
   test(`Natural generation rejects ${name}`, async (t) => {
     const c = setup(t);
@@ -394,7 +409,9 @@ test('Generation evaluation is dry by default, bounded and multilingual', () => 
     execFileSync(process.execPath, ['scripts/evaluate-generation.mjs'], { encoding: 'utf8' }),
   );
   assert.equal(report.status, 'dry_run');
-  assert.equal(report.maxProviderCalls, 5);
+  assert.equal(report.maxGenerationCalls, 5);
+  assert.equal(report.maxValidationCalls, 5);
+  assert.equal(report.maxProviderCalls, 10);
   assert.throws(() =>
     execFileSync(process.execPath, ['scripts/evaluate-generation.mjs', '--max-cases', '100'], {
       stdio: 'pipe',

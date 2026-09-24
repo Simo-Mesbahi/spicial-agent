@@ -24,6 +24,13 @@ function candidate(id, language, text) {
       reason: null,
       calls: 1,
     },
+    factualValidation: {
+      outcome: 'supported_candidate',
+      reason: null,
+      issues: [],
+      calls: 1,
+    },
+    groundedness: true,
   };
 }
 
@@ -37,7 +44,13 @@ async function writeQualification(path, generationRaw, overrides = {}) {
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
     generationSha256: sha256(generationRaw),
-    groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
+    groundingSha256: [
+      '1'.repeat(64),
+      '2'.repeat(64),
+      '3'.repeat(64),
+      '4'.repeat(64),
+      '5'.repeat(64),
+    ],
   };
   const qualificationId =
     overrides.qualificationId ?? sha256(JSON.stringify({ scope, artifacts }));
@@ -136,7 +149,13 @@ test('human review template rejects qualification mismatch and failed generation
       structuredSha256: 'd'.repeat(64),
       retrievalSha256: 'e'.repeat(64),
       generationSha256: 'b'.repeat(64),
-      groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
+      groundingSha256: [
+      '1'.repeat(64),
+      '2'.repeat(64),
+      '3'.repeat(64),
+      '4'.repeat(64),
+      '5'.repeat(64),
+    ],
     },
   });
 
@@ -182,7 +201,7 @@ test('human review template rejects qualification mismatch and failed generation
     { cwd: process.cwd(), encoding: 'utf8' },
   );
   assert.notEqual(failed.status, 0);
-  assert.match(failed.stderr, /no valid generated candidate/i);
+  assert.match(failed.stderr, /no factually validated generated candidate/i);
 });
 
 test('release finalizer is no-spend, preserves the live report and verifies exact artifacts and prose', async () => {

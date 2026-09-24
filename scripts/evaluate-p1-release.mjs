@@ -4,6 +4,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 
+import { groundingDecisionPasses } from '../evals/grounding.mjs';
+import {
+  groundingReportPath,
+  p1GroundingPlan,
+} from '../evals/p1-grounding-plan.mjs';
 import { p1ReleaseQualificationContract as contract } from '../evals/p1-release-contract.mjs';
 
 const args = process.argv.slice(2);
@@ -42,17 +47,9 @@ if (
     `--structured-turns must be an integer between ${contract.structured.minimumTurns} and ${contract.structured.maximumTurns}`,
   );
 
-const groundingPlan = [
-  { offset: 0, maxCases: 1 },
-  { offset: 1, maxCases: 19 },
-  { offset: 20, maxCases: 20 },
-  { offset: 40, maxCases: 20 },
-  { offset: 60, maxCases: 10 },
-].map((entry) => ({
+const groundingPlan = p1GroundingPlan.map((entry) => ({
   ...entry,
-  path: resolve(
-    `outputs/p1-live/grounding-${String(entry.offset).padStart(2, '0')}.json`,
-  ),
+  path: resolve(groundingReportPath(entry)),
 }));
 
 const paths = {
@@ -66,12 +63,14 @@ const plannedCalls = {
   structuredCompletionCalls: structuredTurns,
   structuredRetryCompletionCalls: contract.structured.maximumRetryCompletionCalls,
   generationCalls: contract.generation.requiredScenarios,
+  generationValidationCalls: contract.generation.requiredValidationCalls,
   groundingCalls: contract.grounding.requiredScenarios,
   embeddingCalls: contract.retrieval.requiredQueries,
   completionCalls:
     structuredTurns +
     contract.structured.maximumRetryCompletionCalls +
     contract.generation.requiredScenarios +
+    contract.generation.requiredValidationCalls +
     contract.grounding.requiredScenarios,
 };
 
@@ -79,6 +78,8 @@ if (
   plannedCalls.structuredCompletionCalls > contract.liveBudget.maximumStructuredCompletionCalls ||
   plannedCalls.structuredRetryCompletionCalls > contract.structured.maximumRetryCompletionCalls ||
   plannedCalls.generationCalls > contract.liveBudget.maximumGenerationCalls ||
+  plannedCalls.generationValidationCalls >
+    contract.liveBudget.maximumGenerationValidationCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
   plannedCalls.embeddingCalls > contract.liveBudget.maximumEmbeddingCalls ||
   plannedCalls.completionCalls > contract.liveBudget.maximumTotalCompletionCalls
@@ -510,7 +511,12 @@ const generationGate = Boolean(
         row.draft &&
         row.diagnostics?.outcome === 'candidate_generated' &&
         row.diagnostics?.reason === null &&
-        row.diagnostics?.calls === 1,
+        row.diagnostics?.calls === 1 &&
+        row.factualValidation?.outcome === 'supported_candidate' &&
+        row.factualValidation?.reason === null &&
+        row.factualValidation?.issues?.length === 0 &&
+        row.factualValidation?.calls === 1 &&
+        row.groundedness === true,
     ),
 );
 
@@ -527,6 +533,15 @@ const abstentions = groundingRows.filter((row) =>
 const supported = groundingPositives.filter(
   (row) => row.diagnostics?.outcome === 'supported_candidate',
 ).length;
+const groundingDecisionFailures = groundingRows.filter(
+  (row) => !groundingDecisionPasses(row),
+);
+const groundingIssueMatches = groundingNegatives.filter(
+  (row) =>
+    row.diagnostics?.outcome === 'blocked' &&
+    row.diagnostics?.reason === 'unsupported_claim' &&
+    row.diagnostics?.issues?.includes(row.expectedIssue),
+).length;
 const groundingMetrics = {
   measuredScenarios: groundingRows.length,
   uniqueScenarios: groundingIds.size,
@@ -535,6 +550,12 @@ const groundingMetrics = {
     : null,
   abstentionRate: groundingRows.length ? abstentions / groundingRows.length : null,
   supportedRecall: groundingPositives.length ? supported / groundingPositives.length : null,
+  decisionAccuracy: groundingRows.length
+    ? (groundingRows.length - groundingDecisionFailures.length) / groundingRows.length
+    : null,
+  issueAccuracy: groundingNegatives.length
+    ? groundingIssueMatches / groundingNegatives.length
+    : null,
 };
 const groundingGate = Boolean(
   groundingRows.length === contract.grounding.requiredScenarios &&
@@ -544,7 +565,12 @@ const groundingGate = Boolean(
     groundingMetrics.abstentionRate !== null &&
     groundingMetrics.abstentionRate <= contract.grounding.maximumAbstentionRate &&
     groundingMetrics.supportedRecall !== null &&
-    groundingMetrics.supportedRecall >= contract.grounding.minimumSupportedRecall,
+    groundingMetrics.supportedRecall >= contract.grounding.minimumSupportedRecall &&
+    groundingMetrics.decisionAccuracy !== null &&
+    groundingMetrics.decisionAccuracy >= contract.grounding.minimumDecisionAccuracy &&
+    groundingMetrics.issueAccuracy !== null &&
+    groundingMetrics.issueAccuracy >= contract.grounding.minimumIssueAccuracy &&
+    groundingDecisionFailures.length === 0,
 );
 
 let humanReview = {

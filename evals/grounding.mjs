@@ -233,3 +233,22 @@ export function validateGroundingCorpus() {
   }
   return { scenarios: 70, families: 14, languages: 5, supported: 15, unsupported: 55 };
 }
+
+
+export function groundingDecisionPasses(row) {
+  const diagnostics = row?.diagnostics ?? {};
+  const issues = Array.isArray(diagnostics.issues) ? diagnostics.issues : [];
+  if (row?.expectedSupported) {
+    return (
+      diagnostics.outcome === 'supported_candidate' &&
+      diagnostics.reason === null &&
+      issues.length === 0
+    );
+  }
+  return (
+    diagnostics.outcome === 'blocked' &&
+    diagnostics.reason === 'unsupported_claim' &&
+    typeof row?.expectedIssue === 'string' &&
+    issues.includes(row.expectedIssue)
+  );
+}
