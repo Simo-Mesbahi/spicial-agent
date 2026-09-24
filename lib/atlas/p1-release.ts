@@ -13,6 +13,7 @@ import {
 import type { EvidenceContext, EvidencePack } from './evidence-pack';
 import {
   generationEvidence,
+  safeGeneratedSentenceText,
   type GenerationDiagnostics,
   type NaturalDraft,
 } from './natural-generation';
@@ -312,13 +313,12 @@ export function shouldEvaluateNaturalResponse(
 }
 
 function candidateText(draft: NaturalDraft, allowEmoji: boolean) {
+  if (draft.sentences.some((sentence) => !safeGeneratedSentenceText(sentence.text))) return null;
   const text = draft.sentences.map((sentence) => sentence.text.trim()).join(' ').trim();
   if (
     !text ||
     text.length > 2200 ||
     redacted(text) !== text ||
-    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text) ||
-    /https?:\/\/|www\.|<\/?[a-z][^>]*>|\[[^\]]+\]\([^\)]+\)/iu.test(text) ||
     (!allowEmoji && /[\p{Extended_Pictographic}\uFE0F\u200D]/u.test(text))
   )
     return null;
