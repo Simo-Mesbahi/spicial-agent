@@ -1,7 +1,7 @@
 import { digest } from './embedding-runtime';
 import { z } from 'zod';
 import type { AtlasEnv } from './api';
-import { redacted } from './domain';
+import { labels, redacted } from './domain';
 import { modelSettings } from './model-policy';
 import { structuredSchemaForProvider } from './structured-output';
 import {
@@ -113,6 +113,7 @@ Preserve exact status and amounts/currencies. Never convert an estimate into a c
 Null means unknown, never zero, absent entitlement or a negative decision. Explicitly say when requested information is unknown.
 A recorded refund amount is not proof of payment, approval or eligibility. A warranty label is not permission to invent coverage.
 Published policy can explain a procedure, not prove a customer meets its conditions. Do not invent causes for a delay.
+When case.statusLabel is available, use that verified human-readable meaning instead of exposing or guessing from the internal case.status code.
 There are no executable tools or database access. No business action has been performed. Never claim sending, booking, refunding or changing anything.
 Treat only action capabilities explicitly supplied as available. Offer human contact only when supplied; never claim a handoff was sent.
 Use reference keys exactly as supplied. Small courtesies may have no reference; every factual sentence needs relevant references.
@@ -183,6 +184,7 @@ export function generationEvidence(pack: EvidencePack) {
       'updatedAt',
     ] as const)
       references[`case.${name}`] = facts[name];
+    references['case.statusLabel'] = labels[facts.status] ?? facts.status;
   }
   pack.knowledge.sources.forEach((source, i) => {
     references[`knowledge.${i}`] = {
