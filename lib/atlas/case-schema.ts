@@ -1,6 +1,18 @@
 import { z } from 'zod';
 
+export const caseKinds = [
+  'repair',
+  'exchange',
+  'refund',
+  'complaint',
+  'delivery',
+  'account',
+  'other',
+] as const;
+export type ProductionCaseKind = (typeof caseKinds)[number];
+
 export const caseStatuses = [
+  'opened',
   'deposited',
   'received',
   'diagnosis',
@@ -8,34 +20,37 @@ export const caseStatuses = [
   'quote_pending',
   'repairing',
   'repaired',
-  'replacement',
+  'exchanged',
   'shipping',
+  'transit',
   'ready',
   'delivered',
-  'preparing',
-  'transit',
-  'delayed',
-  'return_requested',
-  'return_approved',
-  'return_received',
   'refund_pending',
   'refunded',
-  'open',
-  'reviewing',
+  'complaint_review',
   'resolved',
-  'declined',
+  'cancelled',
+  'delayed',
 ] as const;
 export type CaseStatus = (typeof caseStatuses)[number];
+
+export const warrantyStatuses = [
+  'covered',
+  'not_covered',
+  'partial',
+  'unknown',
+] as const;
+export type WarrantyStatus = (typeof warrantyStatuses)[number];
 
 export const caseSchema = z
   .object({
     id: z.string().uuid(),
     reference: z.string().min(6).max(64),
-    kind: z.string().min(2).max(40),
+    kind: z.enum(caseKinds),
     title: z.string().min(2).max(180),
     description: z.string().max(6000),
     status: z.enum(caseStatuses),
-    warranty_status: z.string().max(40),
+    warranty_status: z.enum(warrantyStatuses),
     warranty_label: z.string().max(240).nullable(),
     quote_cents: z.number().int().nonnegative().nullable(),
     refund_cents: z.number().int().nonnegative().nullable(),
