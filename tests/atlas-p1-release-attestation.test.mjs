@@ -137,6 +137,7 @@ test('attestation generator signs only a fully approved final qualification and 
   const artifacts = {
     sourceTreeSha,
     contractSha256: 'c'.repeat(64),
+    knowledgeIndexSha256: '9'.repeat(64),
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
     generationSha256: 'f'.repeat(64),
@@ -169,6 +170,7 @@ test('attestation generator signs only a fully approved final qualification and 
       subprocesses: true,
       reportsReadable: true,
       qualificationArtifactIntegrity: true,
+      knowledgeIndex: true,
       structured: true,
       retrieval: true,
       generation: true,
@@ -231,6 +233,7 @@ test('attestation generator fails closed for incomplete human approval', async (
   const artifacts = {
     sourceTreeSha,
     contractSha256: 'c'.repeat(64),
+    knowledgeIndexSha256: '9'.repeat(64),
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
     generationSha256: 'f'.repeat(64),
