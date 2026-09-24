@@ -184,7 +184,7 @@ jobs:
           NODE
 
       - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --strict-allow-scripts
 
       - name: Verify source before spending provider budget
         run: |
