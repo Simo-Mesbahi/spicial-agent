@@ -336,7 +336,7 @@ test('Knowledge indexing reports an incomplete corpus without a second provider 
   const content = 'Procédure vérifiée',
     checksum = await digest(content);
   t.mock.method(globalThis, 'fetch', async (url, init) => {
-    const body = JSON.parse(init.body);
+    JSON.parse(init.body);
     if (url.endsWith('/knowledge_embedding_batch')) {
       batchReads++;
       return Response.json([{ chunk_id: chunk, content, checksum }]);
