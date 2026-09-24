@@ -331,6 +331,53 @@ test('Natural generation prompt transport binds evidenceRefs to the current evid
   assert.equal(result.diagnostics.outcome, 'candidate_generated');
 });
 
+test('Natural generation rejects the exact run-12 evidence-free factual sentence', async (t) => {
+  const scenario = generationScenarios.find((row) => row.id === 'waiting-part-en');
+  const c = setup(t, scenario);
+  t.mock.method(globalThis, 'fetch', async () =>
+    response({
+      language: 'en',
+      sentences: [
+        {
+          text: 'Your television repair is currently waiting for a part.',
+          evidenceRefs: ['case.kind', 'case.product', 'case.status'],
+        },
+        {
+          text: 'The return date is currently unknown.',
+          evidenceRefs: [],
+        },
+      ],
+    }),
+  );
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.draft, null);
+  assert.equal(result.diagnostics.reason, 'unknown_evidence_reference');
+});
+
+test('Natural generation permits only bounded non-factual courtesies without evidence', async (t) => {
+  const scenario = generationScenarios.find((row) => row.id === 'waiting-part-en');
+  const c = setup(t, scenario);
+  t.mock.method(globalThis, 'fetch', async () =>
+    response({
+      language: 'en',
+      sentences: [
+        {
+          text: 'Your television repair is currently waiting for a part.',
+          evidenceRefs: ['case.kind', 'case.product', 'case.status'],
+        },
+        {
+          text: 'Thank you.',
+          evidenceRefs: [],
+        },
+      ],
+    }),
+  );
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.reason, null);
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+  assert.equal(result.draft.sentences[1].text, 'Thank you.');
+});
+
 test('Natural generation rejects the exact run-12 French prose mislabeled as German', async (t) => {
   const scenario = generationScenarios.find((row) => row.id === 'refund-policy-de');
   const c = setup(t, scenario);
