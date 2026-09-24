@@ -90,7 +90,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /retryUsageComplete/);
   assert.match(structured, /transientFallbackReasons/);
   assert.match(structured, /provider_rate_limited/);
-  assert.match(structured, /if \(m\.fallback\) break/);
+  assert.match(structured, /response\.status !== 200 \|\| m\.fallback/);
   assert.match(structured, /while \(true\)/);
   assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
   assert.match(contract, /maximumScenarioRetries: 6/);
@@ -114,6 +114,13 @@ test('P1.7 release gate requires complete structured retry telemetry and exact f
   );
   assert.match(release, /retryUsageComplete === true/);
   assert.match(release, /usageComplete === true/);
+});
+
+test('P1.7 structured evaluator never continues a scenario after a non-200 API response', async () => {
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+
+  assert.match(structured, /response\.status !== 200 \|\| m\.fallback/);
+  assert.match(structured, /semantically unsafe to score/);
 });
 
 test('P1.7 live resilience is paced and retries only transport failures within explicit budgets', async () => {

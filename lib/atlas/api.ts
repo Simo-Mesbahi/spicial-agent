@@ -42,7 +42,15 @@ import { boundedJson, JsonLimitError } from './bounded-json';
 import { mutationOriginAllowed } from './request-security';
 import { supportDecision, supportQuickReplies, type SupportPath } from './support-routing';
 import { z } from 'zod';
-import { acquireConversation, commitConversation, releaseConversation, ConversationBusy, type ConversationLease } from './conversation-state';
+import {
+  acquireConversation,
+  commitConversation,
+  providerConversationLeaseMs,
+  releaseConversation,
+  renewConversationLease,
+  ConversationBusy,
+  type ConversationLease,
+} from './conversation-state';
 import { understandConversation, executeConversation, type CaseCandidate } from './structured-conversation';
 
 export interface Statement {
@@ -1261,7 +1269,21 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         try {
           pendingInteraction.phase = 'generate';
           if (structured && pendingConversation) {
-            const understanding = await understandConversation(env, message, pendingConversation.lease.state, candidates, telemetry);
+            await renewConversationLease(
+              db,
+              pendingConversation.lease,
+              providerConversationLeaseMs(modelSettings(env).timeoutMs),
+            );
+            const understanding = await understandConversation(
+              env,
+              message,
+              pendingConversation.lease.state,
+              candidates,
+              telemetry,
+            );
+            // Rebase the lock after upstream latency so retrieval, authorization
+            // refresh and atomic persistence are never racing an expired lease.
+            await renewConversationLease(db, pendingConversation.lease);
             pendingInteraction.route = understanding.intent;
             pendingInteraction.language = understanding.language;
             conversation = await executeConversation(understanding, pendingConversation.lease.state, candidates, message, {
@@ -1284,6 +1306,10 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
           } else generated = await generate(env, message, c, history, knowledge, telemetry);
         } catch (e) {
           if (!(e instanceof ProviderError) && !(e instanceof ApiError && e.status === 503)) throw e;
+          // A provider timeout can consume the original lease. Renew only while
+          // we still own it; if ownership was lost, fail closed as conversation_busy.
+          if (structured && pendingConversation)
+            await renewConversationLease(db, pendingConversation.lease);
           fallback = 'provider_unavailable';
           fallbackReason = e instanceof ProviderError ? e.reason : 'configuration';
           console.warn('Atlas LLM fallback', {

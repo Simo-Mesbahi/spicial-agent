@@ -193,12 +193,11 @@ async function runScenario(scenario) {
         response: response.body.content ?? null,
       });
 
-      // A provider fallback makes the remainder of this multi-turn attempt
-      // semantically contaminated: later turns would execute against a state
-      // that never received the expected structured understanding. Stop the
-      // attempt immediately and either retry the whole scenario from a fresh DB
-      // (for recoverable transport failures) or fail closed.
-      if (m.fallback) break;
+      // A provider fallback OR any non-200 API response makes the remainder
+      // of this multi-turn attempt semantically unsafe to score. Stop immediately:
+      // a recoverable provider fallback may replay the whole scenario from a fresh DB;
+      // opaque API failures remain fail-closed and are never followed by contaminated turns.
+      if (response.status !== 200 || m.fallback) break;
     }
     return attemptRows;
   } finally {

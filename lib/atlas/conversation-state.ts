@@ -34,6 +34,17 @@ export const conversationStateSchema = z
 export type ConversationState = z.infer<typeof conversationStateSchema>;
 export const STATE_TTL_MS = 30 * 60 * 1000;
 export const STATE_LEASE_MS = 60 * 1000;
+export const STATE_LEASE_MAX_MS = 2 * 60 * 1000;
+export const STATE_LEASE_PROVIDER_MARGIN_MS = 30 * 1000;
+
+export function providerConversationLeaseMs(providerTimeoutMs: number) {
+  if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1000 || providerTimeoutMs > 60000)
+    throw new Error('Invalid provider timeout for conversation lease.');
+  return Math.min(
+    STATE_LEASE_MAX_MS,
+    Math.max(STATE_LEASE_MS, providerTimeoutMs + STATE_LEASE_PROVIDER_MARGIN_MS),
+  );
+}
 export function emptyConversationState(now = Date.now()): ConversationState {
   return {
     schemaVersion: 1,
@@ -107,6 +118,25 @@ export async function acquireConversation(
     }
   }
   return { spaceId, owner, version: row.version, state, sessionExpiresAt };
+}
+
+export async function renewConversationLease(
+  db: Database,
+  lease: ConversationLease,
+  durationMs = STATE_LEASE_MS,
+) {
+  if (!Number.isInteger(durationMs) || durationMs < STATE_LEASE_MS || durationMs > STATE_LEASE_MAX_MS)
+    throw new Error('Invalid conversation lease duration.');
+  const now = Date.now();
+  const lockUntil = Math.min(lease.sessionExpiresAt, now + durationMs);
+  if (lockUntil <= now) throw new ConversationBusy();
+  const renewed = await db
+    .prepare(
+      'UPDATE conversation_states SET lock_until=? WHERE space_id=? AND lock_id=? AND lock_until>?',
+    )
+    .bind(lockUntil, lease.spaceId, lease.owner, now)
+    .run();
+  if (!renewed.meta.changes) throw new ConversationBusy();
 }
 
 // Include this statement in the SAME D1 batch as messages and idempotent reply.

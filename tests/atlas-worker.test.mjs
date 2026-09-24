@@ -240,7 +240,8 @@ test('Cloudflare: structured chat persists bounded state and idempotency atomica
     assert.equal(completions, 1);
     stealLease = true;
     const failed = await call(mf, '/api/chat', { ...request, body: { message: 'suite', requestId: 'worker-p1-stale' } });
-    assert.equal(failed.status, 503);
+    assert.equal(failed.status, 409);
+    assert.match(await failed.clone().text(), /déjà en cours|already|cours/i);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM messages').first()).n, 2);
     assert.equal((await db.prepare('SELECT version FROM conversation_states').first()).version, 1);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM chat_requests').first()).n, 1);
