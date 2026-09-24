@@ -140,7 +140,13 @@ test('attestation generator signs only a fully approved final qualification and 
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
     generationSha256: 'f'.repeat(64),
-    groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
+    groundingSha256: [
+      '1'.repeat(64),
+      '2'.repeat(64),
+      '3'.repeat(64),
+      '4'.repeat(64),
+      '5'.repeat(64),
+    ],
   };
   const qualificationId = sha256(JSON.stringify({ scope, artifacts }));
   const report = {
@@ -228,7 +234,13 @@ test('attestation generator fails closed for incomplete human approval', async (
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
     generationSha256: 'f'.repeat(64),
-    groundingSha256: ['1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(64)],
+    groundingSha256: [
+      '1'.repeat(64),
+      '2'.repeat(64),
+      '3'.repeat(64),
+      '4'.repeat(64),
+      '5'.repeat(64),
+    ],
   };
   const qualificationId = sha256(JSON.stringify({ scope, artifacts }));
   await writeFile(
