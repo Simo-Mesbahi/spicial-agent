@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import type { AtlasEnv } from './api';
-import { caseSchema, type CaseStatus } from './case-schema';
+import { caseSchema, caseStatuses, type CaseStatus } from './case-schema';
 import { z as schema } from 'zod';
 import { supabaseRequest, supabaseSettings, SupabaseRequestError } from './supabase';
 
@@ -42,6 +42,7 @@ export function normalizeCase(
   organizationId: string,
 ): CaseFacts {
   if (
+    !caseStatuses.includes(snapshot.status as CaseStatus) ||
     !Number.isFinite(Date.parse(snapshot.updated_at)) ||
     (snapshot.estimated_at && !Number.isFinite(Date.parse(snapshot.estimated_at))) ||
     !/^[A-Z]{3}$/.test(snapshot.currency)
