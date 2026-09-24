@@ -1,6 +1,14 @@
 import type { z } from 'zod';
 import type { AtlasEnv } from './api';
-import { caseSchema, caseStatuses, type CaseStatus } from './case-schema';
+import {
+  caseKinds,
+  caseSchema,
+  caseStatuses,
+  warrantyStatuses,
+  type CaseStatus,
+  type ProductionCaseKind,
+  type WarrantyStatus,
+} from './case-schema';
 import { z as schema } from 'zod';
 import { supabaseRequest, supabaseSettings, SupabaseRequestError } from './supabase';
 
@@ -25,10 +33,10 @@ export type CaseFacts = {
   organizationId: string;
   id: string;
   reference: string;
-  kind: string;
+  kind: ProductionCaseKind;
   status: CaseStatus;
   product: string | null;
-  warranty: { status: string; label: string | null };
+  warranty: { status: WarrantyStatus; label: string | null };
   quote: { cents: number; currency: string } | null;
   refund: { cents: number; currency: string } | null;
   estimatedAt: string | null;
@@ -42,7 +50,9 @@ export function normalizeCase(
   organizationId: string,
 ): CaseFacts {
   if (
+    !caseKinds.includes(snapshot.kind as ProductionCaseKind) ||
     !caseStatuses.includes(snapshot.status as CaseStatus) ||
+    !warrantyStatuses.includes(snapshot.warranty_status as WarrantyStatus) ||
     !Number.isFinite(Date.parse(snapshot.updated_at)) ||
     (snapshot.estimated_at && !Number.isFinite(Date.parse(snapshot.estimated_at))) ||
     !/^[A-Z]{3}$/.test(snapshot.currency)
