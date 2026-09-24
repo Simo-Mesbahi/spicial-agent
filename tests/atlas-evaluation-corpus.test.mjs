@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scenarios, evaluationContract } from '../evals/conversations.mjs';
 import { p1ReleaseQualificationContract } from '../evals/p1-release-contract.mjs';
+import {
+  generationFixture,
+  refreshSyntheticEvidenceFixture,
+} from '../evals/generation.mjs';
 
 test('enterprise AI evaluation corpus keeps its coverage contract', () => {
   const ids = scenarios.map((scenario) => scenario.id);
@@ -236,6 +240,37 @@ test('Pre-P1 contract explicitly covers guidance restraint and conversation repa
   assert.ok(targets.some((target) => target.conversationRepair === true));
   assert.ok(targets.some((target) => target.requiresCase === true));
   assert.ok(targets.some((target) => target.requiresCase === false));
+});
+
+
+
+test('P1.7 synthetic evidence refresh preserves authoritative facts and scope', () => {
+  const original = generationFixture(
+    { language: 'fr', kind: 'case', message: 'Synthetic audit' },
+    1_800_000_000_000,
+  );
+  const refreshed = refreshSyntheticEvidenceFixture(original, 1_800_000_031_000);
+
+  assert.equal(refreshed.context.organizationId, original.context.organizationId);
+  assert.equal(refreshed.context.authorizedCaseId, original.context.authorizedCaseId);
+  assert.equal(refreshed.context.requestId, original.context.requestId);
+  assert.equal(refreshed.pack.scope.requestId, original.pack.scope.requestId);
+  assert.deepEqual(
+    {
+      ...refreshed.pack,
+      createdAt: original.pack.createdAt,
+      expiresAt: original.pack.expiresAt,
+      caseFacts: {
+        ...refreshed.pack.caseFacts,
+        retrievedAt: original.pack.caseFacts.retrievedAt,
+      },
+    },
+    original.pack,
+  );
+  assert.equal(refreshed.context.sessionExpiresAt, 1_800_000_091_000);
+  assert.equal(refreshed.pack.createdAt, new Date(1_800_000_031_000).toISOString());
+  assert.equal(refreshed.pack.expiresAt, new Date(1_800_000_061_000).toISOString());
+  assert.equal(refreshed.pack.caseFacts.retrievedAt, refreshed.pack.createdAt);
 });
 
 

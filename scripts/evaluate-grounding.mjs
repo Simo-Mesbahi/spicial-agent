@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
+import { refreshSyntheticEvidenceFixture } from '../evals/generation.mjs';
 import {
   groundingScenarios,
   groundingFixture,
@@ -88,13 +89,14 @@ else {
     let systemicTransportFailure = null;
     let retriesUsed = 0;
     for (const scenario of selected) {
-      const fixture = groundingFixture(scenario);
+      let fixture = groundingFixture(scenario);
       let diagnostics = null;
       const providerAttempts = [];
       let scenarioRetries = 0;
 
       while (true) {
         await pacing.beforeCall();
+        fixture = refreshSyntheticEvidenceFixture(fixture);
         const trace = providerTrace();
         diagnostics = await validateNaturalDraft(
           {

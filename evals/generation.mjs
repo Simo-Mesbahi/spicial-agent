@@ -41,6 +41,27 @@ export const generationScenarios = [
     ],
   })),
 ];
+export function refreshSyntheticEvidenceFixture(fixture, now = Date.now()) {
+  if (!Number.isFinite(now)) throw new Error('Invalid synthetic evidence refresh time');
+  const refreshed = structuredClone(fixture);
+  const stamp = new Date(now).toISOString();
+  const expiresAt = new Date(now + 30000).toISOString();
+
+  const refreshPack = (pack) => {
+    pack.createdAt = stamp;
+    pack.expiresAt = expiresAt;
+    if (pack.caseFacts) pack.caseFacts.retrievedAt = stamp;
+    if (pack.knowledge?.retrievedAt) pack.knowledge.retrievedAt = stamp;
+  };
+
+  // Evaluation fixtures model a fresh server re-read of unchanged authoritative data.
+  // Preserve scope/business facts while renewing only freshness/session timestamps.
+  refreshed.context.sessionExpiresAt = now + 60000;
+  refreshPack(refreshed.pack);
+  if (refreshed.currentPack) refreshPack(refreshed.currentPack);
+  return refreshed;
+}
+
 export function generationFixture(scenario, now = Date.now()) {
   const stamp = new Date(now).toISOString();
   const context = {
