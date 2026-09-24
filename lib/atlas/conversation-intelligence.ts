@@ -1,4 +1,5 @@
 import type { CaseRow } from './api';
+import type { CaseStatus } from './case-schema';
 
 export type ConversationLanguage = 'fr' | 'en' | 'de' | 'es' | 'ar';
 export type CasualIntent = 'greeting' | 'wellbeing' | 'thanks' | 'farewell' | 'help' | null;
@@ -573,7 +574,7 @@ export function conversationRoute(
 }
 
 
-export const statusLabels: Record<ConversationLanguage, Record<string, string>> = {
+export const statusLabels: Record<ConversationLanguage, Record<CaseStatus, string>> = {
   fr: {
     deposited: 'Déposé en magasin', received: 'Reçu au SAV', diagnosis: 'Diagnostic en cours',
     waiting_part: 'En attente de pièce', quote_pending: 'Devis à valider', repairing: 'En réparation',
@@ -631,6 +632,21 @@ function formatMoney(cents: number, language: ConversationLanguage) {
   return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100);
 }
 
+const unavailableStatusLabels: Record<ConversationLanguage, string> = {
+  fr: 'Statut indisponible',
+  en: 'Status unavailable',
+  de: 'Status nicht verfügbar',
+  es: 'Estado no disponible',
+  ar: 'الحالة غير متاحة',
+};
+
+export function localizedStatusLabel(
+  language: ConversationLanguage,
+  status: string,
+): string {
+  return statusLabels[language][status as CaseStatus] ?? unavailableStatusLabels[language];
+}
+
 export function localizedCaseReply(
   language: ConversationLanguage,
   currentCase: Pick<
@@ -638,7 +654,7 @@ export function localizedCaseReply(
     'reference' | 'product' | 'status' | 'quote_cents' | 'refund_cents' | 'store' | 'updated_at'
   >,
 ): string {
-  const status = statusLabels[language][currentCase.status] ?? currentCase.status;
+  const status = localizedStatusLabel(language, currentCase.status);
   const amount =
     currentCase.status === 'quote_pending' && Number.isSafeInteger(currentCase.quote_cents) && currentCase.quote_cents! >= 0
       ? formatMoney(currentCase.quote_cents!, language)
