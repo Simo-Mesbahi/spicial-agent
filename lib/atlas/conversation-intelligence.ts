@@ -148,8 +148,6 @@ const replies: Record<
   Record<Exclude<CasualIntent, null>, { general: string; withCase: (reference: string) => string }>
 > = {
   fr: {
-    opened: 'Dossier ouvert', exchanged: 'Produit échangé',
-    complaint_review: 'Réclamation en cours d’examen', cancelled: 'Dossier annulé',
     greeting: {
       general:
         'Bonjour ! Je suis là pour vous aider, vous renseigner et vous accompagner pour le SAV, vos commandes, retours, livraisons ou toute autre question de service client. Que puis-je faire pour vous ?',
@@ -178,8 +176,6 @@ const replies: Record<
     },
   },
   en: {
-    opened: 'Case opened', exchanged: 'Product exchanged',
-    complaint_review: 'Complaint under review', cancelled: 'Case cancelled',
     greeting: {
       general:
         'Hello! I’m here to help, answer your questions, and guide you with repairs, orders, returns, deliveries, or other customer-service needs. How can I help?',
@@ -208,8 +204,6 @@ const replies: Record<
     },
   },
   de: {
-    opened: 'Vorgang eröffnet', exchanged: 'Produkt ausgetauscht',
-    complaint_review: 'Reklamation wird geprüft', cancelled: 'Vorgang storniert',
     greeting: {
       general:
         'Hallo! Ich bin hier, um Ihnen zu helfen und Sie bei Reparaturen, Bestellungen, Rückgaben, Lieferungen oder anderen Servicefragen zu begleiten. Wie kann ich Ihnen helfen?',
@@ -238,8 +232,6 @@ const replies: Record<
     },
   },
   es: {
-    opened: 'Expediente abierto', exchanged: 'Producto cambiado',
-    complaint_review: 'Reclamación en revisión', cancelled: 'Expediente cancelado',
     greeting: {
       general:
         '¡Hola! Estoy aquí para ayudarle, responder a sus preguntas y acompañarle con reparaciones, pedidos, devoluciones, entregas u otras consultas de atención al cliente. ¿En qué puedo ayudarle?',
@@ -268,8 +260,6 @@ const replies: Record<
     },
   },
   ar: {
-    opened: 'تم فتح الملف', exchanged: 'تم استبدال المنتج',
-    complaint_review: 'الشكوى قيد المراجعة', cancelled: 'تم إلغاء الملف',
     greeting: {
       general:
         'مرحبًا! أنا هنا لمساعدتك والإجابة عن أسئلتك ومرافقتك في ما يخص الإصلاحات والطلبات والإرجاع والتوصيل وخدمة العملاء. كيف يمكنني مساعدتك؟',
@@ -588,59 +578,176 @@ export function conversationRoute(
 }
 
 
-type StatusPresentationMap = Record<CaseStatus, string> & Record<string, string>;
-
-export const statusLabels: Record<ConversationLanguage, StatusPresentationMap> = {
+const productionStatusLabels: Record<
+  ConversationLanguage,
+  Record<CaseStatus, string>
+> = {
   fr: {
-    deposited: 'Déposé en magasin', received: 'Reçu au SAV', diagnosis: 'Diagnostic en cours',
-    waiting_part: 'En attente de pièce', quote_pending: 'Devis à valider', repairing: 'En réparation',
-    repaired: 'Réparation terminée', replacement: 'Échange validé', shipping: 'Retour en transport',
-    ready: 'Disponible au retrait', delivered: 'Livré', preparing: 'En préparation',
-    transit: 'En livraison', delayed: 'Livraison retardée', return_requested: 'Retour demandé',
-    return_approved: 'Retour autorisé', return_received: 'Retour réceptionné',
-    refund_pending: 'Remboursement en traitement', refunded: 'Remboursé', open: 'Réclamation ouverte',
-    reviewing: 'En cours d’examen', resolved: 'Réclamation résolue', declined: 'Devis refusé',
+    opened: 'Dossier ouvert',
+    deposited: 'Déposé en magasin',
+    received: 'Reçu au SAV',
+    diagnosis: 'Diagnostic en cours',
+    waiting_part: 'En attente de pièce',
+    quote_pending: 'Devis à valider',
+    repairing: 'En réparation',
+    repaired: 'Réparation terminée',
+    exchanged: 'Produit échangé',
+    shipping: 'Expédition en cours',
+    transit: 'En transit',
+    ready: 'Disponible au retrait',
+    delivered: 'Livré',
+    refund_pending: 'Remboursement en traitement',
+    refunded: 'Remboursé',
+    complaint_review: 'Réclamation en cours d’examen',
+    resolved: 'Dossier résolu',
+    cancelled: 'Dossier annulé',
+    delayed: 'Retard signalé',
   },
   en: {
-    deposited: 'Dropped off in store', received: 'Received by after-sales service', diagnosis: 'Diagnosis in progress',
-    waiting_part: 'Waiting for a part', quote_pending: 'Quote awaiting approval', repairing: 'Being repaired',
-    repaired: 'Repair completed', replacement: 'Replacement approved', shipping: 'Return shipment in progress',
-    ready: 'Ready for pickup', delivered: 'Delivered', preparing: 'Being prepared',
-    transit: 'Out for delivery', delayed: 'Delivery delayed', return_requested: 'Return requested',
-    return_approved: 'Return approved', return_received: 'Return received',
-    refund_pending: 'Refund being processed', refunded: 'Refunded', open: 'Complaint open',
-    reviewing: 'Under review', resolved: 'Complaint resolved', declined: 'Quote declined',
+    opened: 'Case opened',
+    deposited: 'Dropped off in store',
+    received: 'Received by after-sales service',
+    diagnosis: 'Diagnosis in progress',
+    waiting_part: 'Waiting for a part',
+    quote_pending: 'Quote awaiting approval',
+    repairing: 'Being repaired',
+    repaired: 'Repair completed',
+    exchanged: 'Product exchanged',
+    shipping: 'Shipment in progress',
+    transit: 'In transit',
+    ready: 'Ready for pickup',
+    delivered: 'Delivered',
+    refund_pending: 'Refund being processed',
+    refunded: 'Refunded',
+    complaint_review: 'Complaint under review',
+    resolved: 'Case resolved',
+    cancelled: 'Case cancelled',
+    delayed: 'Delay reported',
   },
   de: {
-    deposited: 'Im Geschäft abgegeben', received: 'Beim Kundendienst eingegangen', diagnosis: 'Diagnose läuft',
-    waiting_part: 'Warten auf ein Ersatzteil', quote_pending: 'Kostenvoranschlag wartet auf Freigabe', repairing: 'In Reparatur',
-    repaired: 'Reparatur abgeschlossen', replacement: 'Austausch bestätigt', shipping: 'Rücktransport läuft',
-    ready: 'Abholbereit', delivered: 'Geliefert', preparing: 'In Vorbereitung',
-    transit: 'In Zustellung', delayed: 'Lieferung verspätet', return_requested: 'Rückgabe angefordert',
-    return_approved: 'Rückgabe genehmigt', return_received: 'Rückgabe eingegangen',
-    refund_pending: 'Erstattung wird bearbeitet', refunded: 'Erstattet', open: 'Reklamation offen',
-    reviewing: 'In Prüfung', resolved: 'Reklamation abgeschlossen', declined: 'Kostenvoranschlag abgelehnt',
+    opened: 'Vorgang eröffnet',
+    deposited: 'Im Geschäft abgegeben',
+    received: 'Beim Kundendienst eingegangen',
+    diagnosis: 'Diagnose läuft',
+    waiting_part: 'Warten auf ein Ersatzteil',
+    quote_pending: 'Kostenvoranschlag wartet auf Freigabe',
+    repairing: 'In Reparatur',
+    repaired: 'Reparatur abgeschlossen',
+    exchanged: 'Produkt ausgetauscht',
+    shipping: 'Versand läuft',
+    transit: 'Im Transport',
+    ready: 'Abholbereit',
+    delivered: 'Geliefert',
+    refund_pending: 'Erstattung wird bearbeitet',
+    refunded: 'Erstattet',
+    complaint_review: 'Reklamation in Prüfung',
+    resolved: 'Vorgang abgeschlossen',
+    cancelled: 'Vorgang storniert',
+    delayed: 'Verzögerung gemeldet',
   },
   es: {
-    deposited: 'Depositado en tienda', received: 'Recibido por posventa', diagnosis: 'Diagnóstico en curso',
-    waiting_part: 'En espera de una pieza', quote_pending: 'Presupuesto pendiente de aprobación', repairing: 'En reparación',
-    repaired: 'Reparación terminada', replacement: 'Cambio aprobado', shipping: 'Transporte de retorno en curso',
-    ready: 'Listo para recoger', delivered: 'Entregado', preparing: 'En preparación',
-    transit: 'En reparto', delayed: 'Entrega retrasada', return_requested: 'Devolución solicitada',
-    return_approved: 'Devolución autorizada', return_received: 'Devolución recibida',
-    refund_pending: 'Reembolso en proceso', refunded: 'Reembolsado', open: 'Reclamación abierta',
-    reviewing: 'En revisión', resolved: 'Reclamación resuelta', declined: 'Presupuesto rechazado',
+    opened: 'Expediente abierto',
+    deposited: 'Depositado en tienda',
+    received: 'Recibido por posventa',
+    diagnosis: 'Diagnóstico en curso',
+    waiting_part: 'En espera de una pieza',
+    quote_pending: 'Presupuesto pendiente de aprobación',
+    repairing: 'En reparación',
+    repaired: 'Reparación terminada',
+    exchanged: 'Producto cambiado',
+    shipping: 'Envío en curso',
+    transit: 'En tránsito',
+    ready: 'Listo para recoger',
+    delivered: 'Entregado',
+    refund_pending: 'Reembolso en proceso',
+    refunded: 'Reembolsado',
+    complaint_review: 'Reclamación en revisión',
+    resolved: 'Expediente resuelto',
+    cancelled: 'Expediente cancelado',
+    delayed: 'Retraso registrado',
   },
   ar: {
-    deposited: 'تم الإيداع في المتجر', received: 'تم الاستلام لدى خدمة ما بعد البيع', diagnosis: 'التشخيص جارٍ',
-    waiting_part: 'في انتظار قطعة غيار', quote_pending: 'عرض السعر بانتظار الموافقة', repairing: 'قيد الإصلاح',
-    repaired: 'اكتمل الإصلاح', replacement: 'تمت الموافقة على الاستبدال', shipping: 'الإرجاع قيد النقل',
-    ready: 'جاهز للاستلام', delivered: 'تم التوصيل', preparing: 'قيد التجهيز',
-    transit: 'قيد التوصيل', delayed: 'التوصيل متأخر', return_requested: 'تم طلب الإرجاع',
-    return_approved: 'تمت الموافقة على الإرجاع', return_received: 'تم استلام المرتجع',
-    refund_pending: 'الاسترداد قيد المعالجة', refunded: 'تم الاسترداد', open: 'الشكوى مفتوحة',
-    reviewing: 'قيد المراجعة', resolved: 'تم حل الشكوى', declined: 'تم رفض عرض السعر',
+    opened: 'تم فتح الملف',
+    deposited: 'تم الإيداع في المتجر',
+    received: 'تم الاستلام لدى خدمة ما بعد البيع',
+    diagnosis: 'التشخيص جارٍ',
+    waiting_part: 'في انتظار قطعة غيار',
+    quote_pending: 'عرض السعر بانتظار الموافقة',
+    repairing: 'قيد الإصلاح',
+    repaired: 'اكتمل الإصلاح',
+    exchanged: 'تم استبدال المنتج',
+    shipping: 'الشحن قيد التنفيذ',
+    transit: 'قيد النقل',
+    ready: 'جاهز للاستلام',
+    delivered: 'تم التوصيل',
+    refund_pending: 'الاسترداد قيد المعالجة',
+    refunded: 'تم الاسترداد',
+    complaint_review: 'الشكوى قيد المراجعة',
+    resolved: 'تم حل الملف',
+    cancelled: 'تم إلغاء الملف',
+    delayed: 'تم تسجيل تأخير',
   },
+};
+
+const legacyStatusLabels: Record<ConversationLanguage, Record<string, string>> = {
+  fr: {
+    replacement: 'Échange validé',
+    preparing: 'En préparation',
+    return_requested: 'Retour demandé',
+    return_approved: 'Retour autorisé',
+    return_received: 'Retour réceptionné',
+    open: 'Réclamation ouverte',
+    reviewing: 'En cours d’examen',
+    declined: 'Devis refusé',
+  },
+  en: {
+    replacement: 'Replacement approved',
+    preparing: 'Being prepared',
+    return_requested: 'Return requested',
+    return_approved: 'Return approved',
+    return_received: 'Return received',
+    open: 'Complaint open',
+    reviewing: 'Under review',
+    declined: 'Quote declined',
+  },
+  de: {
+    replacement: 'Austausch bestätigt',
+    preparing: 'In Vorbereitung',
+    return_requested: 'Rückgabe angefordert',
+    return_approved: 'Rückgabe genehmigt',
+    return_received: 'Rückgabe eingegangen',
+    open: 'Reklamation offen',
+    reviewing: 'In Prüfung',
+    declined: 'Kostenvoranschlag abgelehnt',
+  },
+  es: {
+    replacement: 'Cambio aprobado',
+    preparing: 'En preparación',
+    return_requested: 'Devolución solicitada',
+    return_approved: 'Devolución autorizada',
+    return_received: 'Devolución recibida',
+    open: 'Reclamación abierta',
+    reviewing: 'En revisión',
+    declined: 'Presupuesto rechazado',
+  },
+  ar: {
+    replacement: 'تمت الموافقة على الاستبدال',
+    preparing: 'قيد التجهيز',
+    return_requested: 'تم طلب الإرجاع',
+    return_approved: 'تمت الموافقة على الإرجاع',
+    return_received: 'تم استلام المرتجع',
+    open: 'الشكوى مفتوحة',
+    reviewing: 'قيد المراجعة',
+    declined: 'تم رفض عرض السعر',
+  },
+};
+
+export const statusLabels: Record<ConversationLanguage, Record<string, string>> = {
+  fr: { ...productionStatusLabels.fr, ...legacyStatusLabels.fr },
+  en: { ...productionStatusLabels.en, ...legacyStatusLabels.en },
+  de: { ...productionStatusLabels.de, ...legacyStatusLabels.de },
+  es: { ...productionStatusLabels.es, ...legacyStatusLabels.es },
+  ar: { ...productionStatusLabels.ar, ...legacyStatusLabels.ar },
 };
 
 function formatMoney(cents: number, language: ConversationLanguage) {
@@ -761,7 +868,11 @@ export function localizedStatusLabel(
   language: ConversationLanguage,
   status: string,
 ): string {
-  return statusLabels[language][status as CaseStatus] ?? unavailableStatusLabels[language];
+  return (
+    productionStatusLabels[language][status as CaseStatus] ??
+    legacyStatusLabels[language][status] ??
+    unavailableStatusLabels[language]
+  );
 }
 
 export function localizedCaseReply(
