@@ -120,6 +120,21 @@ for (const [provider, env, format] of [
         assert.equal(schema.properties.sentences.items.properties.text.minLength, undefined);
         assert.equal(schema.properties.sentences.items.properties.text.maxLength, undefined);
         assert.equal(schema.properties.sentences.items.additionalProperties, false);
+        const request = JSON.parse(p.messages[1].content);
+        assert.deepEqual(
+          schema.properties.sentences.items.properties.evidenceRefs.items.enum,
+          Object.keys(request.evidence.references).sort(),
+        );
+        assert.ok(
+          schema.properties.sentences.items.properties.evidenceRefs.items.enum.includes(
+            'case.confirmedEta',
+          ),
+        );
+        assert.ok(
+          !schema.properties.sentences.items.properties.evidenceRefs.items.enum.includes(
+            'case.confirmed_eta',
+          ),
+        );
       }
       return response(draft('fr'));
     });
@@ -257,6 +272,27 @@ for (const [name, data, reason] of [
     assert.equal(result.draft, null);
     assert.equal(result.diagnostics.reason, reason);
   });
+test('Natural generation prompt transport binds evidenceRefs to the current evidence pack', async (t) => {
+  const c = setup(t);
+  c.env.LLM_STRUCTURED_OUTPUT = 'prompt';
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const p = JSON.parse(init.body);
+    const request = JSON.parse(p.messages[1].content);
+    const allowed = Object.keys(request.evidence.references).sort();
+    assert.match(p.messages[0].content, /JSON schema:/);
+    const schemaText = p.messages[0].content.split('\nJSON schema: ')[1];
+    const schema = JSON.parse(schemaText);
+    assert.deepEqual(
+      schema.properties.sentences.items.properties.evidenceRefs.items.enum,
+      allowed,
+    );
+    assert.ok(!allowed.includes('case.confirmed_eta'));
+    return response(draft('fr'));
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+});
+
 test('Natural generation never treats valid citations as a factual pass', async (t) => {
   const c = setup(t);
   const falseClaim = {
