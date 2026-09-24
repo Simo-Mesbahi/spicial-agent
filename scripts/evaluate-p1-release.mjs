@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { groundingDecisionPasses } from '../evals/grounding.mjs';
 import {
   groundingReportPath,
+  p1GroundingMaximumRetryCalls,
   p1GroundingPlan,
 } from '../evals/p1-grounding-plan.mjs';
 import { p1ReleaseQualificationContract as contract } from '../evals/p1-release-contract.mjs';
@@ -63,15 +64,22 @@ const plannedCalls = {
   structuredCompletionCalls: structuredTurns,
   structuredRetryCompletionCalls: contract.structured.maximumRetryCompletionCalls,
   generationCalls: contract.generation.requiredScenarios,
+  generationRetryCompletionCalls: contract.generation.maximumGenerationRetryCalls,
   generationValidationCalls: contract.generation.requiredValidationCalls,
+  generationValidationRetryCompletionCalls:
+    contract.generation.maximumValidationRetryCalls,
   groundingCalls: contract.grounding.requiredScenarios,
+  groundingRetryCompletionCalls: contract.grounding.maximumRetryCalls,
   embeddingCalls: contract.retrieval.requiredQueries,
   completionCalls:
     structuredTurns +
     contract.structured.maximumRetryCompletionCalls +
     contract.generation.requiredScenarios +
+    contract.generation.maximumGenerationRetryCalls +
     contract.generation.requiredValidationCalls +
-    contract.grounding.requiredScenarios,
+    contract.generation.maximumValidationRetryCalls +
+    contract.grounding.requiredScenarios +
+    contract.grounding.maximumRetryCalls,
 };
 
 if (
