@@ -314,57 +314,72 @@ export async function productionChat(
             },
             trace,
           );
-          draft = result.draft;
-          generation = result.diagnostics;
-          if (generation.calls > 0) await refreshAfterModelCall();
+          if (result.diagnostics.calls > 0) await refreshAfterModelCall();
+          return result;
         };
 
-        await generate();
+        let generated = await generate();
+        draft = generated.draft;
+        generation = generated.diagnostics;
 
         // A wrong-language draft is safe to regenerate once because the factual
         // content contract is unchanged. Never regenerate unsupported/uncertain
         // factual content to hunt for a favorable verdict.
         if (
-          generation?.reason === 'output_language_mismatch' &&
+          generation.reason === 'output_language_mismatch' &&
           !freshnessFailure &&
           !languageCorrectionUsed &&
           (await evidenceStillMatches())
         ) {
           languageCorrectionUsed = true;
-          await generate('language_mismatch');
+          generated = await generate('language_mismatch');
+          draft = generated.draft;
+          generation = generated.diagnostics;
         }
 
         const validationEnabled =
           env.LLM_VALIDATION_MODE === 'shadow' ||
           env.LLM_VALIDATION_MODE === 'release';
 
-        const validate = async () => {
-          if (!draft || generation?.outcome !== 'candidate_generated') return;
-          validation = await validateNaturalDraft(
+        const validate = async (
+          candidate: NonNullable<Awaited<ReturnType<typeof generateNaturalDraft>>['draft']>,
+        ) =>
+          validateNaturalDraft(
             env,
             {
-              draft,
+              draft: candidate,
               pack: generatedFrom,
               currentPack,
               context: evidenceContext,
             },
             trace,
           );
-        };
 
-        if (!freshnessFailure && validationEnabled) {
-          await validate();
+        if (
+          !freshnessFailure &&
+          validationEnabled &&
+          draft &&
+          generation.outcome === 'candidate_generated'
+        ) {
+          validation = await validate(draft);
 
           if (
-            validation?.reason === 'output_language_mismatch' &&
+            validation.reason === 'output_language_mismatch' &&
             !freshnessFailure &&
             !languageCorrectionUsed &&
             (await evidenceStillMatches())
           ) {
             languageCorrectionUsed = true;
-            await generate('language_mismatch');
+            generated = await generate('language_mismatch');
+            draft = generated.draft;
+            generation = generated.diagnostics;
             validation = null;
-            if (!freshnessFailure && validationEnabled) await validate();
+            if (
+              !freshnessFailure &&
+              draft &&
+              generation.outcome === 'candidate_generated'
+            )
+              validation = await validate(draft);
           }
 
           if (validation?.calls) {
