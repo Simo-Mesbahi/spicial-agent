@@ -60,7 +60,12 @@ for (const script of ['generation', 'grounding'])
     const summary = JSON.parse(stdout),
       report = JSON.parse(readFileSync(output, 'utf8'));
     assert.equal(summary.status, 'incomplete');
-    assert.equal(summary.calls, 1);
+    if (script === 'generation') {
+      assert.equal(summary.generationCalls, 1);
+      assert.equal(summary.validationCalls, 0);
+    } else {
+      assert.equal(summary.calls, 1);
+    }
     assert.equal(summary.failures.length, 1);
     const attempt = summary.failures[0].providerAttempts[0];
     assert.equal(attempt.provider, 'gemini');
