@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import type { AtlasEnv } from './api';
-import { caseSchema } from './case-schema';
+import { caseSchema, type CaseStatus } from './case-schema';
 import { z as schema } from 'zod';
 import { supabaseRequest, supabaseSettings, SupabaseRequestError } from './supabase';
 
@@ -26,7 +26,7 @@ export type CaseFacts = {
   id: string;
   reference: string;
   kind: string;
-  status: string;
+  status: CaseStatus;
   product: string | null;
   warranty: { status: string; label: string | null };
   quote: { cents: number; currency: string } | null;
