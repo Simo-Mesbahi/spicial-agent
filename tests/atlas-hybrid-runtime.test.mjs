@@ -300,7 +300,7 @@ test('Indexing is bounded, preserves source checksums and uses one provider batc
     checksum = await digest(content);
   let batchReads = 0;
   t.mock.method(globalThis, 'fetch', async (url, init) => {
-    const body = JSON.parse(init.body);
+    JSON.parse(init.body);
     if (url.endsWith('/knowledge_embedding_batch')) {
       batchReads++;
       assert.equal(body.p_limit, batchReads === 1 ? 2 : 1);
