@@ -104,8 +104,8 @@ if (!options.live) {
       let activeFixture = fixture;
       const attempts = [];
       while (true) {
-        activeFixture = refreshSyntheticEvidenceFixture(activeFixture);
         await pacing.beforeCall();
+        activeFixture = refreshSyntheticEvidenceFixture(activeFixture);
         const trace = providerTrace();
         const generated = await generateNaturalDraft(
           {
@@ -148,8 +148,8 @@ if (!options.live) {
       let activeFixture = fixture;
       const attempts = [];
       while (true) {
-        activeFixture = refreshSyntheticEvidenceFixture(activeFixture);
         await pacing.beforeCall();
+        activeFixture = refreshSyntheticEvidenceFixture(activeFixture);
         const validationTrace = providerTrace();
         factualValidation = await validateNaturalDraft(
           {
