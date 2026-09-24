@@ -54,6 +54,7 @@ const groundingPlan = p1GroundingPlan.map((entry) => ({
 }));
 
 const paths = {
+  knowledgeIndex: resolve('outputs/p1-live/knowledge-index.json'),
   structured: resolve('outputs/p1-live/structured.json'),
   retrieval: resolve('outputs/p1-live/retrieval.json'),
   generation: resolve('outputs/p1-live/generation.json'),
@@ -69,8 +70,15 @@ const plannedCalls = {
   generationValidationRetryCalls: contract.generation.maximumValidationRetryCalls,
   groundingCalls: contract.grounding.requiredScenarios,
   groundingRetryCalls: p1GroundingRetryBudget,
-  embeddingCalls: contract.retrieval.requiredQueries,
-  embeddingRetryCalls: contract.retrieval.maximumRetryEmbeddingCalls,
+  indexingEmbeddingCalls: contract.retrieval.requiredIndexingEmbeddingCalls,
+  indexingRetryEmbeddingCalls: contract.retrieval.maximumIndexingRetryEmbeddingCalls,
+  retrievalEmbeddingCalls: contract.retrieval.requiredQueries,
+  retrievalRetryEmbeddingCalls: contract.retrieval.maximumRetryEmbeddingCalls,
+  embeddingCalls:
+    contract.retrieval.requiredIndexingEmbeddingCalls +
+    contract.retrieval.maximumIndexingRetryEmbeddingCalls +
+    contract.retrieval.requiredQueries +
+    contract.retrieval.maximumRetryEmbeddingCalls,
   completionCalls:
     structuredTurns +
     contract.structured.maximumRetryCompletionCalls +
@@ -93,8 +101,7 @@ if (
     contract.liveBudget.maximumGenerationValidationRetryCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
   plannedCalls.groundingRetryCalls > contract.liveBudget.maximumGroundingRetryCalls ||
-  plannedCalls.embeddingCalls + plannedCalls.embeddingRetryCalls >
-    contract.liveBudget.maximumEmbeddingCalls ||
+  plannedCalls.embeddingCalls > contract.liveBudget.maximumEmbeddingCalls ||
   plannedCalls.completionCalls > contract.liveBudget.maximumTotalCompletionCalls
 )
   throw new Error('Qualification plan exceeds the governed live-call budget.');
@@ -387,6 +394,7 @@ const subprocessFailures = executions
     stdoutTail: run.stdoutTail,
   }));
 
+let knowledgeIndex = null;
 let structured = null;
 let retrieval = null;
 let generation = null;
@@ -394,12 +402,14 @@ const groundingReports = [];
 const readFailures = [];
 
 for (const [name, path] of [
+  ['knowledge_index', paths.knowledgeIndex],
   ['structured', paths.structured],
   ['retrieval', paths.retrieval],
   ['generation', paths.generation],
 ]) {
   try {
     const parsed = await readJson(path);
+    if (name === 'knowledge_index') knowledgeIndex = parsed;
     if (name === 'structured') structured = parsed;
     if (name === 'retrieval') retrieval = parsed;
     if (name === 'generation') generation = parsed;
@@ -427,6 +437,7 @@ if (readFailures.length === 0) {
     artifacts = {
       sourceTreeSha: source.treeSha,
       contractSha256: valueSha256(contract),
+      knowledgeIndexSha256: await fileSha256(paths.knowledgeIndex),
       structuredSha256: await fileSha256(paths.structured),
       retrievalSha256: await fileSha256(paths.retrieval),
       generationSha256: await fileSha256(paths.generation),
@@ -478,6 +489,23 @@ if (finalizeExisting) {
   };
 }
 
+const knowledgeIndexGate = Boolean(
+  knowledgeIndex &&
+    knowledgeIndex.status === 'indexed' &&
+    knowledgeIndex.remainingAfterBatch === false &&
+    /^[a-f0-9]{64}$/.test(knowledgeIndex.embeddingSpace ?? '') &&
+    (knowledgeIndex.trace?.calls ?? 0) <=
+      contract.retrieval.requiredIndexingEmbeddingCalls &&
+    knowledgeIndex.trace?.error === null &&
+    knowledgeIndex.operational?.maximumRetries ===
+      contract.retrieval.maximumIndexingRetryEmbeddingCalls &&
+    knowledgeIndex.operational?.indexingRetries <=
+      contract.retrieval.maximumIndexingRetryEmbeddingCalls &&
+    knowledgeIndex.operational?.embeddingCalls <=
+      contract.retrieval.requiredIndexingEmbeddingCalls +
+        contract.retrieval.maximumIndexingRetryEmbeddingCalls,
+);
+
 const structuredMetrics = structured?.metrics ?? {};
 const expectedStructuredScenarios = contract.structured.requiredFamilies.flatMap((family) =>
   contract.supportedLanguages.map((language) => `pre-p1-${family}-${language}`),
@@ -525,7 +553,16 @@ const structuredGate = Boolean(
 );
 
 const retrievalRows = retrieval?.results ?? [];
-const retrievalGate = retrievalReportPasses(retrieval);
+const retrievalGate =
+  knowledgeIndexGate &&
+  retrievalReportPasses(retrieval) &&
+  retrievalRows.every((row) =>
+    (row.hybrid?.evidence ?? []).every(
+      (evidence) =>
+        evidence.embeddingSpace === null ||
+        evidence.embeddingSpace === knowledgeIndex.embeddingSpace,
+    ),
+  );
 
 const generationRows = generation?.results ?? [];
 const generationOperational = generation?.operational ?? {};
@@ -726,6 +763,7 @@ const automatedGates = {
   subprocesses: subprocessFailures.length === 0,
   reportsReadable: readFailures.length === 0,
   qualificationArtifactIntegrity: qualificationAnchor.valid,
+  knowledgeIndex: knowledgeIndexGate,
   structured: structuredGate,
   retrieval: retrievalGate,
   generation: generationGate,
@@ -760,6 +798,14 @@ const report = {
   },
   gates: automatedGates,
   metrics: {
+    knowledgeIndex: knowledgeIndex
+      ? {
+          indexed: knowledgeIndex.indexed ?? null,
+          embeddingSpace: knowledgeIndex.embeddingSpace ?? null,
+          remainingAfterBatch: knowledgeIndex.remainingAfterBatch ?? null,
+          operational: knowledgeIndex.operational ?? null,
+        }
+      : null,
     structured: structured
       ? {
           provider: structured.provider,
