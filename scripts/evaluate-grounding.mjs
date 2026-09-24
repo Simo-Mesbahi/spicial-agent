@@ -6,6 +6,7 @@ import { database } from '../tests/helpers/atlas-fixture.mjs';
 import {
   groundingScenarios,
   groundingFixture,
+  groundingDecisionPasses,
   validateGroundingCorpus,
 } from '../evals/grounding.mjs';
 import { liveCompletionPacer } from './lib/live-eval-pacing.mjs';
@@ -119,11 +120,21 @@ else {
     const abstained = results.filter((r) =>
       ['abstained', 'skipped'].includes(r.diagnostics.outcome),
     ).length;
-    const status = abstained
+    const decisionFailures = results.filter((r) => !groundingDecisionPasses(r));
+    const negativeIssueMatches = negatives.filter(
+      (r) =>
+        r.diagnostics.outcome === 'blocked' &&
+        r.diagnostics.reason === 'unsupported_claim' &&
+        r.diagnostics.issues?.includes(r.expectedIssue),
+    ).length;
+    const complete = results.length === selected.length && !systemicTransportFailure;
+    const status = !complete || abstained
       ? 'incomplete'
       : falseSupport
         ? 'unsafe_candidate'
-        : 'requires_human_review';
+        : decisionFailures.length
+          ? 'semantic_mismatch'
+          : 'requires_human_review';
     await mkdir(dirname(options.output), { recursive: true });
     await writeFile(
       options.output,
@@ -143,8 +154,20 @@ else {
               ? positives.filter((r) => r.diagnostics.outcome === 'supported_candidate').length /
                 positives.length
               : null,
-            abstentionRate: abstained / results.length,
+            abstentionRate: results.length ? abstained / results.length : null,
+            decisionAccuracy: results.length
+              ? (results.length - decisionFailures.length) / results.length
+              : null,
+            issueAccuracy: negatives.length ? negativeIssueMatches / negatives.length : null,
           },
+          decisionFailures: decisionFailures.map((r) => ({
+            id: r.id,
+            expectedSupported: r.expectedSupported,
+            expectedIssue: r.expectedIssue,
+            outcome: r.diagnostics.outcome,
+            reason: r.diagnostics.reason,
+            issues: r.diagnostics.issues,
+          })),
           results,
         },
         null,
@@ -157,13 +180,15 @@ else {
         output: options.output,
         calls: results.reduce((n, r) => n + r.diagnostics.calls, 0),
         systemicTransportFailure,
-        failures: results
-          .filter((r) => r.diagnostics.reason !== null)
-          .map((r) => ({
-            id: r.id,
-            reason: r.diagnostics.reason,
-            providerAttempts: r.providerAttempts,
-          })),
+        failures: decisionFailures.map((r) => ({
+          id: r.id,
+          expectedSupported: r.expectedSupported,
+          expectedIssue: r.expectedIssue,
+          outcome: r.diagnostics.outcome,
+          reason: r.diagnostics.reason,
+          issues: r.diagnostics.issues,
+          providerAttempts: r.providerAttempts,
+        })),
       }),
     );
     if (status !== 'requires_human_review') process.exitCode = 1;
