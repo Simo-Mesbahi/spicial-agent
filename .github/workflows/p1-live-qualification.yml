@@ -217,7 +217,7 @@ jobs:
             --max-chunks 32 \
             --max-retries 1 \
             --retry-backoff-ms 15000 \
-            | tee outputs/p1-live/knowledge-index.json
+            --output outputs/p1-live/knowledge-index.json
           node - <<'NODE'
           const fs = require('node:fs');
           const result = JSON.parse(fs.readFileSync('outputs/p1-live/knowledge-index.json', 'utf8'));
