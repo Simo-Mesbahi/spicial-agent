@@ -7,12 +7,7 @@ function boundedInterval(raw, fallback) {
   return value;
 }
 
-/**
- * Qualification-only start-to-start pacing. This never retries provider calls,
- * so the governed provider-call budget remains unchanged.
- */
-export function liveCompletionPacer(env = process.env) {
-  const intervalMs = boundedInterval(env.P1_LIVE_COMPLETION_MIN_INTERVAL_MS, 0);
+function pacer(intervalMs) {
   let lastStartedAt = 0;
   return {
     intervalMs,
@@ -26,4 +21,16 @@ export function liveCompletionPacer(env = process.env) {
       lastStartedAt = Date.now();
     },
   };
+}
+
+/**
+ * Qualification-only start-to-start pacing. These helpers never issue or retry
+ * provider calls; runners remain responsible for the governed call budget.
+ */
+export function liveCompletionPacer(env = process.env) {
+  return pacer(boundedInterval(env.P1_LIVE_COMPLETION_MIN_INTERVAL_MS, 0));
+}
+
+export function liveEmbeddingPacer(env = process.env) {
+  return pacer(boundedInterval(env.P1_LIVE_EMBEDDING_MIN_INTERVAL_MS, 0));
 }
