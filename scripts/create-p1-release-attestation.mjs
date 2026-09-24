@@ -34,6 +34,7 @@ const requiredGates = [
   'subprocesses',
   'reportsReadable',
   'qualificationArtifactIntegrity',
+  'knowledgeIndex',
   'structured',
   'retrieval',
   'generation',
