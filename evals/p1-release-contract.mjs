@@ -26,6 +26,8 @@ export const p1ReleaseQualificationContract = Object.freeze({
     corpusLocale: 'fr-FR',
     requiredQueries: 20,
     completionCalls: 0,
+    requiredIndexingEmbeddingCalls: 1,
+    maximumIndexingRetryEmbeddingCalls: 1,
     maximumRetryEmbeddingCalls: 4,
     minimumHybridRecallAtK: 1,
     minimumHybridPrecisionAtK: 1 / 3,
@@ -59,7 +61,7 @@ export const p1ReleaseQualificationContract = Object.freeze({
     maximumGenerationValidationRetryCalls: 3,
     maximumGroundingCalls: 70,
     maximumGroundingRetryCalls: 9,
-    maximumEmbeddingCalls: 24,
+    maximumEmbeddingCalls: 26,
     maximumTotalCompletionCalls: 235,
   },
   releaseRule:
