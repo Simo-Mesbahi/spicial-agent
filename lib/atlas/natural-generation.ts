@@ -47,6 +47,32 @@ export function safeGeneratedSentenceText(text: string) {
   );
 }
 
+const evidenceFreeCourtesyPatterns: Record<(typeof languages)[number], RegExp[]> = {
+  fr: [
+    /^(?:bonjour|bonsoir|merci(?: beaucoup)?|avec plaisir|je vous en prie|bonne journée|bonne soirée|à bientôt|au revoir|je reste à votre disposition|n['’]hésitez pas à revenir(?: si vous avez une autre question)?)[ !?.…]*$/iu,
+  ],
+  en: [
+    /^(?:hello|thank you|thanks(?: very much)?|you['’]re welcome|happy to help|have a (?:good|nice) day|goodbye|see you soon|i['’]m here if you need anything else)[ !?.…]*$/iu,
+  ],
+  de: [
+    /^(?:hallo|guten tag|danke(?: schön| sehr)?|gern geschehen|gerne|auf wiedersehen|bis bald|einen schönen tag noch|ich helfe ihnen gerne weiter)[ !?.…]*$/iu,
+  ],
+  es: [
+    /^(?:hola|gracias(?: muchas)?|de nada|con gusto|hasta luego|adiós|que tenga un buen día|estoy aquí si necesita algo más)[ !?.…]*$/iu,
+  ],
+  ar: [
+    /^(?:مرحبا|شكرًا|شكرا|شكرًا جزيلاً|شكرا جزيلا|على الرحب والسعة|يسعدني مساعدتك|مع السلامة|إلى اللقاء|انا هنا اذا احتجت الى اي مساعدة اخرى|أنا هنا إذا احتجت إلى أي مساعدة أخرى)[ !?.…،؟]*$/u,
+  ],
+};
+
+export function isEvidenceFreeCourtesy(
+  language: (typeof languages)[number],
+  text: string,
+) {
+  const normalized = text.trim().replace(/\s+/g, ' ');
+  return evidenceFreeCourtesyPatterns[language].some((pattern) => pattern.test(normalized));
+}
+
 export const naturalDraftSchema = z
   .object({
     language: z.enum(languages),
@@ -64,6 +90,14 @@ export const naturalDraftSchema = z
   })
   .strict();
 export type NaturalDraft = z.infer<typeof naturalDraftSchema>;
+
+export function draftEvidenceBoundaryValid(draft: NaturalDraft) {
+  return draft.sentences.every(
+    (sentence) =>
+      sentence.evidenceRefs.length > 0 ||
+      isEvidenceFreeCourtesy(draft.language, sentence.text),
+  );
+}
 const object = (properties: Record<string, unknown>) => ({
   type: 'object',
   properties,
@@ -378,6 +412,7 @@ export async function generateNaturalDraft(
     const refs = draft.sentences.flatMap((s) => s.evidenceRefs);
     if (
       !refs.length ||
+      !draftEvidenceBoundaryValid(draft) ||
       refs.some((ref) => !Object.hasOwn(evidence.references, ref)) ||
       draft.sentences.some((s) => new Set(s.evidenceRefs).size !== s.evidenceRefs.length)
     )

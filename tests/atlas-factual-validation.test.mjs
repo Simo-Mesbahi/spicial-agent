@@ -259,6 +259,16 @@ for (const [name, change, reason] of [
     'invalid_draft',
   ],
   [
+    'evidence-free factual sentence',
+    (c) => {
+      c.input.draft.sentences.push({
+        text: 'La date de retour est inconnue.',
+        evidenceRefs: [],
+      });
+    },
+    'invalid_draft',
+  ],
+  [
     'wrong language',
     (c) => {
       c.input.draft.language = 'en';
@@ -321,6 +331,24 @@ for (const [name, v] of [
     assert.equal(r.reason, 'invalid_verdict');
     assert.equal(r.calls, 1);
   });
+test('Factual audit accepts a strictly bounded evidence-free courtesy while keeping factual provenance server-owned', async (t) => {
+  const c = setup(t);
+  c.input.draft.sentences.push({ text: 'Merci.', evidenceRefs: [] });
+  t.mock.method(globalThis, 'fetch', async () =>
+    response({
+      language: 'fr',
+      sentences: [
+        { verdict: 'supported', issues: [] },
+        { verdict: 'supported', issues: [] },
+      ],
+    }),
+  );
+  const result = await validateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.outcome, 'supported_candidate');
+  assert.equal(result.reason, null);
+  assert.equal(result.calls, 1);
+});
+
 test('Factual audit covers every sentence, rejects a partially true reply and detects actual language mismatch', async (t) => {
   const c = setup(t);
   c.input.draft.sentences.push({ text: 'Demain.', evidenceRefs: ['case.confirmedEta'] });
