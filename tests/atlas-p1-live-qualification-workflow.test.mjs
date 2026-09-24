@@ -137,6 +137,22 @@ test('P1.7 live resilience is paced and retries only transport failures within e
   assert.match(release, /groundingRetryCompletionCalls/);
 });
 
+test('P1.7 release gate verifies exact generation/grounding corpus identity and retry accounting', async () => {
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(release, /generationScenarios\.slice/);
+  assert.match(release, /generationCoverageGate/);
+  assert.match(release, /expectedGenerationById/);
+  assert.match(release, /generationRetriesUsed === generationRetryRows/);
+  assert.match(release, /validationRetriesUsed === validationRetryRows/);
+  assert.match(release, /languageCorrectionsUsed === languageCorrectionRows/);
+  assert.match(release, /providerCalls === generationProviderAttemptRows/);
+
+  assert.match(release, /expectedGroundingIds/);
+  assert.match(release, /groundingCoverageGate/);
+  assert.match(release, /groundingScenarios\.every\(\(scenario\) => groundingIds\.has\(scenario\.id\)\)/);
+});
+
 test('P1.7 generation language correction is bounded and does not retry factual semantic failures', async () => {
   const generation = await readFile('scripts/evaluate-generation.mjs', 'utf8');
   const natural = await readFile('lib/atlas/natural-generation.ts', 'utf8');
