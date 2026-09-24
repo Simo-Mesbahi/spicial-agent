@@ -34,6 +34,8 @@ export const p1ReleaseQualificationContract = Object.freeze({
   generation: {
     requiredScenarios: 10,
     requiredValidationCalls: 10,
+    maximumGenerationRetryCalls: 2,
+    maximumValidationRetryCalls: 2,
     requireCandidateForEveryScenario: true,
     requireFactualValidation: true,
     requireHumanReview: true,
@@ -41,6 +43,7 @@ export const p1ReleaseQualificationContract = Object.freeze({
   },
   grounding: {
     requiredScenarios: 70,
+    maximumRetryCalls: 8,
     maximumFalseSupportRate: 0,
     maximumAbstentionRate: 0,
     minimumSupportedRecall: 1,
@@ -50,10 +53,13 @@ export const p1ReleaseQualificationContract = Object.freeze({
   liveBudget: {
     maximumStructuredCompletionCalls: 100,
     maximumGenerationCalls: 10,
+    maximumGenerationRetryCalls: 2,
     maximumGenerationValidationCalls: 10,
+    maximumGenerationValidationRetryCalls: 2,
     maximumGroundingCalls: 70,
+    maximumGroundingRetryCalls: 8,
     maximumEmbeddingCalls: 20,
-    maximumTotalCompletionCalls: 220,
+    maximumTotalCompletionCalls: 232,
   },
   releaseRule:
     'All automated gates must pass and every generation scenario must have an explicit human review approval. Missing metrics never count as passing.',

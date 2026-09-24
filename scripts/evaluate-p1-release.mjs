@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { groundingDecisionPasses } from '../evals/grounding.mjs';
 import {
   groundingReportPath,
+  p1GroundingMaximumRetryCalls,
   p1GroundingPlan,
 } from '../evals/p1-grounding-plan.mjs';
 import { p1ReleaseQualificationContract as contract } from '../evals/p1-release-contract.mjs';
@@ -63,24 +64,38 @@ const plannedCalls = {
   structuredCompletionCalls: structuredTurns,
   structuredRetryCompletionCalls: contract.structured.maximumRetryCompletionCalls,
   generationCalls: contract.generation.requiredScenarios,
+  generationRetryCompletionCalls: contract.generation.maximumGenerationRetryCalls,
   generationValidationCalls: contract.generation.requiredValidationCalls,
+  generationValidationRetryCompletionCalls:
+    contract.generation.maximumValidationRetryCalls,
   groundingCalls: contract.grounding.requiredScenarios,
+  groundingRetryCompletionCalls: contract.grounding.maximumRetryCalls,
   embeddingCalls: contract.retrieval.requiredQueries,
   completionCalls:
     structuredTurns +
     contract.structured.maximumRetryCompletionCalls +
     contract.generation.requiredScenarios +
+    contract.generation.maximumGenerationRetryCalls +
     contract.generation.requiredValidationCalls +
-    contract.grounding.requiredScenarios,
+    contract.generation.maximumValidationRetryCalls +
+    contract.grounding.requiredScenarios +
+    contract.grounding.maximumRetryCalls,
 };
 
 if (
   plannedCalls.structuredCompletionCalls > contract.liveBudget.maximumStructuredCompletionCalls ||
   plannedCalls.structuredRetryCompletionCalls > contract.structured.maximumRetryCompletionCalls ||
   plannedCalls.generationCalls > contract.liveBudget.maximumGenerationCalls ||
+  plannedCalls.generationRetryCompletionCalls >
+    contract.liveBudget.maximumGenerationRetryCalls ||
   plannedCalls.generationValidationCalls >
     contract.liveBudget.maximumGenerationValidationCalls ||
+  plannedCalls.generationValidationRetryCompletionCalls >
+    contract.liveBudget.maximumGenerationValidationRetryCalls ||
   plannedCalls.groundingCalls > contract.liveBudget.maximumGroundingCalls ||
+  plannedCalls.groundingRetryCompletionCalls >
+    contract.liveBudget.maximumGroundingRetryCalls ||
+  p1GroundingMaximumRetryCalls !== contract.grounding.maximumRetryCalls ||
   plannedCalls.embeddingCalls > contract.liveBudget.maximumEmbeddingCalls ||
   plannedCalls.completionCalls > contract.liveBudget.maximumTotalCompletionCalls
 )
@@ -292,6 +307,8 @@ if (live) {
     String(smoke.offset),
     '--max-cases',
     String(smoke.maxCases),
+    '--max-retries',
+    String(smoke.maxRetries),
     '--output',
     smoke.path,
   ]);
@@ -322,6 +339,10 @@ if (live) {
       '--live',
       '--max-cases',
       String(contract.generation.requiredScenarios),
+      '--max-generation-retries',
+      String(contract.generation.maximumGenerationRetryCalls),
+      '--max-validation-retries',
+      String(contract.generation.maximumValidationRetryCalls),
       '--output',
       paths.generation,
     ]);
@@ -337,6 +358,8 @@ if (live) {
         String(entry.offset),
         '--max-cases',
         String(entry.maxCases),
+        '--max-retries',
+        String(entry.maxRetries),
         '--output',
         entry.path,
       ]);
@@ -506,16 +529,29 @@ const generationRows = generation?.results ?? [];
 const generationGate = Boolean(
   generation &&
     generationRows.length === contract.generation.requiredScenarios &&
+    generation.operational?.generationRetriesUsed <=
+      contract.generation.maximumGenerationRetryCalls &&
+    generation.operational?.validationRetriesUsed <=
+      contract.generation.maximumValidationRetryCalls &&
+    generation.operational?.providerCalls <=
+      contract.generation.requiredScenarios +
+        contract.generation.maximumGenerationRetryCalls +
+        contract.generation.requiredValidationCalls +
+        contract.generation.maximumValidationRetryCalls &&
     generationRows.every(
       (row) =>
         row.draft &&
         row.diagnostics?.outcome === 'candidate_generated' &&
         row.diagnostics?.reason === null &&
         row.diagnostics?.calls === 1 &&
+        Number.isInteger(row.generationRetries) &&
+        row.generationRetries >= 0 &&
         row.factualValidation?.outcome === 'supported_candidate' &&
         row.factualValidation?.reason === null &&
         row.factualValidation?.issues?.length === 0 &&
         row.factualValidation?.calls === 1 &&
+        Number.isInteger(row.validationRetries) &&
+        row.validationRetries >= 0 &&
         row.groundedness === true,
     ),
 );
@@ -557,8 +593,19 @@ const groundingMetrics = {
     ? groundingIssueMatches / groundingNegatives.length
     : null,
 };
+const groundingRetryCalls = groundingReports.reduce(
+  (total, report) => total + (report.operational?.retriesUsed ?? 0),
+  0,
+);
+const groundingProviderCalls = groundingReports.reduce(
+  (total, report) => total + (report.operational?.providerCalls ?? 0),
+  0,
+);
 const groundingGate = Boolean(
   groundingRows.length === contract.grounding.requiredScenarios &&
+    groundingRetryCalls <= contract.grounding.maximumRetryCalls &&
+    groundingProviderCalls <=
+      contract.grounding.requiredScenarios + contract.grounding.maximumRetryCalls &&
     groundingIds.size === contract.grounding.requiredScenarios &&
     groundingMetrics.falseSupportRate !== null &&
     groundingMetrics.falseSupportRate <= contract.grounding.maximumFalseSupportRate &&
@@ -726,7 +773,11 @@ const report = {
           candidates: generationRows.filter((row) => row.draft).length,
         }
       : null,
-    grounding: groundingMetrics,
+    grounding: {
+      ...groundingMetrics,
+      retryCalls: groundingRetryCalls,
+      providerCalls: groundingProviderCalls,
+    },
   },
   humanReview,
 };

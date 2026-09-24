@@ -9,18 +9,23 @@ import {
   groundingDecisionPasses,
   validateGroundingCorpus,
 } from '../evals/grounding.mjs';
-import { liveCompletionPacer } from './lib/live-eval-pacing.mjs';
+import {
+  liveCompletionPacer,
+  liveTransientRetryBackoff,
+} from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
 const options = {
   live: false,
   maxCases: 5,
   offset: 0,
+  maxRetries: 0,
   output: 'outputs/grounding-evaluation.json',
 };
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--live') options.live = true;
   else if (args[i] === '--max-cases') options.maxCases = Number(args[++i]);
   else if (args[i] === '--offset') options.offset = Number(args[++i]);
+  else if (args[i] === '--max-retries') options.maxRetries = Number(args[++i]);
   else if (args[i] === '--output') options.output = args[++i];
   else throw new Error('Unknown argument');
 }
@@ -31,6 +36,9 @@ if (
   !Number.isInteger(options.offset) ||
   options.offset < 0 ||
   options.offset >= groundingScenarios.length ||
+  !Number.isInteger(options.maxRetries) ||
+  options.maxRetries < 0 ||
+  options.maxRetries > 4 ||
   !options.output
 )
   throw new Error('Invalid grounding evaluation options');
@@ -47,7 +55,7 @@ if (!options.live)
         status: 'dry_run',
         coverage,
         scenarios: selected.map((s) => s.id),
-        maxProviderCalls: selected.length,
+        maxProviderCalls: selected.length + options.maxRetries,
         releaseAllowed: false,
         note: 'Corpus validation only, no model-quality measurement or provider request.',
       },
@@ -71,33 +79,55 @@ else {
     'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
   );
   const DB = database(),
-    pacing = liveCompletionPacer();
+    pacing = liveCompletionPacer(),
+    retryBackoff = liveTransientRetryBackoff();
+  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable']);
   try {
     const results = [];
     let rejectedStreak = 0;
     let systemicTransportFailure = null;
+    let retriesUsed = 0;
     for (const scenario of selected) {
-      await pacing.beforeCall();
-      const trace = providerTrace();
       const fixture = groundingFixture(scenario);
-      const diagnostics = await validateNaturalDraft(
-        {
-          ...process.env,
-          DB,
-          SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
-          LLM_VALIDATION_MODE: 'shadow',
-          LLM_VALIDATION_DAILY_LIMIT: String(options.maxCases),
-        },
-        fixture,
-        trace,
-      );
+      let diagnostics = null;
+      const providerAttempts = [];
+      let scenarioRetries = 0;
+
+      while (true) {
+        await pacing.beforeCall();
+        const trace = providerTrace();
+        diagnostics = await validateNaturalDraft(
+          {
+            ...process.env,
+            DB,
+            SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
+            LLM_VALIDATION_MODE: 'shadow',
+            LLM_VALIDATION_DAILY_LIMIT: String(options.maxCases + options.maxRetries),
+          },
+          fixture,
+          trace,
+        );
+        providerAttempts.push(...trace.attempts);
+
+        if (
+          !retryableTransportReasons.has(diagnostics.reason) ||
+          retriesUsed >= options.maxRetries
+        )
+          break;
+
+        retriesUsed++;
+        scenarioRetries++;
+        await retryBackoff.wait();
+      }
+
       results.push({
         id: scenario.id,
         language: scenario.language,
         expectedSupported: scenario.expectedSupported,
         expectedIssue: scenario.expectedIssue,
         diagnostics,
-        providerAttempts: trace.attempts,
+        providerAttempts,
+        retries: scenarioRetries,
       });
 
       if (diagnostics.reason === 'upstream_request_rejected') rejectedStreak++;
@@ -145,6 +175,12 @@ else {
           releaseAllowed: false,
           coverage,
           pacingIntervalMs: pacing.intervalMs,
+          retryBackoffMs: retryBackoff.intervalMs,
+          operational: {
+            retriesUsed,
+            maximumRetries: options.maxRetries,
+            providerCalls: results.reduce((n, r) => n + r.providerAttempts.length, 0),
+          },
           requestedScenarios: selected.length,
           measuredScenarios: results.length,
           systemicTransportFailure,
@@ -178,7 +214,8 @@ else {
       JSON.stringify({
         status,
         output: options.output,
-        calls: results.reduce((n, r) => n + r.diagnostics.calls, 0),
+        calls: results.reduce((n, r) => n + r.providerAttempts.length, 0),
+        retriesUsed,
         systemicTransportFailure,
         failures: decisionFailures.map((r) => ({
           id: r.id,

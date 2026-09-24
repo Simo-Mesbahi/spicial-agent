@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
 import { retrievalScenarios } from '../evals/retrieval.mjs';
+import { liveEmbeddingPacer } from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
 const options = { live: false, maxQueries: 5, output: 'outputs/retrieval-evaluation.json' };
 for (let i = 0; i < args.length; i++) {
@@ -47,7 +48,8 @@ if (!options.live) {
     'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
   );
   const DB = database(),
-    results = [];
+    results = [],
+    embeddingPacing = liveEmbeddingPacer();
   try {
     const cfg = {
       ...process.env,
@@ -64,6 +66,7 @@ if (!options.live) {
         ['lexical', '0'],
         ['hybrid', String(scenarios.length)],
       ]) {
+        if (mode === 'hybrid') await embeddingPacing.beforeCall();
         const start = performance.now();
         const result = await searchKnowledge(
           { ...cfg, EMBEDDING_DAILY_LIMIT: limit },
@@ -125,6 +128,7 @@ if (!options.live) {
         embeddingModel: cfg.EMBEDDING_MODEL ?? null,
         embeddingRevision: cfg.EMBEDDING_REVISION ?? '1',
       },
+      pacingIntervalMs: embeddingPacing.intervalMs,
       status: results.every(
         (r) =>
           r.lexical.scope === 'supabase_published' &&
@@ -152,7 +156,12 @@ if (!options.live) {
     await mkdir(dirname(options.output), { recursive: true });
     await writeFile(options.output, JSON.stringify(report, null, 2) + '\n');
     console.log(
-      JSON.stringify({ status: report.status, queries: results.length, output: options.output }),
+      JSON.stringify({
+        status: report.status,
+        queries: results.length,
+        embeddingPacingIntervalMs: embeddingPacing.intervalMs,
+        output: options.output,
+      }),
     );
     if (report.status !== 'completed') process.exitCode = 1;
   } finally {

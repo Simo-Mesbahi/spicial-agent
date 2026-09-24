@@ -48,9 +48,11 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
 
   assert.match(source, /LLM_STRUCTURED_OUTPUT: json_schema/);
   assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '60000'/);
-  assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '12000'/);
-  assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '12000'/);
+  assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '20000'/);
+  assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '20000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '3000'/);
+  assert.match(source, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
   assert.match(source, /P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /default: gemini-3\.5-flash-lite/);
@@ -91,8 +93,31 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
+  assert.match(contract, /maximumGenerationRetryCalls: 2/);
+  assert.match(contract, /maximumValidationRetryCalls: 2/);
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
-  assert.match(contract, /maximumTotalCompletionCalls: 220/);
+  assert.match(contract, /maximumGroundingRetryCalls: 8/);
+  assert.match(contract, /maximumTotalCompletionCalls: 232/);
+});
+
+test('P1.7 live resilience is paced and retries only transport failures within explicit budgets', async () => {
+  const pacing = await readFile('scripts/lib/live-eval-pacing.mjs', 'utf8');
+  const retrieval = await readFile('scripts/evaluate-retrieval.mjs', 'utf8');
+  const generation = await readFile('scripts/evaluate-generation.mjs', 'utf8');
+  const grounding = await readFile('scripts/evaluate-grounding.mjs', 'utf8');
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(pacing, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS/);
+  assert.match(pacing, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS/);
+  assert.match(retrieval, /liveEmbeddingPacer/);
+  assert.match(generation, /new Set\(\['network_or_timeout', 'upstream_unavailable'\]\)/);
+  assert.match(grounding, /new Set\(\['network_or_timeout', 'upstream_unavailable'\]\)/);
+  assert.doesNotMatch(generation, /retryableTransportReasons.*upstream_rate_limited/s);
+  assert.doesNotMatch(grounding, /retryableTransportReasons.*upstream_rate_limited/s);
+  assert.match(release, /--max-generation-retries/);
+  assert.match(release, /--max-validation-retries/);
+  assert.match(release, /--max-retries/);
+  assert.match(release, /groundingRetryCompletionCalls/);
 });
 
 test('P1.7 structured evaluator forwards the governed provider timeout into runtime env', async () => {
@@ -120,11 +145,11 @@ test('P1.7 release runner uses one of the 70 grounding calls as an early factual
   const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
   const plan = await readFile('evals/p1-grounding-plan.mjs', 'utf8');
 
-  assert.match(plan, /\{ offset: 0, maxCases: 1 \}/);
-  assert.match(plan, /\{ offset: 1, maxCases: 19 \}/);
-  assert.match(plan, /\{ offset: 20, maxCases: 20 \}/);
-  assert.match(plan, /\{ offset: 40, maxCases: 20 \}/);
-  assert.match(plan, /\{ offset: 60, maxCases: 10 \}/);
+  assert.match(plan, /\{ offset: 0, maxCases: 1, maxRetries: 1 \}/);
+  assert.match(plan, /\{ offset: 1, maxCases: 19, maxRetries: 2 \}/);
+  assert.match(plan, /\{ offset: 20, maxCases: 20, maxRetries: 2 \}/);
+  assert.match(plan, /\{ offset: 40, maxCases: 20, maxRetries: 2 \}/);
+  assert.match(plan, /\{ offset: 60, maxCases: 10, maxRetries: 1 \}/);
   assert.match(release, /p1GroundingPlan\.map/);
   assert.match(release, /let continueQualification = smokeRun\.status === 0/);
   assert.match(release, /continueQualification = structuredRun\.status === 0/);

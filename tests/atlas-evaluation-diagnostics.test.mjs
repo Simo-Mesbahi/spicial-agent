@@ -77,3 +77,144 @@ for (const script of ['generation', 'grounding'])
     assert.equal(attempt.outputTokens, null);
     assert.doesNotMatch(stdout + JSON.stringify(report), /PRIVATE-KEY|PRIVATE-CUSTOMER/);
   });
+
+
+for (const script of ['generation', 'grounding'])
+  test(`${script} live runner retries one 503 within budget but never retries the final semantic/request failure`, (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-retry-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const preload = join(dir, 'provider.mjs');
+    const output = join(dir, 'report.json');
+    writeFileSync(
+      preload,
+      `
+      let calls = 0;
+      globalThis.fetch = async () => {
+        calls++;
+        if (calls === 1)
+          return Response.json([{error:{code:503,status:'UNAVAILABLE'}}], {status:503});
+        if (calls === 2)
+          return Response.json([{error:{code:404,status:'NOT_FOUND'}}], {status:404});
+        throw new Error('Unexpected third call');
+      };
+      `,
+    );
+    const retryArgs =
+      script === 'generation'
+        ? ['--max-generation-retries', '1']
+        : ['--max-retries', '1'];
+    let stdout;
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          '--import',
+          pathToFileURL(preload).href,
+          `scripts/evaluate-${script}.mjs`,
+          '--live',
+          '--max-cases',
+          '1',
+          ...retryArgs,
+          '--output',
+          output,
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            LLM_PROVIDER: 'gemini',
+            LLM_MODEL: '',
+            LLM_BUDGET_MODE: 'free',
+            GEMINI_MODEL: 'gemini-2.5-flash',
+            GEMINI_API_KEY: 'test-key',
+            LLM_STRUCTURED_OUTPUT: '',
+            P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+            P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      assert.fail('Expected incomplete evaluation');
+    } catch (error) {
+      assert.equal(error.status, 1);
+      stdout = error.stdout;
+    }
+    const summary = JSON.parse(stdout);
+    const report = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(summary.status, 'incomplete');
+    if (script === 'generation') {
+      assert.equal(summary.generationCalls, 2);
+      assert.equal(summary.generationRetriesUsed, 1);
+      assert.equal(report.operational.generationRetriesUsed, 1);
+    } else {
+      assert.equal(summary.calls, 2);
+      assert.equal(summary.retriesUsed, 1);
+      assert.equal(report.operational.retriesUsed, 1);
+    }
+  });
+
+for (const script of ['generation', 'grounding'])
+  test(`${script} live runner does not retry HTTP 429 even when transport retry budget exists`, (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-rate-limit-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const preload = join(dir, 'provider.mjs');
+    const output = join(dir, 'report.json');
+    writeFileSync(
+      preload,
+      `
+      let calls = 0;
+      globalThis.fetch = async () => {
+        if (++calls > 1) throw new Error('Unexpected retry after 429');
+        return Response.json([{error:{code:429,status:'RESOURCE_EXHAUSTED'}}], {status:429});
+      };
+      `,
+    );
+    const retryArgs =
+      script === 'generation'
+        ? ['--max-generation-retries', '1']
+        : ['--max-retries', '1'];
+    let stdout;
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          '--import',
+          pathToFileURL(preload).href,
+          `scripts/evaluate-${script}.mjs`,
+          '--live',
+          '--max-cases',
+          '1',
+          ...retryArgs,
+          '--output',
+          output,
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            LLM_PROVIDER: 'gemini',
+            LLM_MODEL: '',
+            LLM_BUDGET_MODE: 'free',
+            GEMINI_MODEL: 'gemini-2.5-flash',
+            GEMINI_API_KEY: 'test-key',
+            LLM_STRUCTURED_OUTPUT: '',
+            P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+            P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      assert.fail('Expected incomplete evaluation');
+    } catch (error) {
+      assert.equal(error.status, 1);
+      stdout = error.stdout;
+    }
+    const summary = JSON.parse(stdout);
+    if (script === 'generation') {
+      assert.equal(summary.generationCalls, 1);
+      assert.equal(summary.generationRetriesUsed, 0);
+    } else {
+      assert.equal(summary.calls, 1);
+      assert.equal(summary.retriesUsed, 0);
+    }
+  });

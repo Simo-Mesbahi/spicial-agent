@@ -7,13 +7,8 @@ function boundedInterval(raw, fallback) {
   return value;
 }
 
-/**
- * Qualification-only start-to-start pacing. This never retries provider calls,
- * so the governed provider-call budget remains unchanged.
- */
-export function liveCompletionPacer(env = process.env) {
-  const intervalMs = boundedInterval(env.P1_LIVE_COMPLETION_MIN_INTERVAL_MS, 0);
-  let lastStartedAt = 0;
+function pacer(intervalMs, waitBeforeFirst = false) {
+  let lastStartedAt = waitBeforeFirst && intervalMs ? Date.now() : 0;
   return {
     intervalMs,
     async beforeCall() {
@@ -24,6 +19,36 @@ export function liveCompletionPacer(env = process.env) {
         : 0;
       if (waitMs) await sleep(waitMs);
       lastStartedAt = Date.now();
+    },
+  };
+}
+
+/**
+ * Qualification-only completion start-to-start pacing. This never retries provider calls,
+ * so the governed provider-call budget remains unchanged.
+ */
+export function liveCompletionPacer(env = process.env) {
+  return pacer(boundedInterval(env.P1_LIVE_COMPLETION_MIN_INTERVAL_MS, 0));
+}
+
+/**
+ * Embedding pacing is independent from completion pacing. The first evaluation embedding
+ * is delayed as well because corpus indexing may have used the same provider immediately
+ * before retrieval qualification.
+ */
+export function liveEmbeddingPacer(env = process.env) {
+  return pacer(
+    boundedInterval(env.P1_LIVE_EMBEDDING_MIN_INTERVAL_MS, 0),
+    true,
+  );
+}
+
+export function liveTransientRetryBackoff(env = process.env) {
+  const intervalMs = boundedInterval(env.P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS, 0);
+  return {
+    intervalMs,
+    async wait() {
+      if (intervalMs) await sleep(intervalMs);
     },
   };
 }
