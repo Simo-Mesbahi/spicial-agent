@@ -218,3 +218,176 @@ for (const script of ['generation', 'grounding'])
       assert.equal(summary.retriesUsed, 0);
     }
   });
+
+
+test('generation live runner corrects one language-only drift without retrying factual semantics', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-language-correction-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let calls = 0;
+    const ok = (content) => Response.json({
+      choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(content)}}],
+      usage:{prompt_tokens:10,completion_tokens:5}
+    });
+    globalThis.fetch = async (_url, init) => {
+      calls++;
+      const body = JSON.parse(init.body);
+      if (calls === 1) {
+        return ok({
+          language:'fr',
+          sentences:[{
+            text:'No confirmed date is available.',
+            evidenceRefs:['case.confirmedEta']
+          }]
+        });
+      }
+      if (calls === 2) {
+        return ok({
+          language:'en',
+          sentences:[{verdict:'supported',issues:[]}]
+        });
+      }
+      if (calls === 3) {
+        if (!body.messages[0].content.includes('previous candidate failed language validation'))
+          throw new Error('Missing server-owned language correction directive');
+        return ok({
+          language:'fr',
+          sentences:[{
+            text:'Aucune date confirmée n’est disponible.',
+            evidenceRefs:['case.confirmedEta']
+          }]
+        });
+      }
+      if (calls === 4) {
+        return ok({
+          language:'fr',
+          sentences:[{verdict:'supported',issues:[]}]
+        });
+      }
+      throw new Error('Unexpected extra call');
+    };
+    `,
+  );
+  const stdout = execFileSync(
+    process.execPath,
+    [
+      '--import',
+      pathToFileURL(preload).href,
+      'scripts/evaluate-generation.mjs',
+      '--live',
+      '--max-cases',
+      '1',
+      '--max-language-corrections',
+      '1',
+      '--output',
+      output,
+    ],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        LLM_PROVIDER: 'gemini',
+        LLM_MODEL: '',
+        LLM_BUDGET_MODE: 'free',
+        GEMINI_MODEL: 'gemini-2.5-flash',
+        GEMINI_API_KEY: 'test-key',
+        LLM_STRUCTURED_OUTPUT: '',
+        P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+        P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(summary.status, 'requires_human_review');
+  assert.equal(summary.languageCorrectionsUsed, 1);
+  assert.equal(summary.generationRetriesUsed, 0);
+  assert.equal(summary.validationRetriesUsed, 0);
+  assert.equal(summary.generationCalls, 2);
+  assert.equal(summary.validationCalls, 2);
+  assert.equal(report.operational.languageCorrectionsUsed, 1);
+  assert.equal(report.results[0].languageCorrections, 1);
+  assert.equal(report.results[0].draft.language, 'fr');
+  assert.match(report.results[0].draft.sentences[0].text, /Aucune date confirmée/);
+});
+
+test('generation live runner never language-corrects an unsupported factual verdict', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-no-semantic-correction-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let calls = 0;
+    const ok = (content) => Response.json({
+      choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(content)}}],
+      usage:{prompt_tokens:10,completion_tokens:5}
+    });
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls === 1)
+        return ok({
+          language:'fr',
+          sentences:[{
+            text:'Le remboursement est garanti.',
+            evidenceRefs:['case.refund']
+          }]
+        });
+      if (calls === 2)
+        return ok({
+          language:'fr',
+          sentences:[{verdict:'unsupported',issues:['amount']}]
+        });
+      throw new Error('Unexpected retry after semantic failure');
+    };
+    `,
+  );
+  let stdout;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(preload).href,
+        'scripts/evaluate-generation.mjs',
+        '--live',
+        '--max-cases',
+        '1',
+        '--max-language-corrections',
+        '1',
+        '--output',
+        output,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          LLM_PROVIDER: 'gemini',
+          LLM_MODEL: '',
+          LLM_BUDGET_MODE: 'free',
+          GEMINI_MODEL: 'gemini-2.5-flash',
+          GEMINI_API_KEY: 'test-key',
+          LLM_STRUCTURED_OUTPUT: '',
+          P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+          P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    assert.fail('Expected semantic failure to remain fail-closed');
+  } catch (error) {
+    assert.equal(error.status, 1);
+    stdout = error.stdout;
+  }
+  const summary = JSON.parse(stdout);
+  assert.equal(summary.status, 'incomplete');
+  assert.equal(summary.languageCorrectionsUsed, 0);
+  assert.equal(summary.generationCalls, 1);
+  assert.equal(summary.validationCalls, 1);
+});

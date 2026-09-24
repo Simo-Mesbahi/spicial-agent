@@ -14,6 +14,7 @@ const options = {
   maxCases: 5,
   maxGenerationRetries: 0,
   maxValidationRetries: 0,
+  maxLanguageCorrections: 0,
   output: 'outputs/generation-evaluation.json',
 };
 for (let i = 0; i < args.length; i++) {
@@ -21,6 +22,8 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--max-cases') options.maxCases = Number(args[++i]);
   else if (args[i] === '--max-generation-retries') options.maxGenerationRetries = Number(args[++i]);
   else if (args[i] === '--max-validation-retries') options.maxValidationRetries = Number(args[++i]);
+  else if (args[i] === '--max-language-corrections')
+    options.maxLanguageCorrections = Number(args[++i]);
   else if (args[i] === '--output') options.output = args[++i];
   else throw new Error('Unknown argument');
 }
@@ -34,6 +37,9 @@ if (
   !Number.isInteger(options.maxValidationRetries) ||
   options.maxValidationRetries < 0 ||
   options.maxValidationRetries > 4 ||
+  !Number.isInteger(options.maxLanguageCorrections) ||
+  options.maxLanguageCorrections < 0 ||
+  options.maxLanguageCorrections > 4 ||
   !options.output
 )
   throw new Error('Invalid generation evaluation options');
@@ -44,12 +50,19 @@ if (!options.live) {
       {
         status: 'dry_run',
         scenarios: selected.map((s) => s.id),
-        maxGenerationCalls: selected.length + options.maxGenerationRetries,
-        maxValidationCalls: selected.length + options.maxValidationRetries,
+        maxGenerationCalls:
+          selected.length +
+          options.maxGenerationRetries +
+          options.maxLanguageCorrections,
+        maxValidationCalls:
+          selected.length +
+          options.maxValidationRetries +
+          options.maxLanguageCorrections,
         maxProviderCalls:
           selected.length * 2 +
           options.maxGenerationRetries +
-          options.maxValidationRetries,
+          options.maxValidationRetries +
+          options.maxLanguageCorrections * 2,
         note: 'Synthetic evidence only. No requests sent. Live qualification validates every generated candidate factually before human review.',
       },
       null,
@@ -79,13 +92,12 @@ if (!options.live) {
     const results = [];
     let generationRetriesUsed = 0;
     let validationRetriesUsed = 0;
-    for (const scenario of selected) {
-      const fixture = generationFixture(scenario);
+    let languageCorrectionsUsed = 0;
+
+    async function generateCandidate(fixture, correction, counters) {
       let draft = null;
       let diagnostics = null;
-      let providerAttempts = [];
-      let generationRetries = 0;
-
+      const attempts = [];
       while (true) {
         await pacing.beforeCall();
         const trace = providerTrace();
@@ -96,15 +108,20 @@ if (!options.live) {
             SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
             LLM_GENERATION_MODE: 'shadow',
             LLM_GENERATION_DAILY_LIMIT: String(
-              options.maxCases + options.maxGenerationRetries,
+              options.maxCases +
+                options.maxGenerationRetries +
+                options.maxLanguageCorrections,
             ),
           },
-          fixture,
+          {
+            ...fixture,
+            ...(correction ? { correction } : {}),
+          },
           trace,
         );
         draft = generated.draft;
         diagnostics = generated.diagnostics;
-        providerAttempts.push(...trace.attempts);
+        attempts.push(...trace.attempts);
 
         if (
           draft ||
@@ -114,48 +131,106 @@ if (!options.live) {
           break;
 
         generationRetriesUsed++;
-        generationRetries++;
+        counters.generationRetries++;
         await retryBackoff.wait();
       }
+      return { draft, diagnostics, attempts };
+    }
 
+    async function validateCandidate(fixture, draft, counters) {
       let factualValidation = null;
-      let validationAttempts = [];
-      let validationRetries = 0;
-      if (draft) {
-        while (true) {
-          await pacing.beforeCall();
-          const validationTrace = providerTrace();
-          factualValidation = await validateNaturalDraft(
-            {
-              ...process.env,
-              DB,
-              SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
-              LLM_VALIDATION_MODE: 'shadow',
-              LLM_VALIDATION_DAILY_LIMIT: String(
-                options.maxCases + options.maxValidationRetries,
-              ),
-            },
-            {
-              draft,
-              pack: fixture.pack,
-              currentPack: structuredClone(fixture.pack),
-              context: fixture.context,
-            },
-            validationTrace,
-          );
-          validationAttempts.push(...validationTrace.attempts);
+      const attempts = [];
+      while (true) {
+        await pacing.beforeCall();
+        const validationTrace = providerTrace();
+        factualValidation = await validateNaturalDraft(
+          {
+            ...process.env,
+            DB,
+            SUPABASE_ORGANIZATION_ID: fixture.context.organizationId,
+            LLM_VALIDATION_MODE: 'shadow',
+            LLM_VALIDATION_DAILY_LIMIT: String(
+              options.maxCases +
+                options.maxValidationRetries +
+                options.maxLanguageCorrections,
+            ),
+          },
+          {
+            draft,
+            pack: fixture.pack,
+            currentPack: structuredClone(fixture.pack),
+            context: fixture.context,
+          },
+          validationTrace,
+        );
+        attempts.push(...validationTrace.attempts);
 
-          if (
-            !retryableTransportReasons.has(factualValidation.reason) ||
-            validationRetriesUsed >= options.maxValidationRetries
-          )
-            break;
+        if (
+          !retryableTransportReasons.has(factualValidation.reason) ||
+          validationRetriesUsed >= options.maxValidationRetries
+        )
+          break;
 
-          validationRetriesUsed++;
-          validationRetries++;
-          await retryBackoff.wait();
-        }
+        validationRetriesUsed++;
+        counters.validationRetries++;
+        await retryBackoff.wait();
       }
+      return { factualValidation, attempts };
+    }
+
+    for (const scenario of selected) {
+      const fixture = generationFixture(scenario);
+      const counters = {
+        generationRetries: 0,
+        validationRetries: 0,
+        languageCorrections: 0,
+      };
+      const providerAttempts = [];
+      const factualValidationAttempts = [];
+      let draft = null;
+      let diagnostics = null;
+      let factualValidation = null;
+      let correction = null;
+
+      while (true) {
+        const generated = await generateCandidate(fixture, correction, counters);
+        draft = generated.draft;
+        diagnostics = generated.diagnostics;
+        providerAttempts.push(...generated.attempts);
+
+        if (!draft) {
+          if (
+            diagnostics.reason === 'output_language_mismatch' &&
+            counters.languageCorrections === 0 &&
+            languageCorrectionsUsed < options.maxLanguageCorrections
+          ) {
+            languageCorrectionsUsed++;
+            counters.languageCorrections++;
+            correction = 'language_mismatch';
+            continue;
+          }
+          break;
+        }
+
+        const validated = await validateCandidate(fixture, draft, counters);
+        factualValidation = validated.factualValidation;
+        factualValidationAttempts.push(...validated.attempts);
+
+        if (
+          factualValidation?.reason === 'output_language_mismatch' &&
+          counters.languageCorrections === 0 &&
+          languageCorrectionsUsed < options.maxLanguageCorrections
+        ) {
+          languageCorrectionsUsed++;
+          counters.languageCorrections++;
+          correction = 'language_mismatch';
+          draft = null;
+          factualValidation = null;
+          continue;
+        }
+        break;
+      }
+
       results.push({
         id: scenario.id,
         language: scenario.language,
@@ -163,14 +238,15 @@ if (!options.live) {
         draft,
         diagnostics,
         providerAttempts,
-        generationRetries,
+        generationRetries: counters.generationRetries,
+        languageCorrections: counters.languageCorrections,
         groundedness:
           factualValidation?.outcome === 'supported_candidate' &&
           factualValidation?.reason === null,
         naturalness: null,
         factualValidation,
-        factualValidationAttempts: validationAttempts,
-        validationRetries,
+        factualValidationAttempts,
+        validationRetries: counters.validationRetries,
       });
     }
     const status = results.every(
@@ -197,8 +273,10 @@ if (!options.live) {
           operational: {
             generationRetriesUsed,
             validationRetriesUsed,
+            languageCorrectionsUsed,
             maximumGenerationRetries: options.maxGenerationRetries,
             maximumValidationRetries: options.maxValidationRetries,
+            maximumLanguageCorrections: options.maxLanguageCorrections,
             providerCalls: results.reduce(
               (n, r) =>
                 n +
@@ -224,6 +302,7 @@ if (!options.live) {
         ),
         generationRetriesUsed,
         validationRetriesUsed,
+        languageCorrectionsUsed,
         failures: results
           .filter(
             (r) =>

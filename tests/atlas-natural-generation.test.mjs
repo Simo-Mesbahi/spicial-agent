@@ -35,9 +35,16 @@ function setup(t, scenario = generationScenarios[0]) {
     },
   };
 }
+const localizedDraftText = {
+  fr: 'Aucune date confirmée.',
+  en: 'No confirmed date is available.',
+  de: 'Es ist kein bestätigter Termin verfügbar.',
+  es: 'No hay una fecha confirmada disponible.',
+  ar: 'لا يوجد موعد مؤكد متاح.',
+};
 const draft = (language) => ({
   language,
-  sentences: [{ text: 'Aucune date confirmée.', evidenceRefs: ['case.confirmedEta'] }],
+  sentences: [{ text: localizedDraftText[language], evidenceRefs: ['case.confirmedEta'] }],
 });
 const response = (data, usage = { prompt_tokens: 80, completion_tokens: 25 }) =>
   Response.json({
@@ -120,7 +127,9 @@ for (const [provider, env, format] of [
         assert.equal(schema.properties.sentences.items.properties.text.minLength, undefined);
         assert.equal(schema.properties.sentences.items.properties.text.maxLength, undefined);
         assert.equal(schema.properties.sentences.items.additionalProperties, false);
+        assert.deepEqual(schema.properties.language.enum, ['fr']);
         const request = JSON.parse(p.messages[1].content);
+        assert.equal(request.requestedLanguage, 'fr');
         assert.deepEqual(
           schema.properties.sentences.items.properties.evidenceRefs.items.enum,
           Object.keys(request.evidence.references).sort(),
@@ -297,6 +306,7 @@ test('Natural generation prompt transport binds evidenceRefs to the current evid
     assert.match(p.messages[0].content, /JSON schema:/);
     const schemaText = p.messages[0].content.split('\nJSON schema: ')[1];
     const schema = JSON.parse(schemaText);
+    assert.deepEqual(schema.properties.language.enum, ['fr']);
     assert.deepEqual(
       schema.properties.sentences.items.properties.evidenceRefs.items.enum,
       allowed,
@@ -306,6 +316,51 @@ test('Natural generation prompt transport binds evidenceRefs to the current evid
   });
   const result = await generateNaturalDraft(c.env, c.input, providerTrace());
   assert.equal(result.diagnostics.outcome, 'candidate_generated');
+});
+
+test('Natural generation rejects the exact run-12 French prose mislabeled as German', async (t) => {
+  const scenario = generationScenarios.find((row) => row.id === 'refund-policy-de');
+  const c = setup(t, scenario);
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    assert.deepEqual(payload.response_format.json_schema.schema.properties.language.enum, ['de']);
+    assert.match(payload.messages[0].content, /ONLY permitted response language is German \(de\)/);
+    return response({
+      language: 'de',
+      sentences: [
+        {
+          text: "Toute demande fait l’objet d’un examen et il n'y a aucun remboursement automatique.",
+          evidenceRefs: ['knowledge.0'],
+        },
+      ],
+    });
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.draft, null);
+  assert.equal(result.diagnostics.reason, 'output_language_mismatch');
+});
+
+test('Natural generation language-correction prompt is server-owned and explicit', async (t) => {
+  const scenario = generationScenarios.find((row) => row.id === 'refund-policy-de');
+  const c = setup(t, scenario);
+  c.input.correction = 'language_mismatch';
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    assert.match(payload.messages[0].content, /previous candidate failed language validation/i);
+    assert.doesNotMatch(payload.messages[1].content, /previous candidate/i);
+    return response({
+      language: 'de',
+      sentences: [
+        {
+          text: 'Jede Erstattungsanfrage wird geprüft; eine Erstattung erfolgt nicht automatisch.',
+          evidenceRefs: ['knowledge.0'],
+        },
+      ],
+    });
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.reason, null);
+  assert.equal(result.draft.language, 'de');
 });
 
 test('Natural generation never treats valid citations as a factual pass', async (t) => {
