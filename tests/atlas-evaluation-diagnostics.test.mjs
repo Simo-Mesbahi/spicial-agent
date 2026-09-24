@@ -246,6 +246,12 @@ test('generation live runner corrects one language-only drift without retrying f
         });
       }
       if (calls === 2) {
+        return ok({
+          language:'en',
+          sentences:[{verdict:'supported',issues:[]}]
+        });
+      }
+      if (calls === 3) {
         if (!body.messages[0].content.includes('previous candidate failed language validation'))
           throw new Error('Missing server-owned language correction directive');
         return ok({
@@ -256,7 +262,7 @@ test('generation live runner corrects one language-only drift without retrying f
           }]
         });
       }
-      if (calls === 3) {
+      if (calls === 4) {
         return ok({
           language:'fr',
           sentences:[{verdict:'supported',issues:[]}]
@@ -303,7 +309,7 @@ test('generation live runner corrects one language-only drift without retrying f
   assert.equal(summary.generationRetriesUsed, 0);
   assert.equal(summary.validationRetriesUsed, 0);
   assert.equal(summary.generationCalls, 2);
-  assert.equal(summary.validationCalls, 1);
+  assert.equal(summary.validationCalls, 2);
   assert.equal(report.operational.languageCorrectionsUsed, 1);
   assert.equal(report.results[0].languageCorrections, 1);
   assert.equal(report.results[0].draft.language, 'fr');
