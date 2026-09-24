@@ -4,7 +4,14 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { liveCompletionPacer } from '../scripts/lib/live-eval-pacing.mjs';
+import {
+  liveCompletionPacer,
+  liveEmbeddingPacer,
+} from '../scripts/lib/live-eval-pacing.mjs';
+import {
+  isRecoverableTransport,
+  retryPolicy,
+} from '../scripts/lib/live-eval-retry.mjs';
 
 const qualificationEnv = {
   ...process.env,
@@ -73,6 +80,17 @@ function report(rows) {
     },
     status: 'completed',
     completionCalls: 0,
+    operational: {
+      embeddingCalls: rows.length,
+      retryEmbeddingCalls: 0,
+      rateLimitRetries: 0,
+      discardedEmbeddingCalls: 0,
+      maximumRetryEmbeddingCalls: 4,
+      maximumEmbeddingCalls: 24,
+      retryBackoffMs: 15000,
+      embeddingPacingIntervalMs: 2500,
+      systemicTransportFailure: null,
+    },
     results: rows,
   };
 }
@@ -123,15 +141,55 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
 
 test('P1.7 completion pacing is bounded, deterministic and does not issue provider calls', async () => {
   const pacer = liveCompletionPacer({ P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0' });
+  const embedding = liveEmbeddingPacer({ P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '0' });
   assert.equal(pacer.intervalMs, 0);
+  assert.equal(embedding.intervalMs, 0);
   await pacer.beforeCall();
   await pacer.beforeCall();
+  await embedding.beforeCall();
   assert.throws(
     () => liveCompletionPacer({ P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '30001' }),
     /Invalid live evaluation pacing interval/,
   );
   assert.throws(
+    () => liveEmbeddingPacer({ P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '30001' }),
+    /Invalid live evaluation pacing interval/,
+  );
+  assert.throws(
     () => liveCompletionPacer({ P1_LIVE_COMPLETION_MIN_INTERVAL_MS: 'NaN' }),
     /Invalid live evaluation pacing interval/,
+  );
+});
+
+test('P1.7 retry policy is bounded and excludes semantic/rate-limit failures', () => {
+  const policy = retryPolicy(
+    {
+      P1_TEST_RETRIES: '3',
+      P1_TEST_BACKOFF_MS: '15000',
+    },
+    {
+      limitKey: 'P1_TEST_RETRIES',
+      backoffKey: 'P1_TEST_BACKOFF_MS',
+      maximumLimit: 3,
+      maximumBackoffMs: 30000,
+    },
+  );
+  assert.deepEqual(policy, { limit: 3, backoffMs: 15000 });
+  assert.equal(isRecoverableTransport('network_or_timeout'), true);
+  assert.equal(isRecoverableTransport('upstream_unavailable'), true);
+  assert.equal(isRecoverableTransport('upstream_rate_limited'), false);
+  assert.equal(isRecoverableTransport('invalid_upstream_response'), false);
+  assert.equal(isRecoverableTransport('unsupported_claim'), false);
+  assert.throws(
+    () =>
+      retryPolicy(
+        { P1_TEST_RETRIES: '4' },
+        {
+          limitKey: 'P1_TEST_RETRIES',
+          backoffKey: 'P1_TEST_BACKOFF_MS',
+          maximumLimit: 3,
+        },
+      ),
+    /Invalid P1_TEST_RETRIES/,
   );
 });
