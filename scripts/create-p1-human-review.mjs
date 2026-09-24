@@ -2,6 +2,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { p1GroundingReportCount } from '../evals/p1-grounding-plan.mjs';
 
 const args = process.argv.slice(2);
 const value = (flag, fallback) =>
@@ -62,7 +63,10 @@ if (
   typeof qualificationArtifacts?.retrievalSha256 !== 'string' ||
   typeof qualificationArtifacts?.generationSha256 !== 'string' ||
   !Array.isArray(qualificationArtifacts?.groundingSha256) ||
-  qualificationArtifacts.groundingSha256.length !== 4 ||
+  qualificationArtifacts.groundingSha256.length !== p1GroundingReportCount ||
+  qualificationArtifacts.groundingSha256.some(
+    (value) => typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value),
+  ) ||
   qualificationArtifacts.generationSha256 !== generationSha256
 )
   fail('Qualification report is not a valid automated-passed source for this generation artifact.');
@@ -79,9 +83,13 @@ const items = results.map((row) => {
   if (
     !row.draft ||
     row.diagnostics?.outcome !== 'candidate_generated' ||
-    row.diagnostics?.reason !== null
+    row.diagnostics?.reason !== null ||
+    row.factualValidation?.outcome !== 'supported_candidate' ||
+    row.factualValidation?.reason !== null ||
+    row.factualValidation?.issues?.length !== 0 ||
+    row.groundedness !== true
   )
-    fail(`Scenario ${row.id} has no valid generated candidate to review.`);
+    fail(`Scenario ${row.id} has no factually validated generated candidate to review.`);
 
   const sentences = Array.isArray(row.draft.sentences)
     ? row.draft.sentences.map((sentence) => sentence?.text).filter(Boolean)
@@ -122,7 +130,7 @@ const template = {
     approvalRule:
       'Set approved=true only when naturalness, language, conciseness and business_tone are all pass after human inspection.',
     safety:
-      'Do not approve a candidate merely because automated factual validation passed. Review customer-facing quality independently.',
+      'Automated factual validation is required before this template is created, but it is model-assisted rather than proof. Review customer-facing naturalness, language, conciseness and business tone independently.',
   },
   items,
 };
