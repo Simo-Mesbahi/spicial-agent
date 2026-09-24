@@ -190,6 +190,16 @@ test('P1.7 generation qualification factually validates every generated candidat
   assert.match(release, /row\.groundedness === true/);
 });
 
+test('P1.7 grounding uses server-owned semantic status evidence instead of raw status codes', async () => {
+  const grounding = await readFile('evals/grounding.mjs', 'utf8');
+
+  for (const family of ['waiting-status', 'wrong-status', 'partial-truth', 'judge-injection']) {
+    const at = grounding.indexOf(`'${family}'`);
+    assert.ok(at >= 0, `missing grounding family ${family}`);
+    assert.match(grounding.slice(at, at + 260), /'case\.statusLabel'/);
+  }
+});
+
 test('P1.7 grounding requires the expected semantic rejection, not any block', () => {
   const supported = {
     expectedSupported: true,
