@@ -1,7 +1,7 @@
 import { digest } from './embedding-runtime';
 import { z } from 'zod';
 import type { AtlasEnv } from './api';
-import { labels, redacted } from './domain';
+import { redacted } from './domain';
 import { modelSettings } from './model-policy';
 import { structuredSchemaForProvider } from './structured-output';
 import {
@@ -19,7 +19,10 @@ import {
   type EvidenceContext,
 } from './evidence-pack';
 import { languages, topics, understandingSchema } from './conversation-contract';
-import { detectConversationLanguageHint } from './conversation-intelligence';
+import {
+  detectConversationLanguageHint,
+  statusLabels,
+} from './conversation-intelligence';
 
 export type GenerationSettings = {
   LLM_GENERATION_MODE?: string;
@@ -184,7 +187,8 @@ export function generationEvidence(pack: EvidencePack) {
       'updatedAt',
     ] as const)
       references[`case.${name}`] = facts[name];
-    references['case.statusLabel'] = labels[facts.status] ?? facts.status;
+    references['case.statusLabel'] =
+      statusLabels[pack.responseLanguage][facts.status] ?? facts.status;
   }
   pack.knowledge.sources.forEach((source, i) => {
     references[`knowledge.${i}`] = {
