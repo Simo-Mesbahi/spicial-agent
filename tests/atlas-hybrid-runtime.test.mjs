@@ -191,8 +191,7 @@ for (const query of [
     const cfg = setup(t);
     let embeddings = 0;
     t.mock.method(globalThis, 'fetch', async (url, init) => {
-      const body = JSON.parse(init.body);
-      if (url.endsWith('/embeddings')) {
+        if (url.endsWith('/embeddings')) {
         embeddings++;
         assert.deepEqual(body.input, [query]);
         return embeddingResponse();
