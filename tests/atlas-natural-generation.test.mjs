@@ -108,6 +108,26 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
         localizedUnknownWarranty[language],
       );
       assert.equal(data.guidance.short, true);
+      assert.match(
+        payload.messages[0].content,
+        /Treat server-owned kind\/status\/warranty labels as semantic facts/i,
+      );
+      assert.match(
+        payload.messages[0].content,
+        /obvious generic product category written in another language/i,
+      );
+      assert.match(
+        payload.messages[0].content,
+        /keep that object explicit/i,
+      );
+      const languageStyleChecks = {
+        fr: /polished idiomatic French customer-service prose/i,
+        en: /polished idiomatic English customer-service prose/i,
+        de: /polished idiomatic German customer-service prose/i,
+        es: /polished idiomatic Spanish customer-service prose/i,
+        ar: /idiomatic Modern Standard Arabic/i,
+      };
+      assert.match(payload.messages[0].content, languageStyleChecks[language]);
       assert.doesNotMatch(
         init.body,
         /PRIVATE-KEY|organizationId|authorizedCaseId|requestId|sessionExpiresAt|rubric|recentTurns/,
@@ -427,6 +447,35 @@ test('Natural generation permits only bounded non-factual courtesies without evi
   assert.equal(result.diagnostics.reason, null);
   assert.equal(result.diagnostics.outcome, 'candidate_generated');
   assert.equal(result.draft.sentences[1].text, 'Thank you.');
+});
+
+test('Natural generation prompt explicitly addresses run-13 human-review naturalness failures', async (t) => {
+  const scenario = generationScenarios.find((row) => row.id === 'waiting-part-de');
+  const c = setup(t, scenario);
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    const system = payload.messages[0].content;
+    assert.match(system, /Integrate status meaning grammatically/i);
+    assert.match(system, /avoid literal calques/i);
+    assert.match(system, /Adjust capitalization and inflection/i);
+    assert.match(system, /preserve brands, model names, serials and case references exactly/i);
+    return response({
+      language: 'de',
+      sentences: [
+        {
+          text: 'Ihr Fernseher wartet derzeit auf ein Ersatzteil.',
+          evidenceRefs: ['case.product', 'case.statusLabel'],
+        },
+        {
+          text: 'Ein konkreter Rückgabetermin ist derzeit nicht bekannt.',
+          evidenceRefs: ['case.confirmedEta', 'case.estimatedAt'],
+        },
+      ],
+    });
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+  assert.equal(result.diagnostics.reason, null);
 });
 
 test('Natural generation rejects the exact run-12 French prose mislabeled as German', async (t) => {

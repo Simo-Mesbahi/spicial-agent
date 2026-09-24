@@ -116,7 +116,7 @@ Run #12 then passed retrieval, the factual smoke and all 100 structured turns at
 
 The follow-up grounding audit keeps the authoritative raw status code strictly server-side and adds a server-owned human-readable alias (`case.statusLabel`, for example `En attente de pièce`). Current Supabase case status is now parsed as a closed canonical enum at the production boundary and again inside the Evidence Pack; an unknown status fails closed. The natural-generation/factual-validation provider evidence no longer exposes `case.status` at all, only the localized `case.statusLabel`. Deterministic renderers also use a localized non-revealing fallback rather than echoing any unknown raw status.
 
-Status-focused grounding scenarios cite this semantic alias instead of relying on the judge to infer business meaning from `waiting_part`. Status-focused grounding scenarios cite this semantic alias instead of relying on the judge to infer business meaning from `waiting_part`. The factual judge taxonomy is also explicit: date, amount, status, warranty, action, case_reference, policy and injection have deterministic definitions, while `unsupported_fact` is reserved only for unsupported assertions that fit no more specific category. This preserves the exact-issue grounding gate while reducing avoidable classifier variance.
+Status-focused grounding scenarios cite this semantic alias instead of relying on the judge to infer business meaning from `waiting_part`. The factual judge taxonomy is also explicit: date, amount, status, warranty, action, case_reference, policy and injection have deterministic definitions, while `unsupported_fact` is reserved only for unsupported assertions that fit no more specific category. This preserves the exact-issue grounding gate while reducing avoidable classifier variance.
 
 A replay of live run #12 also exposed a provenance-laundering edge case: a factual sentence ("The return date is currently unknown.") carried no `evidenceRefs` yet could be reconstructed as a courtesy solely because its reference array was empty. The server now owns that boundary explicitly. An evidence-free sentence is allowed only when its entire text matches a tightly bounded, language-specific non-factual courtesy; every other sentence must carry at least one server-recognized evidence reference before factual validation can spend a provider call.
 
@@ -134,6 +134,8 @@ Natural-generation qualification additionally requires explicit human review of:
 - response language;
 - conciseness;
 - professional business tone.
+
+Run #13 was the first automated P1.7 qualification to pass every governed gate (100/100 structured turns, 20/20 retrieval queries, 10/10 factually validated generation scenarios and 70/70 grounding scenarios). Human review intentionally did **not** rubber-stamp that green automation: five candidates were judged below the premium customer-facing naturalness bar, primarily because of label-like capitalization/literal phrasing in FR/DE/ES/AR. The generator therefore treats server-owned case labels as semantic facts to integrate grammatically rather than fragments to paste verbatim, keeps the business object explicit in policy answers, translates obvious generic product categories while preserving brands/models/references, and applies language-specific idiomatic style guidance.
 
 An automated green report alone does **not** authorize customer release.
 
