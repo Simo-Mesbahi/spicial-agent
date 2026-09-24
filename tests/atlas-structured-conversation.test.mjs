@@ -23,6 +23,7 @@ const {
   commitConversation,
   releaseConversation,
   ConversationBusy,
+  providerConversationLeaseMs,
   planConversation,
   understandingJsonSchema,
   understandingSchema,
@@ -573,6 +574,36 @@ for (const status of [400, 401, 403, 422, 429, 500, 502, 503]) {
     assert.doesNotMatch(JSON.stringify(r.body), /test-secret/);
   });
 }
+
+test('conversation lease budget safely exceeds the maximum provider deadline', () => {
+  assert.equal(providerConversationLeaseMs(20_000), 60_000);
+  assert.equal(providerConversationLeaseMs(60_000), 90_000);
+  assert.throws(() => providerConversationLeaseMs(999));
+  assert.throws(() => providerConversationLeaseMs(60_001));
+});
+
+test('structured timeout beyond the base lease persists an observable fallback instead of returning 503', async (t) => {
+  let now = 1_800_000_000_000;
+  t.mock.method(Date, 'now', () => now);
+  const { c, calls, db } = await fixture(t, async () => {
+    // Reproduce live run #14: provider deadline crosses the old 60s lease.
+    now += 61_000;
+    throw new Error('synthetic provider timeout');
+  });
+  c.env.LLM_REQUEST_TIMEOUT_MS = '60000';
+
+  const r = await c.call('chat', { message: 'hello there' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.metadata.fallback, 'provider_unavailable');
+  assert.equal(r.body.metadata.fallbackReason, 'network_or_timeout');
+  assert.equal(r.body.metadata.orchestrator, 'legacy_fallback');
+  assert.equal(r.body.metadata.providerCalls, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(
+    db.sql.prepare('SELECT lock_until FROM conversation_states').get().lock_until,
+    0,
+  );
+});
 
 test('case facts are refreshed after understanding; model business prose is discarded', async (t) => {
   const { c, db } = await fixture(t, (_p, _n, client, database) => {
