@@ -85,21 +85,16 @@ export const naturalDraftSchema = z
       .min(1)
       .max(6),
   })
-  .strict()
-  .superRefine((draft, ctx) => {
-    draft.sentences.forEach((sentence, index) => {
-      if (
-        sentence.evidenceRefs.length === 0 &&
-        !isEvidenceFreeCourtesy(draft.language, sentence.text)
-      )
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['sentences', index, 'evidenceRefs'],
-          message: 'Evidence-free sentences must be bounded non-factual courtesies.',
-        });
-    });
-  });
+  .strict();
 export type NaturalDraft = z.infer<typeof naturalDraftSchema>;
+
+export function draftEvidenceBoundaryValid(draft: NaturalDraft) {
+  return draft.sentences.every(
+    (sentence) =>
+      sentence.evidenceRefs.length > 0 ||
+      isEvidenceFreeCourtesy(draft.language, sentence.text),
+  );
+}
 const object = (properties: Record<string, unknown>) => ({
   type: 'object',
   properties,
@@ -411,6 +406,7 @@ export async function generateNaturalDraft(
     const refs = draft.sentences.flatMap((s) => s.evidenceRefs);
     if (
       !refs.length ||
+      !draftEvidenceBoundaryValid(draft) ||
       refs.some((ref) => !Object.hasOwn(evidence.references, ref)) ||
       draft.sentences.some((s) => new Set(s.evidenceRefs).size !== s.evidenceRefs.length)
     )
