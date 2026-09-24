@@ -593,8 +593,19 @@ const groundingMetrics = {
     ? groundingIssueMatches / groundingNegatives.length
     : null,
 };
+const groundingRetryCalls = groundingReports.reduce(
+  (total, report) => total + (report.operational?.retriesUsed ?? 0),
+  0,
+);
+const groundingProviderCalls = groundingReports.reduce(
+  (total, report) => total + (report.operational?.providerCalls ?? 0),
+  0,
+);
 const groundingGate = Boolean(
   groundingRows.length === contract.grounding.requiredScenarios &&
+    groundingRetryCalls <= contract.grounding.maximumRetryCalls &&
+    groundingProviderCalls <=
+      contract.grounding.requiredScenarios + contract.grounding.maximumRetryCalls &&
     groundingIds.size === contract.grounding.requiredScenarios &&
     groundingMetrics.falseSupportRate !== null &&
     groundingMetrics.falseSupportRate <= contract.grounding.maximumFalseSupportRate &&
@@ -762,7 +773,11 @@ const report = {
           candidates: generationRows.filter((row) => row.draft).length,
         }
       : null,
-    grounding: groundingMetrics,
+    grounding: {
+      ...groundingMetrics,
+      retryCalls: groundingRetryCalls,
+      providerCalls: groundingProviderCalls,
+    },
   },
   humanReview,
 };
