@@ -663,7 +663,7 @@ test('Factual audit rejects canonical supported verdicts that relabel server-own
   t.mock.method(globalThis, 'fetch', async () =>
     response(
       verdict('fr', {
-        citations: [{ ref: 'case.status', quote: JSON.stringify(c.input.pack.caseFacts.status) }],
+        citations: [{ ref: 'case.statusLabel', quote: JSON.stringify('En attente de pièce') }],
       }),
     ),
   );
