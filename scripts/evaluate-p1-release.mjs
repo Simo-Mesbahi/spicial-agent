@@ -307,6 +307,8 @@ if (live) {
     String(smoke.offset),
     '--max-cases',
     String(smoke.maxCases),
+    '--max-retries',
+    String(smoke.maxRetries),
     '--output',
     smoke.path,
   ]);
@@ -337,6 +339,10 @@ if (live) {
       '--live',
       '--max-cases',
       String(contract.generation.requiredScenarios),
+      '--max-generation-retries',
+      String(contract.generation.maximumGenerationRetryCalls),
+      '--max-validation-retries',
+      String(contract.generation.maximumValidationRetryCalls),
       '--output',
       paths.generation,
     ]);
@@ -352,6 +358,8 @@ if (live) {
         String(entry.offset),
         '--max-cases',
         String(entry.maxCases),
+        '--max-retries',
+        String(entry.maxRetries),
         '--output',
         entry.path,
       ]);
