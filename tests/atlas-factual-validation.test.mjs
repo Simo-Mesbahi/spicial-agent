@@ -105,6 +105,10 @@ for (const language of ['fr', 'en', 'de', 'es', 'ar'])
       );
       assert.match(p.messages[0].content, /ALL its factual assertions/);
       assert.match(p.messages[0].content, /server owns sentence identity/i);
+      assert.match(p.messages[0].content, /date: unsupported\/contradicted calendar dates/i);
+      assert.match(p.messages[0].content, /amount: unsupported\/contradicted money/i);
+      assert.match(p.messages[0].content, /unsupported_fact: only/i);
+      assert.match(p.messages[0].content, /Never use unsupported_fact instead of a specific applicable code/i);
       return response(verdict(language));
     });
     const trace = providerTrace(),
