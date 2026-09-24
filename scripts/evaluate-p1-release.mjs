@@ -521,10 +521,16 @@ const structuredGate = Boolean(
     structured.operational?.retriedScenarios <= contract.structured.maximumScenarioRetries &&
     structured.operational?.discardedProviderCalls <=
       contract.structured.maximumRetryCompletionCalls &&
+    structured.operational?.finalProviderCalls === structuredTurns &&
+    structured.operational?.providerCalls ===
+      structured.operational?.finalProviderCalls +
+        structured.operational?.discardedProviderCalls &&
     structured.operational?.providerCalls <=
       structuredTurns + contract.structured.maximumRetryCompletionCalls &&
     structured.operational?.groundingRejections === contract.structured.groundingRejections &&
-    (!contract.structured.requireCompleteUsage || structured.operational?.usageComplete === true) &&
+    (!contract.structured.requireCompleteUsage ||
+      (structured.operational?.usageComplete === true &&
+        structured.operational?.retryUsageComplete === true)) &&
     Object.values(structuredMetrics).every(
       (metric) =>
         metric &&
