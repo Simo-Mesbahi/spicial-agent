@@ -95,9 +95,11 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
   assert.match(contract, /maximumGenerationRetryCalls: 2/);
   assert.match(contract, /maximumValidationRetryCalls: 2/);
+  assert.match(contract, /maximumLanguageCorrectionCalls: 2/);
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
+  assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
-  assert.match(contract, /maximumTotalCompletionCalls: 232/);
+  assert.match(contract, /maximumTotalCompletionCalls: 236/);
 });
 
 test('P1.7 live resilience is paced and retries only transport failures within explicit budgets', async () => {
@@ -116,8 +118,27 @@ test('P1.7 live resilience is paced and retries only transport failures within e
   assert.doesNotMatch(grounding, /retryableTransportReasons.*upstream_rate_limited/s);
   assert.match(release, /--max-generation-retries/);
   assert.match(release, /--max-validation-retries/);
+  assert.match(release, /--max-language-corrections/);
   assert.match(release, /--max-retries/);
   assert.match(release, /groundingRetryCompletionCalls/);
+});
+
+test('P1.7 generation language correction is bounded and does not retry factual semantic failures', async () => {
+  const generation = await readFile('scripts/evaluate-generation.mjs', 'utf8');
+  const natural = await readFile('lib/atlas/natural-generation.ts', 'utf8');
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(natural, /enum: \[expectedLanguage\]/);
+  assert.match(natural, /detectConversationLanguageHint/);
+  assert.match(natural, /previous candidate failed language validation/);
+  assert.match(generation, /maxLanguageCorrections/);
+  assert.match(generation, /factualValidation\?\.reason === 'output_language_mismatch'/);
+  assert.doesNotMatch(
+    generation,
+    /factualValidation\?\.reason === 'unsupported_claim'.*languageCorrections/s,
+  );
+  assert.match(release, /generationLanguageCorrectionCalls/);
+  assert.match(release, /generationLanguageCorrectionValidationCalls/);
 });
 
 test('P1.7 structured evaluator forwards the governed provider timeout into runtime env', async () => {
