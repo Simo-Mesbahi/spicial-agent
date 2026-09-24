@@ -59,6 +59,8 @@ if (
   !/^[a-f0-9]{64}$/.test(qualification.qualificationId) ||
   computedQualificationId !== qualification.qualificationId ||
   typeof qualificationArtifacts?.contractSha256 !== 'string' ||
+  typeof qualificationArtifacts?.knowledgeIndexSha256 !== 'string' ||
+  !/^[a-f0-9]{64}$/.test(qualificationArtifacts.knowledgeIndexSha256) ||
   typeof qualificationArtifacts?.structuredSha256 !== 'string' ||
   typeof qualificationArtifacts?.retrievalSha256 !== 'string' ||
   typeof qualificationArtifacts?.generationSha256 !== 'string' ||
