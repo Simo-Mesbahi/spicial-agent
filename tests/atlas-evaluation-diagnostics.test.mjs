@@ -153,6 +153,87 @@ for (const script of ['generation', 'grounding'])
     }
   });
 
+
+for (const script of ['generation', 'grounding'])
+  test(`${script} live retry refreshes synthetic evidence after transport delay beyond the 30s TTL`, (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-expired-retry-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const preload = join(dir, 'provider.mjs');
+    const output = join(dir, 'report.json');
+    writeFileSync(
+      preload,
+      `
+      let calls = 0;
+      let now = 1_800_000_000_000;
+      Date.now = () => now;
+      globalThis.fetch = async () => {
+        calls++;
+        if (calls === 1) {
+          now += 31_000;
+          return Response.json([{error:{code:503,status:'UNAVAILABLE'}}], {status:503});
+        }
+        if (calls === 2)
+          return Response.json([{error:{code:404,status:'NOT_FOUND'}}], {status:404});
+        throw new Error('Unexpected third call');
+      };
+      `,
+    );
+    const retryArgs =
+      script === 'generation'
+        ? ['--max-generation-retries', '1']
+        : ['--max-retries', '1'];
+    let stdout;
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          '--import',
+          pathToFileURL(preload).href,
+          `scripts/evaluate-${script}.mjs`,
+          '--live',
+          '--max-cases',
+          '1',
+          ...retryArgs,
+          '--output',
+          output,
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            LLM_PROVIDER: 'gemini',
+            LLM_MODEL: '',
+            LLM_BUDGET_MODE: 'free',
+            GEMINI_MODEL: 'gemini-2.5-flash',
+            GEMINI_API_KEY: 'test-key',
+            LLM_STRUCTURED_OUTPUT: '',
+            P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+            P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      assert.fail('Expected final request rejection');
+    } catch (error) {
+      assert.equal(error.status, 1);
+      stdout = error.stdout;
+    }
+    const summary = JSON.parse(stdout);
+    const report = JSON.parse(readFileSync(output, 'utf8'));
+    if (script === 'generation') {
+      assert.equal(summary.generationCalls, 2);
+      assert.equal(summary.generationRetriesUsed, 1);
+      assert.equal(report.results[0].providerAttempts.length, 2);
+      assert.notEqual(report.results[0].diagnostics.reason, 'evidence_expired');
+    } else {
+      assert.equal(summary.calls, 2);
+      assert.equal(summary.retriesUsed, 1);
+      assert.equal(report.results[0].providerAttempts.length, 2);
+      assert.notEqual(report.results[0].diagnostics.reason, 'evidence_expired');
+    }
+  });
+
+
 for (const script of ['generation', 'grounding'])
   test(`${script} live runner does not retry HTTP 429 even when transport retry budget exists`, (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-rate-limit-'));
