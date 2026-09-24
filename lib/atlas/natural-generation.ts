@@ -211,7 +211,6 @@ export function generationEvidence(pack: EvidencePack) {
     for (const name of [
       'reference',
       'kind',
-      'status',
       'product',
       'warranty',
       'quote',
