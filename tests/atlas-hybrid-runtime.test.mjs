@@ -216,6 +216,7 @@ test('Hybrid RPC retries one transient backend failure without re-embedding', as
     ...setup(t),
     RAG_RPC_RETRY_BACKOFF_MS: '0',
     RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_RETRY_TIMEOUT_MS: '10000',
     RAG_RPC_MAX_RETRIES: '1',
   };
   let embeddingCalls = 0;
@@ -241,8 +242,43 @@ test('Hybrid RPC retries one transient backend failure without re-embedding', as
     calls: 2,
     retries: 1,
     timeoutMs: 5000,
+    retryTimeoutMs: 10000,
+    attemptTimeoutMs: [5000, 10000],
     error: null,
   });
+});
+
+test('Hybrid RPC telemetry proves the retry receives the widened deadline', async (t) => {
+  const cfg = {
+    ...setup(t),
+    RAG_RPC_RETRY_BACKOFF_MS: '0',
+    RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_RETRY_TIMEOUT_MS: '10000',
+    RAG_RPC_MAX_RETRIES: '1',
+  };
+  let embeddingCalls = 0;
+  let rpcCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return embeddingResponse();
+    }
+    rpcCalls++;
+    if (rpcCalls === 1)
+      return Response.json({ message: 'transient gateway failure' }, { status: 504 });
+    return Response.json([await row()]);
+  });
+
+  const out = await searchKnowledge(cfg, 'retour');
+  assert.equal(out.scope, 'supabase_published');
+  assert.equal(embeddingCalls, 1);
+  assert.equal(rpcCalls, 2);
+  assert.equal(out.retrieval.backend.calls, 2);
+  assert.equal(out.retrieval.backend.retries, 1);
+  assert.equal(out.retrieval.backend.timeoutMs, 5000);
+  assert.equal(out.retrieval.backend.retryTimeoutMs, 10000);
+  assert.deepEqual(out.retrieval.backend.attemptTimeoutMs, [5000, 10000]);
+  assert.equal(out.retrieval.backend.error, null);
 });
 
 test('Hybrid RPC stops after one persistent transient retry and never re-embeds', async (t) => {
@@ -250,6 +286,7 @@ test('Hybrid RPC stops after one persistent transient retry and never re-embeds'
     ...setup(t),
     RAG_RPC_RETRY_BACKOFF_MS: '0',
     RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_RETRY_TIMEOUT_MS: '10000',
     RAG_RPC_MAX_RETRIES: '1',
   };
   let embeddingCalls = 0;
@@ -272,6 +309,8 @@ test('Hybrid RPC stops after one persistent transient retry and never re-embeds'
     calls: 2,
     retries: 1,
     timeoutMs: 5000,
+    retryTimeoutMs: 10000,
+    attemptTimeoutMs: [5000, 10000],
     error: 'unavailable',
   });
 });
@@ -281,6 +320,7 @@ test('Hybrid RPC never retries deterministic client errors', async (t) => {
     ...setup(t),
     RAG_RPC_RETRY_BACKOFF_MS: '0',
     RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_RETRY_TIMEOUT_MS: '10000',
     RAG_RPC_MAX_RETRIES: '1',
   };
   let embeddingCalls = 0;
@@ -307,6 +347,7 @@ test('Hybrid RPC does not retry malformed JSON responses', async (t) => {
     ...setup(t),
     RAG_RPC_RETRY_BACKOFF_MS: '0',
     RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_RETRY_TIMEOUT_MS: '10000',
     RAG_RPC_MAX_RETRIES: '1',
   };
   let embeddingCalls = 0;
@@ -340,6 +381,9 @@ test('Hybrid RPC policy rejects non-integer or out-of-range settings before prov
   for (const changes of [
     { RAG_RPC_TIMEOUT_MS: '2499' },
     { RAG_RPC_TIMEOUT_MS: '5000.5' },
+    { RAG_RPC_RETRY_TIMEOUT_MS: '4999' },
+    { RAG_RPC_RETRY_TIMEOUT_MS: '10000.5' },
+    { RAG_RPC_RETRY_TIMEOUT_MS: '10001' },
     { RAG_RPC_MAX_RETRIES: '2' },
     { RAG_RPC_MAX_RETRIES: '0.5' },
     { RAG_RPC_RETRY_BACKOFF_MS: '5001' },
