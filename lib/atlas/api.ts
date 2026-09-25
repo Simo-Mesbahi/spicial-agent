@@ -81,6 +81,7 @@ export interface AtlasEnv extends SupabaseRuntimeEnv, ModelEnvironment, HybridSe
   LLM_BUDGET_MODE?: string;
   LLM_ORCHESTRATOR?: string;
   LLM_STRUCTURED_OUTPUT?: string;
+  P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC?: string;
 }
 type Space = {
   id: string;
@@ -1364,6 +1365,11 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         action: answer.action,
         quickReplies: answer.quickReplies ?? [],
         supportPath: answer.supportPath ?? null,
+        ...(env.P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC === 'true' &&
+        env.APP_ENVIRONMENT !== 'PRODUCTION' &&
+        env.APP_EDITION !== 'client'
+          ? { providerDiagnostic: telemetry.attempts.at(-1)?.diagnostic ?? null }
+          : {}),
         caseVersion: c && answer.tools.includes('get_case') ? c.version : null,
         caseBrief: c && answer.tools.includes('get_case') ? caseBrief(c) : null,
         presentation:

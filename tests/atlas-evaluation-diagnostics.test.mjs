@@ -201,6 +201,113 @@ test('structured live runner exposes semantic mismatches directly in report diag
   assert.doesNotMatch(JSON.stringify(summary.semanticFailures), /test-key/);
 });
 
+test('structured live runner stops immediately on provider-declared daily quota', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-daily-quota-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls > 1) throw new Error('Daily quota must never be retried');
+      return Response.json({
+        error: {
+          code: 429,
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'PRIVATE',
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+              violations: [{
+                quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests'
+              }]
+            },
+            {
+              '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+              retryDelay: '50s'
+            }
+          ]
+        }
+      }, {status:429});
+    };
+    `,
+  );
+
+  let stdout;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(preload).href,
+        'scripts/evaluate-structured-ai.mjs',
+        '--live',
+        '--mode',
+        'structured',
+        '--max-turns',
+        '5',
+        '--languages',
+        'fr',
+        '--families',
+        'correction-understanding',
+        '--output',
+        output,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          LLM_PROVIDER: 'gemini',
+          LLM_MODEL: '',
+          LLM_BUDGET_MODE: 'free',
+          LLM_DAILY_LIMIT: '100',
+          GEMINI_MODEL: 'gemini-2.5-flash',
+          GEMINI_API_KEY: 'test-key',
+          LLM_STRUCTURED_OUTPUT: '',
+          LLM_REQUEST_TIMEOUT_MS: '20000',
+          P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+          P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6',
+          P1_STRUCTURED_RETRY_BACKOFF_MS: '0',
+          P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
+          P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    assert.fail('Expected daily quota to fail qualification');
+  } catch (error) {
+    assert.equal(error.status, 1);
+    stdout = error.stdout;
+  }
+
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(summary.operational.providerCalls, 1);
+  assert.equal(summary.operational.finalProviderCalls, 1);
+  assert.equal(summary.operational.discardedProviderCalls, 0);
+  assert.equal(summary.operational.retriedScenarios, 0);
+  assert.equal(summary.operational.rateLimitRetriesUsed, 0);
+  assert.equal(summary.operational.rateLimitWaitMs, 0);
+  assert.equal(
+    summary.operational.systemicTransportFailure,
+    'provider_daily_quota_exhausted',
+  );
+  assert.equal(report.rows.length, 1);
+  assert.deepEqual(report.rows[0].providerDiagnostic, {
+    reason: 'upstream_rate_limited',
+    httpStatus: 429,
+    code: 'RESOURCE_EXHAUSTED',
+    parameter: null,
+    retryAfterMs: 50000,
+    rateLimitScope: 'day',
+  });
+  assert.doesNotMatch(stdout + JSON.stringify(report), /PRIVATE|test-key|GenerateRequests|generate_content/);
+});
+
 test('structured live runner retries one 429 then stops after persistent rate limit', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-rate-limit-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -397,10 +504,8 @@ for (const script of ['generation', 'grounding'])
             LLM_STRUCTURED_OUTPUT: '',
             P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
             P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
-          P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
-          P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
-        P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
-        P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
+            P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
+            P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         },
@@ -480,10 +585,8 @@ for (const script of ['generation', 'grounding'])
             LLM_STRUCTURED_OUTPUT: '',
             P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
             P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
-          P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
-          P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
-        P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
-        P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
+            P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
+            P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         },
@@ -556,10 +659,8 @@ for (const script of ['generation', 'grounding'])
             LLM_STRUCTURED_OUTPUT: '',
             P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
             P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
-          P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
-          P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
-        P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
-        P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
+            P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
+            P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         },

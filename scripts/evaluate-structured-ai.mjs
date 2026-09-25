@@ -97,6 +97,8 @@ const names = [
 const config = {
   ...Object.fromEntries(names.filter((k) => process.env[k]).map((k) => [k, process.env[k]])),
   LLM_ORCHESTRATOR: mode,
+  // Synthetic evaluator only. Normal client responses never expose provider diagnostics.
+  P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC: 'true',
 };
 const compiled = await build({
   stdin: {
@@ -200,7 +202,7 @@ async function runScenario(scenario) {
         usageComplete: m.usageComplete ?? false,
         latencyMs: elapsed,
         serverResponseReadyMs: m.latencyMs ?? null,
-        providerDiagnostic: m.providerTrace?.attempts?.at(-1)?.diagnostic ?? null,
+        providerDiagnostic: m.providerDiagnostic ?? null,
         // Synthetic outputs make human review possible; neither prompts nor credentials are logged.
         response: response.body.content ?? null,
       });

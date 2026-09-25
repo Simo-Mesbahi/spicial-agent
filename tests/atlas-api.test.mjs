@@ -830,6 +830,73 @@ test('Ollama executes the same authorized dossier tools without a key or paid fa
   }
 });
 
+test('Provider quota diagnostics remain hidden from clients and are exposed only to synthetic P1 evaluation', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    Object.assign(c.env, {
+      LLM_PROVIDER: 'gemini',
+      LLM_BUDGET_MODE: 'free',
+      GEMINI_API_KEY: 'gemini-test-key',
+    });
+    globalThis.fetch = async () =>
+      Response.json(
+        {
+          error: {
+            code: 429,
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'PRIVATE-CUSTOMER gemini-test-key',
+            details: [
+              {
+                '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+                violations: [
+                  {
+                    quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                    quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                  },
+                ],
+              },
+              {
+                '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+                retryDelay: '50s',
+              },
+            ],
+          },
+        },
+        { status: 429 },
+      );
+
+    const clientReply = await c.call('chat', { message: 'Question générale au modèle' });
+    assert.equal(clientReply.status, 200);
+    assert.equal(clientReply.body.metadata.fallbackReason, 'upstream_rate_limited');
+    assert.equal('providerDiagnostic' in clientReply.body.metadata, false);
+    assert.doesNotMatch(JSON.stringify(clientReply.body), /PRIVATE-CUSTOMER|gemini-test-key|GenerateRequests/);
+
+    c.env.P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC = 'true';
+    const evalReply = await c.call('chat', {
+      message: 'Autre question générale au modèle',
+      requestId: 'evaluation-diagnostic-0001',
+    });
+    assert.equal(evalReply.status, 200);
+    assert.deepEqual(evalReply.body.metadata.providerDiagnostic, {
+      reason: 'upstream_rate_limited',
+      httpStatus: 429,
+      code: 'RESOURCE_EXHAUSTED',
+      parameter: null,
+      retryAfterMs: 50000,
+      rateLimitScope: 'day',
+    });
+    assert.doesNotMatch(
+      JSON.stringify(evalReply.body.metadata.providerDiagnostic),
+      /PRIVATE-CUSTOMER|gemini-test-key|GenerateRequests|generate_content/,
+    );
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
 test('Unavailable local model uses an explicitly identified non-AI fallback without switching providers', async () => {
   const db = database();
   const original = globalThis.fetch;
