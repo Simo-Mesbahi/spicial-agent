@@ -101,6 +101,20 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   );
 });
 
+test('P1.7 structured quota diagnostics are synthetic-only and blocked from client production', async () => {
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+  const api = await readFile('lib/atlas/api.ts', 'utf8');
+
+  assert.match(structured, /P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC: 'true'/);
+  assert.match(structured, /providerDiagnostic: m\.providerDiagnostic \?\? null/);
+  assert.doesNotMatch(structured, /m\.providerTrace\?\.attempts/);
+
+  assert.match(api, /P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC\?: string/);
+  assert.match(api, /env\.APP_ENVIRONMENT !== 'PRODUCTION'/);
+  assert.match(api, /env\.APP_EDITION !== 'client'/);
+  assert.match(api, /telemetry\.attempts\.at\(-1\)\?\.diagnostic/);
+});
+
 test('P1.7 live workflow paces calls and keeps retries scenario-level and explicit', async () => {
   const source = await readFile(workflowPath, 'utf8');
   const pacing = await readFile('scripts/lib/live-eval-pacing.mjs', 'utf8');
