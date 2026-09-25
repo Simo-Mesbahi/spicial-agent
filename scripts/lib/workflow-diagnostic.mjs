@@ -251,6 +251,19 @@ function firstFailedStep(jobs) {
   return { first: candidates[0] ?? null, all: candidates };
 }
 
+function signalFromRule(rule, source, extras = {}) {
+  return {
+    category: rule.category,
+    code: rule.code,
+    scope: rule.scope,
+    retryable: rule.retryable,
+    confidence: rule.confidence,
+    action: rule.action,
+    source,
+    ...extras,
+  };
+}
+
 function safeArtifactSignal(artifactDocuments) {
   for (const document of artifactDocuments) {
     const report = document?.json;
@@ -268,8 +281,7 @@ function safeArtifactSignal(artifactDocuments) {
       blocker?.category === 'external_dependency' &&
       blockerRule
     ) {
-      return {
-        ...blockerRule,
+      return signalFromRule(blockerRule, 'normalized_release_artifact', {
         retryable:
           typeof blocker.retryRecommended === 'boolean'
             ? blocker.retryRecommended
@@ -281,8 +293,7 @@ function safeArtifactSignal(artifactDocuments) {
         stage: cleanString(blocker.stage, 64),
         provider: safeProvider(blocker.provider),
         model: safeModel(blocker.model),
-        source: 'normalized_release_artifact',
-      };
+      });
     }
 
     const systemic =
@@ -294,20 +305,28 @@ function safeArtifactSignal(artifactDocuments) {
         (entry) => entry.needle === systemic.toLowerCase(),
       );
       if (rule) {
-        return {
-          ...rule,
+        return signalFromRule(rule, 'normalized_evaluation_artifact', {
           stage: cleanString(report?.mode ?? report?.kind, 64),
           provider: safeProvider(report?.provider),
           model: safeModel(report?.model),
-          source: 'normalized_evaluation_artifact',
-        };
+        });
       }
     }
   }
   return null;
 }
 
-function safeLogSignal(logs, failure) {
+function safeLogSignal(logs, failure, workflowName) {
+  if (workflowName !== 'P1.7 live qualification') return null;
+  if (
+    ![
+      /^Verify automated qualification gate$/i,
+      /^Qualify live hybrid retrieval before completion spend$/i,
+      /^Run bounded live qualification$/i,
+    ].some((pattern) => pattern.test(failure?.step ?? ''))
+  ) {
+    return null;
+  }
   if (!failure?.jobId || !failure?.startedAt || !failure?.completedAt) return null;
   const log = logs?.[String(failure.jobId) + '.log'];
   if (typeof log !== 'string') return null;
@@ -332,7 +351,7 @@ function safeLogSignal(logs, failure) {
   const combined = scoped.join('\n');
   for (const rule of SAFE_SIGNAL_RULES) {
     if (combined.includes(rule.needle)) {
-      return { ...rule, source: 'allowlisted_failed_step_log_signal' };
+      return signalFromRule(rule, 'allowlisted_failed_step_log_signal');
     }
   }
   return null;
@@ -408,7 +427,9 @@ export function buildWorkflowDiagnostic({
   const failures = firstFailedStep(jobs);
 
   const artifactSignal = safeArtifactSignal(artifactDocuments);
-  const logSignal = artifactSignal ? null : safeLogSignal(logs, failures.first);
+  const logSignal = artifactSignal
+    ? null
+    : safeLogSignal(logs, failures.first, run?.name);
   const rootCause = {
     ...(artifactSignal ?? logSignal ?? stepFallback(failures.first)),
   };
