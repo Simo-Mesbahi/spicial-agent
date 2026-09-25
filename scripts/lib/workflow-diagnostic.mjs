@@ -207,6 +207,25 @@ function safeSha(value) {
     : null;
 }
 
+function safeProvider(value) {
+  return ['gemini', 'ollama', 'openai', 'compatible', 'demo'].includes(value)
+    ? value
+    : null;
+}
+
+function safeModel(value) {
+  if (typeof value !== 'string') return null;
+  const model = value.trim().toLowerCase();
+  if (
+    /^(?:gemini|gpt|llama|qwen|mistral|deepseek|claude|configured-model)[a-z0-9._:/-]{0,96}$/.test(
+      model,
+    )
+  ) {
+    return model;
+  }
+  return null;
+}
+
 function firstFailedStep(jobs) {
   const candidates = [];
   for (const job of jobs) {
@@ -237,27 +256,30 @@ function safeArtifactSignal(artifactDocuments) {
     if (!report || typeof report !== 'object') continue;
 
     const blocker = report.blocker;
+    const blockerRule =
+      typeof blocker?.code === 'string'
+        ? SAFE_SIGNAL_RULES.find(
+            (entry) => entry.code === blocker.code || entry.needle === blocker.code,
+          )
+        : null;
     if (
       report.outcome === 'external_dependency_blocked' &&
       blocker?.category === 'external_dependency' &&
-      typeof blocker.code === 'string'
+      blockerRule
     ) {
       return {
-        category: 'external_dependency',
-        code: cleanString(blocker.code, 96),
-        scope: 'external',
+        ...blockerRule,
         retryable:
           typeof blocker.retryRecommended === 'boolean'
             ? blocker.retryRecommended
-            : null,
-        confidence: 'high',
+            : blockerRule.retryable,
         action:
           blocker.retryRecommended === true
             ? 'retry_after_provider_capacity_recovers'
-            : 'wait_for_provider_quota',
+            : blockerRule.action,
         stage: cleanString(blocker.stage, 64),
-        provider: cleanString(blocker.provider, 64),
-        model: cleanString(blocker.model, 120),
+        provider: safeProvider(blocker.provider),
+        model: safeModel(blocker.model),
         source: 'normalized_release_artifact',
       };
     }
@@ -274,8 +296,8 @@ function safeArtifactSignal(artifactDocuments) {
         return {
           ...rule,
           stage: cleanString(report?.mode ?? report?.kind, 64),
-          provider: cleanString(report?.provider, 64),
-          model: cleanString(report?.model, 120),
+          provider: safeProvider(report?.provider),
+          model: safeModel(report?.model),
           source: 'normalized_evaluation_artifact',
         };
       }
