@@ -132,11 +132,12 @@ export function fuseCandidates(rows: Candidate[], minLexical: number, minSimilar
   );
 }
 function hybridRpcPolicy(env: KnowledgeEnvironment) {
-  return {
-    timeoutMs: Math.floor(numeric(env.RAG_RPC_TIMEOUT_MS, 5000, 2500, 10000)),
-    maxRetries: Math.floor(numeric(env.RAG_RPC_MAX_RETRIES, 1, 0, 1)),
-    retryBackoffMs: Math.floor(numeric(env.RAG_RPC_RETRY_BACKOFF_MS, 1000, 0, 5000)),
-  };
+  const timeoutMs = numeric(env.RAG_RPC_TIMEOUT_MS, 5000, 2500, 10000);
+  const maxRetries = numeric(env.RAG_RPC_MAX_RETRIES, 1, 0, 1);
+  const retryBackoffMs = numeric(env.RAG_RPC_RETRY_BACKOFF_MS, 1000, 0, 5000);
+  if (![timeoutMs, maxRetries, retryBackoffMs].every(Number.isInteger))
+    throw new ProviderError('configuration');
+  return { timeoutMs, maxRetries, retryBackoffMs };
 }
 
 function normalizedBackendFailure(error: unknown) {
