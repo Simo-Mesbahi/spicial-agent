@@ -129,6 +129,22 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   assert.equal(passed.status, 0, passed.stderr);
   assert.equal(JSON.parse(passed.stdout).status, 'retrieval_qualified');
 
+  const recoveredTransient = report(
+    Array.from({ length: 20 }, (_, i) =>
+      retrievalRow(i, i === 0
+        ? { hybrid: { retrieval: { backend: { calls: 2, retries: 1 } } } }
+        : {}),
+    ),
+  );
+  recoveredTransient.operational.backendRetriesUsed = 1;
+  await writeFile(path, JSON.stringify(recoveredTransient));
+  const acceptedRecoveredTransient = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.equal(acceptedRecoveredTransient.status, 0, acceptedRecoveredTransient.stderr);
+
   const staleContract = report(Array.from({ length: 20 }, (_, i) => retrievalRow(i)));
   staleContract.configuration.queryContract = 'raw_multilingual_query';
   await writeFile(path, JSON.stringify(staleContract));
