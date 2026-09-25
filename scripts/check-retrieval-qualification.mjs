@@ -7,6 +7,18 @@ const path = resolve(process.argv[2] ?? 'outputs/p1-live/retrieval.json');
 const report = JSON.parse(await readFile(path, 'utf8'));
 const rows = Array.isArray(report.results) ? report.results : [];
 
+function backendPasses(turn) {
+  const backend = turn?.retrieval?.backend;
+  return (
+    backend?.timeoutMs === contract.retrieval.backendTimeoutMs &&
+    backend?.calls >= 1 &&
+    backend?.calls <= 1 + contract.retrieval.maximumBackendRetriesPerSearch &&
+    backend?.retries >= 0 &&
+    backend?.retries <= contract.retrieval.maximumBackendRetriesPerSearch &&
+    backend?.error === null
+  );
+}
+
 function rowPasses(row) {
   const hybrid = row?.hybrid ?? {};
   const lexical = row?.lexical ?? {};
@@ -14,6 +26,8 @@ function rowPasses(row) {
   return (
     hybrid.scope === 'supabase_published' &&
     lexical.scope === 'supabase_published' &&
+    backendPasses(hybrid) &&
+    backendPasses(lexical) &&
     hybrid.recallAtK >= contract.retrieval.minimumHybridRecallAtK &&
     hybrid.precisionAtK >= contract.retrieval.minimumHybridPrecisionAtK &&
     (contract.retrieval.allowRecallRegressionVsLexical ||
@@ -57,6 +71,7 @@ const passed =
   report.completionCalls === contract.retrieval.completionCalls &&
   report.operational?.maximumTransientRetries === contract.retrieval.maximumTransientRetries &&
   report.operational?.transientRetriesUsed <= contract.retrieval.maximumTransientRetries &&
+  report.operational?.backendRetriesUsed <= contract.retrieval.maximumBackendRetryCalls &&
   rows.length === contract.retrieval.requiredQueries &&
   failed.length === 0 &&
   fresh &&
