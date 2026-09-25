@@ -93,6 +93,7 @@ if (!options.live) {
         let result;
         let modeRetries = 0;
         let providerAttempts = [];
+        let backendAttempts = [];
         const search = () =>
           searchKnowledge(
             {
@@ -110,6 +111,7 @@ if (!options.live) {
           );
           result = retried.result;
           modeRetries = retried.retries;
+          backendAttempts = retried.attempts;
           transientRetriesUsed += retried.retries;
         } else {
           const retried = await searchHybridWithEmbeddingRetries(
@@ -143,6 +145,7 @@ if (!options.live) {
           transientRetries: mode === 'lexical' ? modeRetries : 0,
           embeddingRetries: mode === 'hybrid' ? modeRetries : 0,
           providerAttempts: mode === 'hybrid' ? providerAttempts : [],
+          backendAttempts: mode === 'lexical' ? backendAttempts : [],
         };
       }
       results.push({
@@ -172,7 +175,10 @@ if (!options.live) {
     const backendRetriesUsed = results.reduce(
       (sum, row) =>
         sum +
-        (row.lexical.retrieval?.backend?.retries ?? 0) +
+        row.lexical.backendAttempts.reduce(
+          (attemptSum, attempt) => attemptSum + attempt.backendRetries,
+          0,
+        ) +
         row.hybrid.providerAttempts.reduce(
           (attemptSum, attempt) => attemptSum + attempt.backendRetries,
           0,
