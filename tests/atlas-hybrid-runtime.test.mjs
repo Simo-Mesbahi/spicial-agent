@@ -386,6 +386,30 @@ test('Embedding budget exhausted: lexical only, zero completion or embedding cal
   assert.equal(out.retrieval.fallbackReason, 'budget_exhausted');
   assert.equal(out.retrieval.outcome, 'lexical_hit');
 });
+test('Qualification-only vector requirement fails fast before backend after embedding failure', async (t) => {
+  const cfg = {
+    ...setup(t),
+    RAG_EVAL_REQUIRE_EMBEDDING: 'true',
+    RAG_RPC_RETRY_BACKOFF_MS: '0',
+  };
+  let embeddingCalls = 0;
+  let backendCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return new Response('private failure', { status: 503 });
+    }
+    backendCalls++;
+    return Response.json([await row({ channel: 'lexical', rank: 5 })]);
+  });
+  const out = await searchKnowledge(cfg, 'retour');
+  assert.equal(out.scope, 'supabase_unavailable');
+  assert.equal(out.retrieval.embedding.error, 'upstream_unavailable');
+  assert.equal(out.retrieval.backend.calls, 0);
+  assert.equal(embeddingCalls, 1);
+  assert.equal(backendCalls, 0);
+});
+
 test('Failed vector service degrades to filtered lexical retrieval without demo text', async (t) => {
   const cfg = setup(t);
   t.mock.method(globalThis, 'fetch', async (url) =>
