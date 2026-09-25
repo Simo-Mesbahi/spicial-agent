@@ -10,6 +10,7 @@ import {
   type EmbeddingEnv,
 } from './embedding-runtime';
 import { ProviderError } from './provider-runtime';
+import { SupabaseRequestError } from './supabase';
 import type { KnowledgeSearchResult } from './knowledge-runtime';
 export type HybridSettings = EmbeddingEnv & {
   RAG_MODE?: string;
@@ -123,6 +124,59 @@ export function fuseCandidates(rows: Candidate[], minLexical: number, minSimilar
       a.row.document_id.localeCompare(b.row.document_id),
   );
 }
+const HYBRID_RPC_TIMEOUT_MS = 5000;
+const HYBRID_RPC_MAX_RETRIES = 1;
+const HYBRID_RPC_RETRY_BACKOFF_MS = 1000;
+
+function normalizedBackendFailure(error: unknown) {
+  if (!(error instanceof SupabaseRequestError)) return 'request_failed' as const;
+  if (error.code === 'upstream_timeout') return 'timeout' as const;
+  if (error.code === 'upstream_unreachable') return 'network' as const;
+  if (error.status === 429) return 'rate_limited' as const;
+  if ([408, 502, 503, 504].includes(error.status)) return 'unavailable' as const;
+  return 'request_failed' as const;
+}
+
+function retryableHybridRpcFailure(error: unknown) {
+  if (!(error instanceof SupabaseRequestError)) return false;
+  return (
+    error.code === 'upstream_timeout' ||
+    error.code === 'upstream_unreachable' ||
+    [408, 429, 502, 503, 504].includes(error.status)
+  );
+}
+
+async function hybridCandidatesRequest(
+  env: KnowledgeEnvironment,
+  body: Record<string, unknown>,
+  backend: NonNullable<KnowledgeSearchResult['retrieval']>['backend'],
+) {
+  for (let attempt = 0; ; attempt++) {
+    backend.calls++;
+    try {
+      const result = await supabaseRequest<unknown>(
+        env,
+        '/rest/v1/rpc/knowledge_hybrid_candidates',
+        {
+          mode: { kind: 'privileged' },
+          method: 'POST',
+          timeoutMs: HYBRID_RPC_TIMEOUT_MS,
+          body,
+        },
+      );
+      backend.error = null;
+      return result;
+    } catch (error) {
+      backend.error = normalizedBackendFailure(error);
+      if (!retryableHybridRpcFailure(error) || attempt >= HYBRID_RPC_MAX_RETRIES) throw error;
+      backend.retries++;
+      await new Promise((resolve) =>
+        setTimeout(resolve, HYBRID_RPC_RETRY_BACKOFF_MS * 2 ** attempt),
+      );
+    }
+  }
+}
+
 export async function searchHybridKnowledge(
   env: KnowledgeEnvironment,
   query: string,
@@ -137,6 +191,12 @@ export async function searchHybridKnowledge(
     candidateCount: 0,
     latencyMs: 0,
     embedding,
+    backend: {
+      calls: 0,
+      retries: 0,
+      timeoutMs: HYBRID_RPC_TIMEOUT_MS,
+      error: null,
+    },
   };
   const result: KnowledgeSearchResult = {
     articles: [],
@@ -182,11 +242,9 @@ export async function searchHybridKnowledge(
       embedding.error = error instanceof ProviderError ? error.reason : 'configuration';
     }
     telemetry.fallbackReason = embedding.error;
-    const raw = await supabaseRequest(env, '/rest/v1/rpc/knowledge_hybrid_candidates', {
-      mode: { kind: 'privileged' },
-      method: 'POST',
-      timeoutMs: 2500,
-      body: {
+    const raw = await hybridCandidatesRequest(
+      env,
+      {
         p_organization_id: env.SUPABASE_ORGANIZATION_ID,
         p_query: query.slice(0, 500),
         p_locale: locale,
@@ -195,7 +253,8 @@ export async function searchHybridKnowledge(
         p_embedding: vector ? JSON.stringify(vector) : null,
         p_min_similarity: candidateFloor,
       },
-    });
+      telemetry.backend,
+    );
     const parsed = z.array(candidateSchema).max(16).safeParse(raw);
     if (!parsed.success) throw new ProviderError('invalid_upstream_response');
     const today = new Date().toISOString().slice(0, 10),
