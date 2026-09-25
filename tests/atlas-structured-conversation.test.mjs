@@ -101,6 +101,105 @@ const stateOf = (db) =>
   JSON.parse(db.sql.prepare('SELECT payload FROM conversation_states').get().payload);
 
 
+test('run 20 semantic regressions are normalized without weakening genuine preferences or policy questions', () => {
+  const fresh = emptyConversationState();
+  const germanTopic = normalizeUnderstanding(
+    output({
+      language: 'de',
+      intent: 'preference',
+      subIntent: 'general',
+      topic: 'return',
+      guidance: 'none',
+      guidancePreference: 'keep',
+      requiresCase: false,
+      requiresKnowledge: true,
+      response: '',
+    }),
+    'ich meine die Rückgabe',
+    fresh,
+    [],
+  );
+  assert.equal(germanTopic.intent, 'information');
+  assert.equal(germanTopic.guidance, 'business_direct');
+  assert.equal(germanTopic.requiresCase, false);
+  assert.equal(germanTopic.requiresKnowledge, true);
+  assert.equal(germanTopic.conversationRepair, false);
+
+  const genuineNegativePreference = normalizeUnderstanding(
+    output({
+      language: 'de',
+      intent: 'preference',
+      topic: 'return',
+      guidance: 'none',
+      requiresCase: false,
+      requiresKnowledge: false,
+      response: 'Verstanden.',
+    }),
+    'ich meine keine Rückgabe',
+    fresh,
+    [],
+  );
+  assert.equal(genuineNegativePreference.intent, 'preference');
+  assert.equal(genuineNegativePreference.guidance, 'none');
+
+  const active = {
+    ...emptyConversationState(),
+    activeCaseId: 'case-a',
+    currentTopic: 'repair',
+    language: 'ar',
+    recentTurns: [
+      { user: 'أين تلفازي؟', conversationalReply: '' },
+      { user: 'لماذا ينتظر؟', conversationalReply: '' },
+    ],
+  };
+  const candidates = [
+    { id: 'case-a', reference: 'SAV-1', product: 'TV', kind: 'repair' },
+  ];
+  const arabicPart = normalizeUnderstanding(
+    output({
+      language: 'ar',
+      intent: 'information',
+      subIntent: 'general',
+      topic: 'repair',
+      guidance: 'business_direct',
+      reference: 'active',
+      requiresCase: true,
+      requiresKnowledge: true,
+      referencesPreviousTurn: false,
+      response: '',
+    }),
+    'وماذا عن قطعة الغيار له؟',
+    active,
+    candidates,
+  );
+  assert.equal(arabicPart.intent, 'case_lookup');
+  assert.equal(arabicPart.requiresCase, true);
+  assert.equal(arabicPart.requiresKnowledge, false);
+  assert.equal(arabicPart.referencesPreviousTurn, true);
+  assert.equal(arabicPart.guidance, 'business_direct');
+
+  const warrantyPolicy = normalizeUnderstanding(
+    output({
+      language: 'en',
+      intent: 'information',
+      subIntent: 'general',
+      topic: 'warranty',
+      guidance: 'business_direct',
+      reference: 'active',
+      requiresCase: true,
+      requiresKnowledge: true,
+      referencesPreviousTurn: false,
+      response: '',
+    }),
+    'what about its warranty?',
+    { ...active, language: 'en' },
+    candidates,
+  );
+  assert.equal(warrantyPolicy.intent, 'information');
+  assert.equal(warrantyPolicy.requiresCase, true);
+  assert.equal(warrantyPolicy.requiresKnowledge, true);
+});
+
 test('semantic normalization treats repair as contextual, not a generic phrase trigger', () => {
   const fresh = emptyConversationState();
   const first = normalizeUnderstanding(
