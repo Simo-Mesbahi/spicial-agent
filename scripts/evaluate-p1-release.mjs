@@ -659,6 +659,20 @@ const structuredGate = Boolean(
     structured.turns === structuredTurns &&
     structured.turns >= contract.structured.minimumTurns &&
     structuredCoverageGate &&
+    structured.operational?.pacingIntervalMs >=
+      contract.resilience.minimumCompletionPacingIntervalMs &&
+    structured.operational?.retryBackoffMs ===
+      contract.resilience.transientRetryBackoffMs &&
+    structured.operational?.rateLimitRetryMinMs ===
+      contract.resilience.rateLimitRetryMinMs &&
+    structured.operational?.rateLimitRetryMaxMs ===
+      contract.resilience.rateLimitRetryMaxMs &&
+    Number.isInteger(structured.operational?.rateLimitRetriesUsed) &&
+    structured.operational.rateLimitRetriesUsed >= 0 &&
+    structured.operational.rateLimitRetriesUsed <= structured.operational.retriedScenarios &&
+    structured.operational?.rateLimitWaitMs ===
+      structured.operational.rateLimitRetriesUsed *
+        contract.resilience.rateLimitRetryMinMs &&
     structured.operational?.apiFailures === contract.structured.apiFailures &&
     structured.operational?.fallbackCount === contract.structured.fallbackCount &&
     structured.operational?.retriedScenarios <= contract.structured.maximumScenarioRetries &&
@@ -739,6 +753,18 @@ const generationGate = Boolean(
   generation &&
     generation.status === 'requires_human_review' &&
     generation.releaseAllowed === false &&
+    generation.pacingIntervalMs >= contract.resilience.minimumCompletionPacingIntervalMs &&
+    generation.retryBackoffMs === contract.resilience.transientRetryBackoffMs &&
+    generation.rateLimitRetryMinMs === contract.resilience.rateLimitRetryMinMs &&
+    generation.rateLimitRetryMaxMs === contract.resilience.rateLimitRetryMaxMs &&
+    Number.isInteger(generation.operational?.rateLimitRetriesUsed) &&
+    generation.operational.rateLimitRetriesUsed >= 0 &&
+    generation.operational.rateLimitRetriesUsed <=
+      generation.operational.generationRetriesUsed +
+        generation.operational.validationRetriesUsed &&
+    generation.operational?.rateLimitWaitMs ===
+      generation.operational.rateLimitRetriesUsed *
+        contract.resilience.rateLimitRetryMinMs &&
     generationCoverageGate &&
     generation.operational?.generationRetriesUsed === generationRetryRows &&
     generation.operational?.validationRetriesUsed === validationRetryRows &&
@@ -855,8 +881,32 @@ const groundingProviderCalls = groundingReports.reduce(
   (total, report) => total + (report.operational?.providerCalls ?? 0),
   0,
 );
+const groundingRateLimitRetries = groundingReports.reduce(
+  (total, report) => total + (report.operational?.rateLimitRetriesUsed ?? 0),
+  0,
+);
+const groundingRateLimitWaitMs = groundingReports.reduce(
+  (total, report) => total + (report.operational?.rateLimitWaitMs ?? 0),
+  0,
+);
+const groundingResilienceGate =
+  groundingReports.length > 0 &&
+  groundingReports.every(
+    (report) =>
+      report.pacingIntervalMs >= contract.resilience.minimumCompletionPacingIntervalMs &&
+      report.retryBackoffMs === contract.resilience.transientRetryBackoffMs &&
+      report.rateLimitRetryMinMs === contract.resilience.rateLimitRetryMinMs &&
+      report.rateLimitRetryMaxMs === contract.resilience.rateLimitRetryMaxMs &&
+      Number.isInteger(report.operational?.rateLimitRetriesUsed) &&
+      report.operational.rateLimitRetriesUsed >= 0 &&
+      report.operational.rateLimitRetriesUsed <= report.operational.retriesUsed &&
+      report.operational?.rateLimitWaitMs ===
+        report.operational.rateLimitRetriesUsed *
+          contract.resilience.rateLimitRetryMinMs,
+  );
 const groundingGate = Boolean(
   groundingCoverageGate &&
+    groundingResilienceGate &&
     groundingRetryCalls <= contract.grounding.maximumRetryCalls &&
     groundingProviderCalls <=
       contract.grounding.requiredScenarios + contract.grounding.maximumRetryCalls &&
@@ -1035,6 +1085,8 @@ const report = {
       ...groundingMetrics,
       retryCalls: groundingRetryCalls,
       providerCalls: groundingProviderCalls,
+      rateLimitRetries: groundingRateLimitRetries,
+      rateLimitWaitMs: groundingRateLimitWaitMs,
     },
   },
   humanReview,
