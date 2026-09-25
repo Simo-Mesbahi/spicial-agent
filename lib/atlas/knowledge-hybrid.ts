@@ -142,6 +142,11 @@ function hybridRpcPolicy(env: KnowledgeEnvironment) {
 
 function normalizedBackendFailure(error: unknown) {
   if (!(error instanceof SupabaseRequestError)) return 'request_failed' as const;
+  if (
+    error.code === 'invalid_upstream_response' ||
+    error.code === 'upstream_redirect_blocked'
+  )
+    return 'request_failed' as const;
   if (error.code === 'upstream_timeout') return 'timeout' as const;
   if (error.code === 'upstream_unreachable') return 'network' as const;
   if (error.status === 429) return 'rate_limited' as const;
@@ -151,6 +156,11 @@ function normalizedBackendFailure(error: unknown) {
 
 function retryableHybridRpcFailure(error: unknown) {
   if (!(error instanceof SupabaseRequestError)) return false;
+  if (
+    error.code === 'invalid_upstream_response' ||
+    error.code === 'upstream_redirect_blocked'
+  )
+    return false;
   return (
     error.code === 'upstream_timeout' ||
     error.code === 'upstream_unreachable' ||
