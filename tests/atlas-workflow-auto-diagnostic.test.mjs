@@ -66,7 +66,7 @@ test('workflow diagnostic reproduces run 26 daily-quota root cause without raw l
     jobsResponse: failedJobs(),
     logs: {
       '108195913860.log':
-        'PRIVATE-CUSTOMER gemini-test-key quotaId=GenerateRequestsPerDay ' +
+        '2026-09-25T18:23:22.000Z PRIVATE-CUSTOMER gemini-test-key quotaId=GenerateRequestsPerDay ' +
         'systemicTransportFailure=provider_daily_quota_exhausted',
     },
     artifactDocuments: [],
@@ -173,6 +173,53 @@ test('workflow diagnostic never copies untrusted blocker codes, providers or mod
   );
 });
 
+test('workflow diagnostic ignores allowlisted signals from earlier successful steps', () => {
+  const diagnostic = buildWorkflowDiagnostic({
+    run: failedRun({
+      id: 77,
+      name: 'Quality checks',
+      run_number: 370,
+      event: 'pull_request',
+      head_sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    }),
+    jobsResponse: {
+      jobs: [
+        {
+          id: 9001,
+          name: 'verify',
+          conclusion: 'failure',
+          steps: [
+            {
+              number: 7,
+              name: 'Run npm test',
+              conclusion: 'success',
+              started_at: '2026-09-25T18:20:00Z',
+              completed_at: '2026-09-25T18:21:00Z',
+            },
+            {
+              number: 14,
+              name: 'Run npm run build',
+              conclusion: 'failure',
+              started_at: '2026-09-25T18:30:00Z',
+              completed_at: '2026-09-25T18:30:20Z',
+            },
+          ],
+        },
+      ],
+    },
+    logs: {
+      '9001.log': [
+        '2026-09-25T18:20:30.000Z provider_daily_quota_exhausted from regression test fixture',
+        '2026-09-25T18:30:05.000Z build compilation failed',
+      ].join('\n'),
+    },
+  });
+
+  assert.equal(diagnostic.failure.rootCause.category, 'build');
+  assert.equal(diagnostic.failure.rootCause.code, 'build_failed');
+  assert.equal(diagnostic.failure.rootCause.source, 'failed_step');
+});
+
 test('workflow diagnostic falls back deterministically to the first failed CI step', () => {
   const diagnostic = buildWorkflowDiagnostic({
     run: failedRun({
@@ -226,8 +273,8 @@ test('diagnostic markdown contains only controlled summary fields', () => {
     run: failedRun(),
     jobsResponse: failedJobs(),
     logs: {
-      'job.log':
-        'provider_daily_quota_exhausted SECRET-UPSTREAM-CONTENT',
+      '108195913860.log':
+        '2026-09-25T18:23:22.000Z provider_daily_quota_exhausted SECRET-UPSTREAM-CONTENT',
     },
   });
   const markdown = diagnosticSummaryMarkdown(diagnostic);
