@@ -442,6 +442,7 @@ const attemptedReports = {
 };
 
 if (live) {
+  let retrievalReady = true;
   if (reuseRetrieval) {
     const preflight = await readJson(paths.retrieval);
     if (!retrievalReportPasses(preflight) || !reusedRetrievalMatchesEnvironment(preflight))
@@ -449,34 +450,36 @@ if (live) {
         'Reused retrieval preflight is stale, misconfigured, or below the P1.7 release contract.',
       );
   } else {
-    executions.push(
-      runNode('scripts/evaluate-retrieval.mjs', [
-        '--live',
-        '--max-queries',
-        String(contract.retrieval.requiredQueries),
-        '--max-transient-retries',
-        String(contract.retrieval.maximumTransientRetries),
-        '--max-embedding-retries',
-        String(contract.retrieval.maximumEmbeddingRetries),
-        '--output',
-        paths.retrieval,
-      ]),
-    );
+    const retrievalRun = runNode('scripts/evaluate-retrieval.mjs', [
+      '--live',
+      '--max-queries',
+      String(contract.retrieval.requiredQueries),
+      '--max-transient-retries',
+      String(contract.retrieval.maximumTransientRetries),
+      '--max-embedding-retries',
+      String(contract.retrieval.maximumEmbeddingRetries),
+      '--output',
+      paths.retrieval,
+    ]);
+    executions.push(retrievalRun);
+    retrievalReady = retrievalRun.status === 0;
   }
 
-  attemptedReports.freshness = true;
-  const freshnessRun = runNode('scripts/check-documentary-freshness.mjs', [
-    '--live',
-    '--retrieval',
-    paths.retrieval,
-    '--output',
-    paths.freshness,
-    '--max-age-ms',
-    '1800000',
-  ]);
-  executions.push(freshnessRun);
-
-  let continueQualification = freshnessRun.status === 0;
+  let continueQualification = retrievalReady;
+  if (continueQualification) {
+    attemptedReports.freshness = true;
+    const freshnessRun = runNode('scripts/check-documentary-freshness.mjs', [
+      '--live',
+      '--retrieval',
+      paths.retrieval,
+      '--output',
+      paths.freshness,
+      '--max-age-ms',
+      '1800000',
+    ]);
+    executions.push(freshnessRun);
+    continueQualification = freshnessRun.status === 0;
+  }
   const smoke = groundingPlan[0];
   if (continueQualification) {
     attemptedReports.grounding.add(smoke.path);
