@@ -346,9 +346,13 @@ function stepFallback(step) {
         category,
         code,
         scope:
-          category === 'semantic_quality' ||
-          category.endsWith('_quality') ||
-          category === 'regression_governance'
+          [
+            'semantic_quality',
+            'retrieval_quality',
+            'generation_quality',
+            'grounding_quality',
+            'regression_governance',
+          ].includes(category)
             ? 'quality'
             : 'internal',
         retryable: false,
