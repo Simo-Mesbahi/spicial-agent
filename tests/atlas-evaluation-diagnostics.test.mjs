@@ -6,6 +6,76 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+test('structured live runner retries one 429 then stops after persistent rate limit', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-rate-limit-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return Response.json([{error:{code:429,status:'RESOURCE_EXHAUSTED'}}], {status:429});
+    };
+    `,
+  );
+  let stdout;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(preload).href,
+        'scripts/evaluate-structured-ai.mjs',
+        '--live',
+        '--mode',
+        'structured',
+        '--max-turns',
+        '5',
+        '--languages',
+        'fr',
+        '--families',
+        'correction-understanding',
+        '--output',
+        output,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          LLM_PROVIDER: 'gemini',
+          LLM_MODEL: '',
+          LLM_BUDGET_MODE: 'free',
+          LLM_DAILY_LIMIT: '100',
+          GEMINI_MODEL: 'gemini-2.5-flash',
+          GEMINI_API_KEY: 'test-key',
+          LLM_STRUCTURED_OUTPUT: '',
+          LLM_REQUEST_TIMEOUT_MS: '20000',
+          P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+          P1_STRUCTURED_MAX_SCENARIO_RETRIES: '1',
+          P1_STRUCTURED_RETRY_BACKOFF_MS: '0',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    assert.fail('Expected persistent structured rate limit to fail closed');
+  } catch (error) {
+    assert.equal(error.status, 1);
+    stdout = error.stdout;
+  }
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(summary.operational.providerCalls, 2);
+  assert.equal(summary.operational.finalProviderCalls, 1);
+  assert.equal(summary.operational.discardedProviderCalls, 1);
+  assert.equal(summary.operational.retriedScenarios, 1);
+  assert.equal(summary.operational.systemicTransportFailure, 'provider_rate_limited');
+  assert.equal(report.rows.length, 1);
+  assert.equal(report.rows[0].fallbackReason, 'upstream_rate_limited');
+});
+
 for (const script of ['generation', 'grounding'])
   test(`${script} live runner reports the actual provider and safe rejection without a second call`, (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-diagnostic-'));
