@@ -83,6 +83,7 @@ const groundingPlan = p1GroundingPlan.map((entry) => ({
 const paths = {
   structured: resolve('outputs/p1-live/structured.json'),
   retrieval: resolve('outputs/p1-live/retrieval.json'),
+  freshness: resolve('outputs/p1-live/freshness-smoke.json'),
   generation: resolve('outputs/p1-live/generation.json'),
   grounding: groundingPlan.map((entry) => entry.path),
 };
@@ -434,6 +435,7 @@ function sourceTreeState() {
 const executions = [];
 const attemptedReports = {
   retrieval: live || finalizeExisting,
+  freshness: finalizeExisting,
   structured: finalizeExisting,
   generation: finalizeExisting,
   grounding: new Set(finalizeExisting ? paths.grounding : []),
@@ -462,22 +464,36 @@ if (live) {
     );
   }
 
-  const smoke = groundingPlan[0];
-  attemptedReports.grounding.add(smoke.path);
-  const smokeRun = runNode('scripts/evaluate-grounding.mjs', [
+  attemptedReports.freshness = true;
+  const freshnessRun = runNode('scripts/check-documentary-freshness.mjs', [
     '--live',
-    '--offset',
-    String(smoke.offset),
-    '--max-cases',
-    String(smoke.maxCases),
-    '--max-retries',
-    String(smoke.maxRetries),
+    '--retrieval',
+    paths.retrieval,
     '--output',
-    smoke.path,
+    paths.freshness,
+    '--max-age-ms',
+    '1800000',
   ]);
-  executions.push(smokeRun);
+  executions.push(freshnessRun);
 
-  let continueQualification = smokeRun.status === 0;
+  let continueQualification = freshnessRun.status === 0;
+  const smoke = groundingPlan[0];
+  if (continueQualification) {
+    attemptedReports.grounding.add(smoke.path);
+    const smokeRun = runNode('scripts/evaluate-grounding.mjs', [
+      '--live',
+      '--offset',
+      String(smoke.offset),
+      '--max-cases',
+      String(smoke.maxCases),
+      '--max-retries',
+      String(smoke.maxRetries),
+      '--output',
+      smoke.path,
+    ]);
+    executions.push(smokeRun);
+    continueQualification = smokeRun.status === 0;
+  }
 
   if (continueQualification) {
     attemptedReports.structured = true;
@@ -559,6 +575,7 @@ const subprocessFailures = executions
 
 let structured = null;
 let retrieval = null;
+let freshness = null;
 let generation = null;
 const groundingReports = [];
 const readFailures = [];
@@ -567,6 +584,7 @@ const skippedReports = [];
 for (const [name, path] of [
   ['structured', paths.structured],
   ['retrieval', paths.retrieval],
+  ['freshness', paths.freshness],
   ['generation', paths.generation],
 ]) {
   if (!attemptedReports[name]) {
@@ -577,6 +595,7 @@ for (const [name, path] of [
     const parsed = await readJson(path);
     if (name === 'structured') structured = parsed;
     if (name === 'retrieval') retrieval = parsed;
+    if (name === 'freshness') freshness = parsed;
     if (name === 'generation') generation = parsed;
   } catch (error) {
     readFailures.push({ name, path, error: error instanceof Error ? error.message : String(error) });
@@ -608,6 +627,7 @@ if (readFailures.length === 0 && skippedReports.length === 0) {
       contractSha256: valueSha256(contract),
       structuredSha256: await fileSha256(paths.structured),
       retrievalSha256: await fileSha256(paths.retrieval),
+      documentaryFreshnessSha256: await fileSha256(paths.freshness),
       generationSha256: await fileSha256(paths.generation),
       groundingSha256: await Promise.all(paths.grounding.map((path) => fileSha256(path))),
     };
@@ -725,6 +745,35 @@ const structuredGate = Boolean(
 
 const retrievalRows = retrieval?.results ?? [];
 const retrievalGate = retrievalReportPasses(retrieval);
+const freshnessCreatedAt = Date.parse(freshness?.createdAt ?? '');
+const retrievalCreatedAt = Date.parse(retrieval?.createdAt ?? '');
+const documentaryFreshnessGate = Boolean(
+  freshness &&
+    freshness.schema === 1 &&
+    freshness.kind === 'p1-documentary-freshness-smoke' &&
+    freshness.status === 'passed' &&
+    Number.isFinite(freshnessCreatedAt) &&
+    Number.isFinite(retrievalCreatedAt) &&
+    freshnessCreatedAt >= retrievalCreatedAt &&
+    freshnessCreatedAt <= Date.now() + 5 * 60_000 &&
+    freshness.retrieval?.createdAt === retrieval?.createdAt &&
+    freshness.retrieval?.queryContract ===
+      contract.documentaryFreshness.retrievalQueryContract &&
+    Number.isInteger(freshness.retrieval?.sourceCount) &&
+    freshness.retrieval.sourceCount >= contract.documentaryFreshness.minimumSources &&
+    freshness.retrieval.sourceCount <= contract.documentaryFreshness.maximumSources &&
+    freshness.checks?.exactCurrentEvidence === true &&
+    freshness.checks?.changedVersionBlocked === true &&
+    freshness.checks?.publishableExecutionBlocked === true &&
+    freshness.operational?.databaseRpcCalls ===
+      contract.documentaryFreshness.maximumDatabaseRpcCalls &&
+    freshness.operational?.providerCalls === contract.documentaryFreshness.providerCalls &&
+    freshness.operational?.embeddingCalls === contract.documentaryFreshness.embeddingCalls &&
+    freshness.privacy?.documentContentIncluded === false &&
+    freshness.privacy?.documentIdentifiersIncluded === false &&
+    freshness.privacy?.credentialsIncluded === false &&
+    freshness.privacy?.rawUpstreamPayloadIncluded === false,
+);
 
 const generationRows = generation?.results ?? [];
 const expectedGenerationScenarios = generationScenarios.slice(
@@ -1048,6 +1097,7 @@ const automatedGates = {
   qualificationArtifactIntegrity: qualificationAnchor.valid,
   structured: structuredGate,
   retrieval: retrievalGate,
+  documentaryFreshness: documentaryFreshnessGate,
   generation: generationGate,
   grounding: groundingGate,
 };
@@ -1118,6 +1168,15 @@ const report = {
       ? {
           queries: retrievalRows.length,
           completed: retrieval.status === 'completed',
+        }
+      : null,
+    documentaryFreshness: freshness
+      ? {
+          passed: documentaryFreshnessGate,
+          sourceCount: freshness.retrieval?.sourceCount ?? 0,
+          databaseRpcCalls: freshness.operational?.databaseRpcCalls ?? 0,
+          providerCalls: freshness.operational?.providerCalls ?? 0,
+          embeddingCalls: freshness.operational?.embeddingCalls ?? 0,
         }
       : null,
     generation: generation
