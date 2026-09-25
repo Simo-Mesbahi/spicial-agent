@@ -1365,7 +1365,9 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         action: answer.action,
         quickReplies: answer.quickReplies ?? [],
         supportPath: answer.supportPath ?? null,
-        ...(env.P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC === 'true'
+        ...(env.P1_EVAL_EXPOSE_PROVIDER_DIAGNOSTIC === 'true' &&
+        env.APP_ENVIRONMENT !== 'PRODUCTION' &&
+        env.APP_EDITION !== 'client'
           ? { providerDiagnostic: telemetry.attempts.at(-1)?.diagnostic ?? null }
           : {}),
         caseVersion: c && answer.tools.includes('get_case') ? c.version : null,
