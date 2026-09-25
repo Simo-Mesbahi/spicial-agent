@@ -3,6 +3,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { p1GroundingReportCount } from '../evals/p1-grounding-plan.mjs';
+import {
+  automatedReleaseGatesPass,
+  safeHistoricalRegressionSummary,
+} from './lib/p1-release-evidence.mjs';
 
 const args = process.argv.slice(2);
 const value = (flag, fallback) =>
@@ -55,6 +59,8 @@ if (
   qualification?.kind !== 'p1-live-release-qualification' ||
   qualification?.runMode !== 'live' ||
   qualification?.automatedPassed !== true ||
+  !automatedReleaseGatesPass(qualification) ||
+  !safeHistoricalRegressionSummary(qualification) ||
   typeof qualification?.qualificationId !== 'string' ||
   !/^[a-f0-9]{64}$/.test(qualification.qualificationId) ||
   computedQualificationId !== qualification.qualificationId ||
