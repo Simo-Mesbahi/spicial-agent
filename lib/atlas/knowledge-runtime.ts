@@ -80,6 +80,12 @@ export type KnowledgeSearchResult = {
     candidateCount: number;
     latencyMs: number;
     embedding: EmbeddingTrace;
+    backend: {
+      calls: number;
+      retries: number;
+      timeoutMs: number;
+      error: 'timeout' | 'network' | 'rate_limited' | 'unavailable' | 'request_failed' | null;
+    };
     evaluationProbe?: {
       candidateFloor: number;
       vectorCandidates: Array<{
