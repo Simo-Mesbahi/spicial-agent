@@ -6,7 +6,11 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { database, client } from '../tests/helpers/atlas-fixture.mjs';
 import { preP1Scenarios } from '../evals/pre-p1-conversations.mjs';
-import { liveCompletionPacer } from './lib/live-eval-pacing.mjs';
+import {
+  liveCompletionPacer,
+  liveTransientRetryBackoff,
+  rateLimitSystemicFailure,
+} from './lib/live-eval-pacing.mjs';
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
@@ -135,12 +139,18 @@ const transientFallbackReasons = new Set([
 
 const rows = [],
   pacing = liveCompletionPacer(),
+  retryPolicy = liveTransientRetryBackoff({
+    ...process.env,
+    P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: String(retryBackoffMs),
+  }),
   savedInfo = console.info;
 let retriedScenarios = 0,
   discardedProviderCalls = 0,
   discardedInputTokens = 0,
   discardedOutputTokens = 0,
   discardedUsageComplete = true,
+  rateLimitRetriesUsed = 0,
+  rateLimitWaitMs = 0,
   systemicTransportFailure = null;
 
 async function runScenario(scenario) {
@@ -190,6 +200,7 @@ async function runScenario(scenario) {
         usageComplete: m.usageComplete ?? false,
         latencyMs: elapsed,
         serverResponseReadyMs: m.latencyMs ?? null,
+        providerDiagnostic: m.providerTrace?.attempts?.at(-1)?.diagnostic ?? null,
         // Synthetic outputs make human review possible; neither prompts nor credentials are logged.
         response: response.body.content ?? null,
       });
@@ -219,25 +230,42 @@ try {
       const transient = scenarioRows.some(
         (row) => row.fallback && transientFallbackReasons.has(row.fallbackReason),
       );
-      if (!transient || retriedScenarios >= retryLimit) {
+      if (!transient) break;
+
+      const retryAttempt = retriedScenarios;
+      const transientRow = scenarioRows.find(
+        (row) => row.fallback && transientFallbackReasons.has(row.fallbackReason),
+      );
+      const retryReason = rateLimited
+        ? 'upstream_rate_limited'
+        : transientRow?.fallbackReason ?? 'upstream_unavailable';
+      const retryPlan = retryPolicy.plan(
+        retryReason,
+        retryAttempt,
+        transientRow?.providerDiagnostic ?? null,
+      );
+      if (!retryPlan.retryable) {
+        systemicTransportFailure = rateLimitSystemicFailure(retryPlan.source);
+        break;
+      }
+      if (retriedScenarios >= retryLimit) {
         if (rateLimited) systemicTransportFailure = 'provider_rate_limited';
         break;
       }
 
-      const retryAttempt = retriedScenarios;
       retriedScenarios++;
+      if (rateLimited) rateLimitRetriesUsed++;
       discardedProviderCalls += scenarioRows.reduce((n, row) => n + (row.providerCalls ?? 0), 0);
       discardedInputTokens += scenarioRows.reduce((n, row) => n + (row.inputTokens ?? 0), 0);
       discardedOutputTokens += scenarioRows.reduce((n, row) => n + (row.outputTokens ?? 0), 0);
       discardedUsageComplete &&= scenarioRows.every((row) => row.usageComplete);
 
-      // A timeout/503 often reflects a short provider-side brownout. The start-to-start
-      // pacer has already elapsed during long failures, so add an explicit bounded
-      // cooldown before rebuilding and retrying the scenario from clean state.
-      if (retryBackoffMs) {
-        const delay = Math.min(30000, retryBackoffMs * 2 ** retryAttempt);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
+      const waited = await retryPolicy.wait(
+        retryAttempt,
+        retryReason,
+        transientRow?.providerDiagnostic ?? null,
+      );
+      if (rateLimited) rateLimitWaitMs += waited.delayMs;
     }
     rows.push(...scenarioRows);
     if (systemicTransportFailure) break scenarioLoop;
@@ -305,6 +333,10 @@ const report = {
     retriedScenarios,
     maximumScenarioRetries: retryLimit,
     retryBackoffMs,
+    rateLimitRetryMinMs: retryPolicy.rateLimitMinMs,
+    rateLimitRetryMaxMs: retryPolicy.rateLimitMaxMs,
+    rateLimitRetriesUsed,
+    rateLimitWaitMs,
     retryUsageComplete: discardedUsageComplete,
     systemicTransportFailure,
     fallbackCount: rows.filter((r) => r.fallback).length,

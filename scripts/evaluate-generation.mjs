@@ -11,6 +11,7 @@ import {
 import {
   liveCompletionPacer,
   liveTransientRetryBackoff,
+  rateLimitSystemicFailure,
 } from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
 const options = {
@@ -115,6 +116,8 @@ if (!options.live) {
     let languageCorrectionsUsed = 0;
     let citationCorrectionsUsed = 0;
     let structureCorrectionsUsed = 0;
+    let rateLimitRetriesUsed = 0;
+    let rateLimitWaitMs = 0;
     let systemicTransportFailure = null;
 
     async function generateCandidate(fixture, correction, counters) {
@@ -150,16 +153,30 @@ if (!options.live) {
         diagnostics = generated.diagnostics;
         attempts.push(...trace.attempts);
 
-        if (
-          draft ||
-          !retryableTransportReasons.has(diagnostics.reason) ||
-          generationRetriesUsed >= options.maxGenerationRetries
-        )
+        if (draft || !retryableTransportReasons.has(diagnostics.reason)) break;
+
+        const diagnostic = trace.attempts.at(-1)?.diagnostic ?? null;
+        const retryPlan = retryBackoff.plan(
+          diagnostics.reason,
+          counters.generationRetries,
+          diagnostic,
+        );
+        if (!retryPlan.retryable) {
+          systemicTransportFailure = rateLimitSystemicFailure(retryPlan.source);
           break;
+        }
+        if (generationRetriesUsed >= options.maxGenerationRetries) break;
 
         generationRetriesUsed++;
         counters.generationRetries++;
-        await retryBackoff.wait(counters.generationRetries - 1);
+        if (diagnostics.reason === 'upstream_rate_limited') rateLimitRetriesUsed++;
+        const waited = await retryBackoff.wait(
+          counters.generationRetries - 1,
+          diagnostics.reason,
+          diagnostic,
+        );
+        if (diagnostics.reason === 'upstream_rate_limited')
+          rateLimitWaitMs += waited.delayMs;
       }
       return { draft, diagnostics, attempts, fixture: activeFixture };
     }
@@ -194,15 +211,30 @@ if (!options.live) {
         );
         attempts.push(...validationTrace.attempts);
 
-        if (
-          !retryableTransportReasons.has(factualValidation.reason) ||
-          validationRetriesUsed >= options.maxValidationRetries
-        )
+        if (!retryableTransportReasons.has(factualValidation.reason)) break;
+
+        const diagnostic = validationTrace.attempts.at(-1)?.diagnostic ?? null;
+        const retryPlan = retryBackoff.plan(
+          factualValidation.reason,
+          counters.validationRetries,
+          diagnostic,
+        );
+        if (!retryPlan.retryable) {
+          systemicTransportFailure = rateLimitSystemicFailure(retryPlan.source);
           break;
+        }
+        if (validationRetriesUsed >= options.maxValidationRetries) break;
 
         validationRetriesUsed++;
         counters.validationRetries++;
-        await retryBackoff.wait(counters.validationRetries - 1);
+        if (factualValidation.reason === 'upstream_rate_limited') rateLimitRetriesUsed++;
+        const waited = await retryBackoff.wait(
+          counters.validationRetries - 1,
+          factualValidation.reason,
+          diagnostic,
+        );
+        if (factualValidation.reason === 'upstream_rate_limited')
+          rateLimitWaitMs += waited.delayMs;
       }
       return { factualValidation, attempts, fixture: activeFixture };
     }
@@ -312,6 +344,7 @@ if (!options.live) {
         validationRetries: counters.validationRetries,
       });
 
+      if (systemicTransportFailure) break;
       if (
         diagnostics?.reason === 'upstream_rate_limited' ||
         factualValidation?.reason === 'upstream_rate_limited'
@@ -341,12 +374,16 @@ if (!options.live) {
           releaseAllowed: false,
           pacingIntervalMs: pacing.intervalMs,
           retryBackoffMs: retryBackoff.intervalMs,
+          rateLimitRetryMinMs: retryBackoff.rateLimitMinMs,
+          rateLimitRetryMaxMs: retryBackoff.rateLimitMaxMs,
           operational: {
             generationRetriesUsed,
             validationRetriesUsed,
             languageCorrectionsUsed,
             citationCorrectionsUsed,
             structureCorrectionsUsed,
+            rateLimitRetriesUsed,
+            rateLimitWaitMs,
             maximumGenerationRetries: options.maxGenerationRetries,
             maximumValidationRetries: options.maxValidationRetries,
             maximumLanguageCorrections: options.maxLanguageCorrections,
@@ -381,6 +418,8 @@ if (!options.live) {
         languageCorrectionsUsed,
         citationCorrectionsUsed,
         structureCorrectionsUsed,
+        rateLimitRetriesUsed,
+        rateLimitWaitMs,
         systemicTransportFailure,
         failures: results
           .filter(

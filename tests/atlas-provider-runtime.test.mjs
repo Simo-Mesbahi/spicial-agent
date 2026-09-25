@@ -8,7 +8,7 @@ const built = await build({
   format: 'esm',
   write: false,
 });
-const { providerCompletion, completionPayload, providerTrace } = await import(
+const { providerCompletion, completionPayload, providerTrace, parseRetryAfterMs } = await import(
   'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
 );
 const env = {
@@ -199,6 +199,8 @@ for (const array of [false, true])
       httpStatus: 404,
       code: 'NOT_FOUND',
       parameter: null,
+      retryAfterMs: null,
+      rateLimitScope: null,
     });
     assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
   });
@@ -224,6 +226,90 @@ for (const code of [
     assert.equal(trace.attempts[0].httpStatus, 429);
     assert.doesNotMatch(JSON.stringify(trace), /PRIVATE|secret-test-key/);
   });
+test('Gemini 429 preserves only safe retry/quota metadata and never raw quota details', async (t) => {
+  const config = {
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_MODEL: 'gemini-3.5-flash-lite',
+    GEMINI_API_KEY: 'PRIVATE-GEMINI-KEY',
+  };
+  mock(t, async () =>
+    Response.json(
+      {
+        error: {
+          code: 429,
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'PRIVATE-GEMINI-KEY PRIVATE-CUSTOMER',
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+              violations: [
+                {
+                  quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                  quotaId: 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier',
+                  description: 'PRIVATE-DESCRIPTION',
+                },
+              ],
+            },
+            {
+              '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+              retryDelay: '39s',
+            },
+          ],
+        },
+      },
+      { status: 429, headers: { 'Retry-After': '45' } },
+    ),
+  );
+  const trace = providerTrace();
+  await assert.rejects(
+    providerCompletion(config, completionPayload(config, []), AbortSignal.timeout(1000), trace),
+    (e) => {
+      assert.deepEqual(e.diagnostic, {
+        reason: 'upstream_rate_limited',
+        httpStatus: 429,
+        code: 'RESOURCE_EXHAUSTED',
+        parameter: null,
+        retryAfterMs: 45000,
+        rateLimitScope: 'minute',
+      });
+      return true;
+    },
+  );
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE|GenerateRequests|generate_content/);
+});
+
+test('Provider rate-limit metadata distinguishes daily quota and bounds retry-after parsing', async () => {
+  assert.equal(parseRetryAfterMs('60', 0), 60000);
+  assert.equal(parseRetryAfterMs('not-a-delay', 0), null);
+  assert.equal(parseRetryAfterMs('99999999', 0), null);
+
+  const config = {
+    LLM_PROVIDER: 'gemini',
+    LLM_BUDGET_MODE: 'free',
+    GEMINI_MODEL: 'gemini-3.5-flash-lite',
+    GEMINI_API_KEY: 'PRIVATE-GEMINI-KEY',
+  };
+  const previous = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      Response.json(
+        { error: { code: 'quota_exceeded', message: 'PRIVATE' } },
+        { status: 429 },
+      );
+    const trace = providerTrace();
+    await assert.rejects(
+      providerCompletion(config, completionPayload(config, []), AbortSignal.timeout(1000), trace),
+      (e) =>
+        e.diagnostic.rateLimitScope === 'day' &&
+        e.diagnostic.retryAfterMs === null,
+    );
+    assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test('Unknown codes, Google status fields and error types never leak to trace', async (t) => {
   mock(t, async () =>
     Response.json(
@@ -248,6 +334,8 @@ test('Unknown codes, Google status fields and error types never leak to trace', 
     httpStatus: 404,
     code: null,
     parameter: null,
+    retryAfterMs: null,
+    rateLimitScope: null,
   });
   assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
 });

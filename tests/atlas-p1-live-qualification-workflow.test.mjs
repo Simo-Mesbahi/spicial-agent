@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { groundingDecisionPasses } from '../evals/grounding.mjs';
+import {
+  liveTransientRetryBackoff,
+  rateLimitSystemicFailure,
+} from '../scripts/lib/live-eval-pacing.mjs';
 
 const workflowPath = '.github/workflows/p1-live-qualification.yml';
 
@@ -68,9 +72,11 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.match(source, /LLM_REQUEST_TIMEOUT_MS: '60000'/);
   assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '20000'/);
   assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '20000'/);
-  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '10000'/);
   assert.match(source, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '4000'/);
   assert.match(source, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '15000'/);
+  assert.match(source, /P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '60000'/);
+  assert.match(source, /P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '60000'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
   assert.match(source, /P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /default: gemini-3\.5-flash-lite/);
@@ -101,15 +107,16 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
   const contract = await readFile('evals/p1-release-contract.mjs', 'utf8');
 
-  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
+  assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '10000'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
   assert.match(pacing, /start-to-start pacing/);
   assert.match(pacing, /never retries provider calls/);
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
   assert.match(structured, /retryBackoffMs/);
-  assert.match(structured, /Math\.min\(30000, retryBackoffMs \* 2 \*\* retryAttempt\)/);
-  assert.match(structured, /setTimeout\(resolve, delay\)/);
+  assert.match(structured, /retryPolicy\.plan/);
+  assert.match(structured, /retryPolicy\.wait/);
+  assert.match(structured, /providerDiagnostic/);
   assert.match(structured, /discardedProviderCalls/);
   assert.match(structured, /finalProviderCalls/);
   assert.match(structured, /retryUsageComplete/);
@@ -118,6 +125,10 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /response\.status !== 200 \|\| m\.fallback/);
   assert.match(structured, /while \(true\)/);
   assert.match(structured, /'upstream_rate_limited'/);
+  assert.match(contract, /minimumCompletionPacingIntervalMs: 10000/);
+  assert.match(contract, /transientRetryBackoffMs: 15000/);
+  assert.match(contract, /rateLimitRetryMinMs: 60000/);
+  assert.match(contract, /rateLimitRetryMaxMs: 60000/);
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
   assert.match(contract, /maximumGenerationRetryCalls: 2/);
@@ -140,6 +151,56 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumBackendRetryCalls: 4/);
   assert.match(contract, /maximumEmbeddingCalls: 24/);
   assert.match(contract, /maximumTotalCompletionCalls: 240/);
+});
+
+test('P1.7 rate-limit retry policy waits a full quota window and refuses long/daily quota retries', () => {
+  const backoff = liveTransientRetryBackoff({
+    P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '15000',
+    P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '60000',
+    P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '60000',
+  });
+
+  assert.deepEqual(
+    backoff.plan('upstream_unavailable', 0, null),
+    { retryable: true, delayMs: 15000, source: 'transient_backoff' },
+  );
+  assert.deepEqual(
+    backoff.plan('upstream_rate_limited', 0, {
+      retryAfterMs: 39000,
+      rateLimitScope: 'minute',
+    }),
+    { retryable: true, delayMs: 60000, source: 'provider_advised_rate_limit' },
+  );
+  assert.deepEqual(
+    backoff.plan('upstream_rate_limited', 0, {
+      retryAfterMs: null,
+      rateLimitScope: 'unknown',
+    }),
+    { retryable: true, delayMs: 60000, source: 'rate_limit_floor' },
+  );
+  assert.deepEqual(
+    backoff.plan('upstream_rate_limited', 0, {
+      retryAfterMs: null,
+      rateLimitScope: 'day',
+    }),
+    { retryable: false, delayMs: 0, source: 'daily_quota' },
+  );
+  assert.deepEqual(
+    backoff.plan('upstream_rate_limited', 0, {
+      retryAfterMs: 61000,
+      rateLimitScope: 'minute',
+    }),
+    {
+      retryable: false,
+      delayMs: 0,
+      source: 'provider_retry_after_exceeds_window',
+    },
+  );
+  assert.equal(rateLimitSystemicFailure('daily_quota'), 'provider_daily_quota_exhausted');
+  assert.equal(
+    rateLimitSystemicFailure('provider_retry_after_exceeds_window'),
+    'provider_rate_limit_retry_window_exceeded',
+  );
 });
 
 test('P1.7 release gate requires complete structured retry telemetry and exact final call accounting', async () => {
@@ -170,6 +231,10 @@ test('P1.7 live resilience is paced and retries only transport failures within e
 
   assert.match(pacing, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS/);
   assert.match(pacing, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS/);
+  assert.match(pacing, /P1_LIVE_RATE_LIMIT_RETRY_MIN_MS/);
+  assert.match(pacing, /P1_LIVE_RATE_LIMIT_RETRY_MAX_MS/);
+  assert.match(pacing, /daily_quota/);
+  assert.match(pacing, /provider_retry_after_exceeds_window/);
   assert.match(retrieval, /liveEmbeddingPacer/);
   assert.match(retrieval, /searchLexicalWithTransientRetries/);
   assert.match(retrieval, /options\.maxTransientRetries - transientRetriesUsed/);

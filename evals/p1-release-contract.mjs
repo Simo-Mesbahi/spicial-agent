@@ -2,6 +2,12 @@ export const p1ReleaseQualificationContract = Object.freeze({
   schema: 1,
   name: 'P1.7 production release qualification',
   supportedLanguages: ['fr', 'en', 'de', 'es', 'ar'],
+  resilience: {
+    minimumCompletionPacingIntervalMs: 10000,
+    transientRetryBackoffMs: 15000,
+    rateLimitRetryMinMs: 60000,
+    rateLimitRetryMaxMs: 60000,
+  },
   structured: {
     minimumTurns: 100,
     maximumTurns: 100,
