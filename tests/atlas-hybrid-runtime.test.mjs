@@ -315,8 +315,10 @@ test('Hybrid RPC policy rejects non-integer or out-of-range settings before prov
     { RAG_RPC_MAX_RETRIES: '0.5' },
     { RAG_RPC_RETRY_BACKOFF_MS: '5001' },
   ]) {
-    const out = await searchKnowledge({ ...env, ...changes }, 'retour');
-    assert.equal(out.scope, 'supabase_unavailable');
+    await assert.rejects(
+      searchKnowledge({ ...env, ...changes }, 'retour'),
+      (error) => error?.reason === 'configuration',
+    );
   }
   assert.equal(calls, 0);
 });
