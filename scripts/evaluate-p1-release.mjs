@@ -75,7 +75,8 @@ const plannedCalls = {
     contract.generation.maximumLanguageCorrectionCalls,
   groundingCalls: contract.grounding.requiredScenarios,
   groundingRetryCompletionCalls: contract.grounding.maximumRetryCalls,
-  embeddingCalls: contract.retrieval.requiredQueries,
+  embeddingCalls:
+    contract.retrieval.requiredQueries + contract.retrieval.maximumEmbeddingRetries,
   completionCalls:
     structuredTurns +
     contract.structured.maximumRetryCompletionCalls +
@@ -324,6 +325,8 @@ if (live) {
         String(contract.retrieval.requiredQueries),
         '--max-transient-retries',
         String(contract.retrieval.maximumTransientRetries),
+        '--max-embedding-retries',
+        String(contract.retrieval.maximumEmbeddingRetries),
         '--output',
         paths.retrieval,
       ]),
