@@ -65,6 +65,13 @@ export function boundedExponentialRetryDelay(baseMs, attempt, capMs = 30000) {
   return Math.min(capMs, baseMs * 2 ** attempt);
 }
 
+export function rateLimitSystemicFailure(source) {
+  if (source === 'daily_quota') return 'provider_daily_quota_exhausted';
+  if (source === 'provider_retry_after_exceeds_window')
+    return 'provider_rate_limit_retry_window_exceeded';
+  return 'provider_rate_limited';
+}
+
 export function liveTransientRetryBackoff(env = process.env) {
   const intervalMs = boundedInterval(env.P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS, 0);
   const rateLimitMinMs = boundedInterval(
