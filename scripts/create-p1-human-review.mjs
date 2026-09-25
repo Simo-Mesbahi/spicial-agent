@@ -61,6 +61,8 @@ if (
   typeof qualificationArtifacts?.contractSha256 !== 'string' ||
   typeof qualificationArtifacts?.structuredSha256 !== 'string' ||
   typeof qualificationArtifacts?.retrievalSha256 !== 'string' ||
+  typeof qualificationArtifacts?.documentaryFreshnessSha256 !== 'string' ||
+  !/^[a-f0-9]{64}$/.test(qualificationArtifacts.documentaryFreshnessSha256) ||
   typeof qualificationArtifacts?.generationSha256 !== 'string' ||
   !Array.isArray(qualificationArtifacts?.groundingSha256) ||
   qualificationArtifacts.groundingSha256.length !== p1GroundingReportCount ||
