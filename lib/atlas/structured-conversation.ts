@@ -295,7 +295,12 @@ export function normalizeUnderstanding(
     u.response = '';
   }
 
-  if (activeCaseCoreference) u.referencesPreviousTurn = true;
+  const caseFactCoreference =
+    activeCaseCoreference &&
+    !genericPolicyCue(message) &&
+    u.topic !== 'quote' &&
+    u.topic !== 'warranty';
+  if (caseFactCoreference) u.referencesPreviousTurn = true;
 
   u.conversationRepair =
     handoffWithdrawal || actionRefusal || strongRepair || continuationRepair;
@@ -326,14 +331,9 @@ export function normalizeUnderstanding(
   if (
     state.activeCaseId &&
     u.requiresCase &&
-    (
-      personalFact ||
-      u.referencesPreviousTurn ||
-      (activeCaseCoreference &&
-        !genericPolicyCue(message) &&
-        u.topic !== 'quote' &&
-        u.topic !== 'warranty')
-    ) &&
+    u.topic !== 'quote' &&
+    u.topic !== 'warranty' &&
+    (personalFact || u.referencesPreviousTurn || caseFactCoreference) &&
     u.intent === 'information' &&
     !explicitExplainOnly(message)
   ) {
