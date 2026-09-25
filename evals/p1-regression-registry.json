@@ -1,0 +1,336 @@
+{
+  "schema": 1,
+  "kind": "p1-historical-regression-registry",
+  "workflow": "P1.7 live qualification",
+  "coverageWindow": {
+    "firstRun": 16,
+    "lastRun": 26
+  },
+  "policy": {
+    "status": "covered",
+    "primaryRootCauseOnly": true,
+    "requireRegressionGuard": true,
+    "failOnCoverageGap": true
+  },
+  "incidents": [
+    {
+      "id": "INC-P1-016",
+      "status": "covered",
+      "title": "Transient Supabase lexical retrieval unavailability",
+      "category": "database_transport",
+      "rootCauseCode": "supabase_lexical_transient_unavailable",
+      "source": {
+        "runNumber": 16,
+        "runId": 36097572819,
+        "headSha": "b2da093dce0e8e49201ef8aefdf54b016bf677c1",
+        "occurredAt": "2026-09-25T05:12:15Z"
+      },
+      "correction": {
+        "pullRequest": 80,
+        "mergeCommitSha": "bf2d4e82a3b07e5731d9357885f6ac6d6071c3d3"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-hybrid-runtime.test.mjs",
+          "title": "Hybrid RPC retries one transient backend failure without re-embedding"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 live resilience is paced and retries only transport failures within explicit budgets"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-017",
+      "status": "covered",
+      "title": "Gemini rate limit interrupted structured qualification",
+      "category": "provider_rate_limit",
+      "rootCauseCode": "structured_provider_rate_limited",
+      "source": {
+        "runNumber": 17,
+        "runId": 36098486267,
+        "headSha": "b2da093dce0e8e49201ef8aefdf54b016bf677c1",
+        "occurredAt": "2026-09-25T05:25:16Z"
+      },
+      "correction": {
+        "pullRequest": 80,
+        "mergeCommitSha": "bf2d4e82a3b07e5731d9357885f6ac6d6071c3d3"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-evaluation-diagnostics.test.mjs",
+          "title": "structured live runner retries one 429 then stops after persistent rate limit"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 live resilience is paced and retries only transport failures within explicit budgets"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-018",
+      "status": "covered",
+      "title": "Hybrid Supabase RPC timeout required idempotent recovery",
+      "category": "database_transport",
+      "rootCauseCode": "hybrid_rpc_timeout_recovery",
+      "source": {
+        "runNumber": 18,
+        "runId": 36106533965,
+        "headSha": "bf2d4e82a3b07e5731d9357885f6ac6d6071c3d3",
+        "occurredAt": "2026-09-25T07:13:08Z"
+      },
+      "correction": {
+        "pullRequest": 81,
+        "mergeCommitSha": "267d08713bc2fd325e4db95ff30c20e925f7bcb3"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-hybrid-runtime.test.mjs",
+          "title": "Hybrid RPC telemetry proves the retry receives the widened deadline"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-hybrid-runtime.test.mjs",
+          "title": "Hybrid RPC stops after one persistent transient retry and never re-embeds"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-019",
+      "status": "covered",
+      "title": "Embedding 429 during retrieval qualification",
+      "category": "embedding_rate_limit",
+      "rootCauseCode": "embedding_429_qualification_recovery",
+      "source": {
+        "runNumber": 19,
+        "runId": 36109440016,
+        "headSha": "267d08713bc2fd325e4db95ff30c20e925f7bcb3",
+        "occurredAt": "2026-09-25T07:47:19Z"
+      },
+      "correction": {
+        "pullRequest": 82,
+        "mergeCommitSha": "507aaa0b526f2d5674ae8daf62dbcac64e82af70"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-evaluation-diagnostics.test.mjs",
+          "title": "retrieval live runner recovers one embedding 429 without backend spend on failed attempt"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-hybrid-runtime.test.mjs",
+          "title": "Qualification-only vector requirement fails fast before backend after embedding failure"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-020",
+      "status": "covered",
+      "title": "Multilingual structured semantic regressions",
+      "category": "semantic_regression",
+      "rootCauseCode": "structured_multilingual_semantic_mismatch",
+      "source": {
+        "runNumber": 20,
+        "runId": 36113215778,
+        "headSha": "507aaa0b526f2d5674ae8daf62dbcac64e82af70",
+        "occurredAt": "2026-09-25T08:29:39Z"
+      },
+      "correction": {
+        "pullRequest": 83,
+        "mergeCommitSha": "f89caa7fe1bc82f9fd6dbfa9dca110a00e9269a9"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-structured-conversation.test.mjs",
+          "title": "run 20 semantic regressions are normalized without weakening genuine preferences or policy questions"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-evaluation-diagnostics.test.mjs",
+          "title": "structured live runner exposes semantic mismatches directly in report diagnostics"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-021",
+      "status": "covered",
+      "title": "Generated candidate referenced unknown evidence",
+      "category": "generation_grounding",
+      "rootCauseCode": "unknown_evidence_reference",
+      "source": {
+        "runNumber": 21,
+        "runId": 36116087414,
+        "headSha": "f89caa7fe1bc82f9fd6dbfa9dca110a00e9269a9",
+        "occurredAt": "2026-09-25T09:01:10Z"
+      },
+      "correction": {
+        "pullRequest": 84,
+        "mergeCommitSha": "a2e944e9ee313d63fa0163810a3c4546427b811b"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-evaluation-diagnostics.test.mjs",
+          "title": "generation live runner repairs one citation-only drift within a dedicated bounded budget"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-natural-generation.test.mjs",
+          "title": "Natural generation classifies citation failures without retaining model text or invented refs"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-022",
+      "status": "covered",
+      "title": "Hybrid RPC deadline jitter exceeded the initial backend window",
+      "category": "database_transport",
+      "rootCauseCode": "hybrid_rpc_deadline_jitter",
+      "source": {
+        "runNumber": 22,
+        "runId": 36119070298,
+        "headSha": "a2e944e9ee313d63fa0163810a3c4546427b811b",
+        "occurredAt": "2026-09-25T09:33:06Z"
+      },
+      "correction": {
+        "pullRequest": 85,
+        "mergeCommitSha": "fe274fa2a46a5f0733a42432335f7ff13417f133"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-hybrid-runtime.test.mjs",
+          "title": "Hybrid RPC telemetry proves the retry receives the widened deadline"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 live workflow paces calls and keeps retries scenario-level and explicit"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-023",
+      "status": "covered",
+      "title": "HTTP-200 generation payload failed local structure validation",
+      "category": "generation_structure",
+      "rootCauseCode": "local_generation_structure_drift",
+      "source": {
+        "runNumber": 23,
+        "runId": 36120745567,
+        "headSha": "fe274fa2a46a5f0733a42432335f7ff13417f133",
+        "occurredAt": "2026-09-25T09:51:10Z"
+      },
+      "correction": {
+        "pullRequest": 86,
+        "mergeCommitSha": "60fd96b781253e8d776749ca4f7ad95e97bd8c9f"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-evaluation-diagnostics.test.mjs",
+          "title": "generation live runner repairs one local structure drift within a dedicated bounded budget"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-natural-generation.test.mjs",
+          "title": "Natural generation classifies HTTP-200 local structure failures without retaining rejected content"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-024",
+      "status": "covered",
+      "title": "Grounding qualification exhausted generic 429 retry handling",
+      "category": "provider_rate_limit",
+      "rootCauseCode": "grounding_provider_rate_limit_window",
+      "source": {
+        "runNumber": 24,
+        "runId": 36129110092,
+        "headSha": "60fd96b781253e8d776749ca4f7ad95e97bd8c9f",
+        "occurredAt": "2026-09-25T11:23:20Z"
+      },
+      "correction": {
+        "pullRequest": 87,
+        "mergeCommitSha": "92402b17c5ef2bf02bb80f0278f7e25d286dc91d"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 rate-limit retry policy waits a full quota window and refuses long/daily quota retries"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-provider-runtime.test.mjs",
+          "title": "Gemini 429 preserves only safe retry/quota metadata and never raw quota details"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-025",
+      "status": "covered",
+      "title": "Daily quota diagnostic was lost before structured retry policy",
+      "category": "provider_rate_limit",
+      "rootCauseCode": "daily_quota_diagnostic_propagation",
+      "source": {
+        "runNumber": 25,
+        "runId": 36137716157,
+        "headSha": "92402b17c5ef2bf02bb80f0278f7e25d286dc91d",
+        "occurredAt": "2026-09-25T12:54:57Z"
+      },
+      "correction": {
+        "pullRequest": 88,
+        "mergeCommitSha": "be42f31c0bcaccbe20b1afbe193cf344dfc66198"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-evaluation-diagnostics.test.mjs",
+          "title": "structured live runner stops immediately on provider-declared daily quota"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 structured quota diagnostics are synthetic-only and blocked from client production"
+        }
+      ]
+    },
+    {
+      "id": "INC-P1-026",
+      "status": "covered",
+      "title": "External provider blocker was reported as a generic qualification failure",
+      "category": "release_diagnostics",
+      "rootCauseCode": "external_blocker_generic_failure",
+      "source": {
+        "runNumber": 26,
+        "runId": 36172720122,
+        "headSha": "be42f31c0bcaccbe20b1afbe193cf344dfc66198",
+        "occurredAt": "2026-09-25T18:19:49Z"
+      },
+      "correction": {
+        "pullRequest": 89,
+        "mergeCommitSha": "27c5dd84e7ac7f558f7725c98bf5fcbfd2ad74bf"
+      },
+      "guards": [
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 classifies external provider blockers without weakening release gating"
+        },
+        {
+          "type": "test",
+          "path": "tests/atlas-p1-live-qualification-workflow.test.mjs",
+          "title": "P1.7 workflow surfaces external blockers explicitly but remains fail-closed"
+        }
+      ]
+    }
+  ]
+}
