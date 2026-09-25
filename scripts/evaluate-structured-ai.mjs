@@ -130,6 +130,7 @@ if (!Number.isInteger(retryBackoffMs) || retryBackoffMs < 0 || retryBackoffMs > 
 const transientFallbackReasons = new Set([
   'network_or_timeout',
   'upstream_unavailable',
+  'upstream_rate_limited',
 ]);
 
 const rows = [],
@@ -215,17 +216,15 @@ try {
       const rateLimited = scenarioRows.some(
         (row) => row.fallback && row.fallbackReason === 'upstream_rate_limited',
       );
-      if (rateLimited) {
-        rows.push(...scenarioRows);
-        systemicTransportFailure = 'provider_rate_limited';
-        break scenarioLoop;
-      }
-
       const transient = scenarioRows.some(
         (row) => row.fallback && transientFallbackReasons.has(row.fallbackReason),
       );
-      if (!transient || retriedScenarios >= retryLimit) break;
+      if (!transient || retriedScenarios >= retryLimit) {
+        if (rateLimited) systemicTransportFailure = 'provider_rate_limited';
+        break;
+      }
 
+      const retryAttempt = retriedScenarios;
       retriedScenarios++;
       discardedProviderCalls += scenarioRows.reduce((n, row) => n + (row.providerCalls ?? 0), 0);
       discardedInputTokens += scenarioRows.reduce((n, row) => n + (row.inputTokens ?? 0), 0);
@@ -235,7 +234,10 @@ try {
       // A timeout/503 often reflects a short provider-side brownout. The start-to-start
       // pacer has already elapsed during long failures, so add an explicit bounded
       // cooldown before rebuilding and retrying the scenario from clean state.
-      if (retryBackoffMs) await new Promise((resolve) => setTimeout(resolve, retryBackoffMs));
+      if (retryBackoffMs) {
+        const delay = Math.min(30000, retryBackoffMs * 2 ** retryAttempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
     rows.push(...scenarioRows);
   }
