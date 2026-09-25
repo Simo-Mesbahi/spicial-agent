@@ -91,7 +91,7 @@ if (!options.live) {
   const DB = database(),
     pacing = liveCompletionPacer(),
     retryBackoff = liveTransientRetryBackoff();
-  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable']);
+  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited']);
   try {
     const results = [];
     let generationRetriesUsed = 0;
@@ -138,7 +138,7 @@ if (!options.live) {
 
         generationRetriesUsed++;
         counters.generationRetries++;
-        await retryBackoff.wait();
+        await retryBackoff.wait(Math.max(counters.generationRetries, counters.validationRetries) - 1);
       }
       return { draft, diagnostics, attempts, fixture: activeFixture };
     }
