@@ -233,8 +233,7 @@ function safeRateLimitMetadata(
         const item = violation as Record<string, unknown>;
         rateLimitScope ??=
           quotaScopeFromText(item.quotaId) ??
-          quotaScopeFromText(item.quotaMetric) ??
-          quotaScopeFromText(item.description);
+          quotaScopeFromText(item.quotaMetric);
       }
     }
   }
