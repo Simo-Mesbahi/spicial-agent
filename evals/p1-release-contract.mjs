@@ -45,6 +45,14 @@ export const p1ReleaseQualificationContract = Object.freeze({
     maximumBackendRetriesPerSearch: 1,
     maximumBackendRetryCalls: 4,
   },
+  documentaryFreshness: {
+    minimumSources: 1,
+    maximumSources: 3,
+    maximumDatabaseRpcCalls: 3,
+    providerCalls: 0,
+    embeddingCalls: 0,
+    retrievalQueryContract: 'canonical_fr_from_multilingual_source',
+  },
   generation: {
     requiredScenarios: 10,
     requiredValidationCalls: 10,
