@@ -12,10 +12,32 @@ import {
   p1GroundingPlan,
 } from '../evals/p1-grounding-plan.mjs';
 import { p1ReleaseQualificationContract as contract } from '../evals/p1-release-contract.mjs';
+import { validateHistoricalRegressionRegistry } from './lib/historical-regression-gate.mjs';
 import {
   classifyExternalQualificationBlocker,
   qualificationOutcome,
 } from './lib/p1-qualification-outcome.mjs';
+
+const regressionRegistryPath = resolve('evals/p1-regression-registry.json');
+let regressionRegistry;
+try {
+  regressionRegistry = JSON.parse(await readFile(regressionRegistryPath, 'utf8'));
+} catch (error) {
+  throw new Error(
+    'Historical regression registry is unreadable: ' +
+      (error instanceof Error ? error.message : String(error)),
+  );
+}
+const historicalRegressionGate = await validateHistoricalRegressionRegistry(
+  regressionRegistry,
+  { root: process.cwd() },
+);
+if (!historicalRegressionGate.valid) {
+  throw new Error(
+    'Historical regression gate failed: ' +
+      historicalRegressionGate.errors.join('; '),
+  );
+}
 
 const args = process.argv.slice(2);
 const value = (flag, fallback = null) =>
@@ -1020,6 +1042,7 @@ if (humanReviewPath) {
 }
 
 const automatedGates = {
+  historicalRegressions: historicalRegressionGate.valid,
   subprocesses: subprocessFailures.length === 0,
   reportsReadable: readFailures.length === 0,
   qualificationArtifactIntegrity: qualificationAnchor.valid,
@@ -1056,6 +1079,12 @@ const report = {
   automatedPassed,
   outcome,
   blocker,
+  historicalRegressionGate: {
+    valid: historicalRegressionGate.valid,
+    incidents: historicalRegressionGate.incidents,
+    guardedRuns: historicalRegressionGate.guardedRuns,
+    coverageWindow: regressionRegistry.coverageWindow,
+  },
   contract,
   scope: qualificationScope,
   source,
