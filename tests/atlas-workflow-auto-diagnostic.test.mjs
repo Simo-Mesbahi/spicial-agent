@@ -357,7 +357,7 @@ test('workflow diagnostic CLI refuses successful runs', () => {
         ),
       (error) => {
         assert.equal(error.status, 1);
-        assert.match(error.stderr, /completed failed runs/);
+        assert.match(error.stderr, /completed failed workflow runs/);
         return true;
       },
     );
