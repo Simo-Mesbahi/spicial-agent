@@ -253,6 +253,8 @@ function retrievalReportPasses(report) {
     report &&
       report.status === 'completed' &&
       report.completionCalls === contract.retrieval.completionCalls &&
+      report.operational?.maximumTransientRetries === contract.retrieval.maximumTransientRetries &&
+      report.operational?.transientRetriesUsed <= contract.retrieval.maximumTransientRetries &&
       rows.length === contract.retrieval.requiredQueries &&
       rows.every(retrievalRowPasses),
   );
@@ -305,6 +307,8 @@ if (live) {
         '--live',
         '--max-queries',
         String(contract.retrieval.requiredQueries),
+        '--max-transient-retries',
+        String(contract.retrieval.maximumTransientRetries),
         '--output',
         paths.retrieval,
       ]),
