@@ -143,6 +143,36 @@ test('normalized P1 release artifact outranks conflicting raw log signals', () =
   );
 });
 
+test('workflow diagnostic never copies untrusted blocker codes, providers or model strings', () => {
+  const diagnostic = buildWorkflowDiagnostic({
+    run: failedRun(),
+    jobsResponse: failedJobs('Run npm run build'),
+    logs: {},
+    artifactDocuments: [
+      {
+        path: '/tmp/release-qualification.json',
+        json: {
+          outcome: 'external_dependency_blocked',
+          blocker: {
+            category: 'external_dependency',
+            code: 'SECRET-BLOCKER-CODE',
+            provider: 'PRIVATE-PROVIDER',
+            model: 'api-key-super-secret',
+            retryRecommended: false,
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(diagnostic.failure.rootCause.code, 'build_failed');
+  const serialized = JSON.stringify(diagnostic);
+  assert.doesNotMatch(
+    serialized,
+    /SECRET-BLOCKER-CODE|PRIVATE-PROVIDER|api-key-super-secret/,
+  );
+});
+
 test('workflow diagnostic falls back deterministically to the first failed CI step', () => {
   const diagnostic = buildWorkflowDiagnostic({
     run: failedRun({
