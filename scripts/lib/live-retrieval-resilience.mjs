@@ -15,13 +15,21 @@ export async function searchLexicalWithTransientRetries(
 
   let retries = 0;
   let result;
+  const attempts = [];
   while (true) {
     result = await search();
+    const backend = result?.retrieval?.backend ?? null;
+    attempts.push({
+      scope: result?.scope ?? null,
+      backendCalls: backend?.calls ?? 0,
+      backendRetries: backend?.retries ?? 0,
+      backendError: backend?.error ?? null,
+    });
     if (result?.scope !== 'supabase_unavailable' || retries >= maxRetries) break;
     await backoff.wait(retries);
     retries++;
   }
-  return { result, retries };
+  return { result, retries, attempts };
 }
 
 const retryableEmbeddingReasons = new Set([
