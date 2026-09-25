@@ -30,6 +30,8 @@ function retrievalRow(index, changes = {}) {
     calls: 1,
     retries: 0,
     timeoutMs: 5000,
+    retryTimeoutMs: 10000,
+    attemptTimeoutMs: [5000],
     error: null,
     ...(changes.lexical?.retrieval?.backend ?? {}),
   };
@@ -37,6 +39,8 @@ function retrievalRow(index, changes = {}) {
     calls: 1,
     retries: 0,
     timeoutMs: 5000,
+    retryTimeoutMs: 10000,
+    attemptTimeoutMs: [5000],
     error: null,
     ...(changes.hybrid?.retrieval?.backend ?? {}),
   };
@@ -169,7 +173,17 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   const recoveredTransient = report(
     Array.from({ length: 20 }, (_, i) =>
       retrievalRow(i, i === 0
-        ? { hybrid: { retrieval: { backend: { calls: 2, retries: 1 } } } }
+        ? {
+            hybrid: {
+              retrieval: {
+                backend: {
+                  calls: 2,
+                  retries: 1,
+                  attemptTimeoutMs: [5000, 10000],
+                },
+              },
+            },
+          }
         : {}),
     ),
   );
@@ -303,6 +317,65 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   );
   assert.notEqual(rejectedRetryBudget.status, 0);
   assert.equal(JSON.parse(rejectedRetryBudget.stdout).operational.maximumTransientRetries, 3);
+
+  const wrongRetryDeadline = report(
+    Array.from({ length: 20 }, (_, i) =>
+      retrievalRow(
+        i,
+        i === 0
+          ? {
+              hybrid: {
+                retrieval: {
+                  backend: {
+                    calls: 2,
+                    retries: 1,
+                    retryTimeoutMs: 9000,
+                    attemptTimeoutMs: [5000, 9000],
+                  },
+                },
+              },
+            }
+          : {},
+      ),
+    ),
+  );
+  wrongRetryDeadline.operational.backendRetriesUsed = 1;
+  await writeFile(path, JSON.stringify(wrongRetryDeadline));
+  const rejectedWrongRetryDeadline = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedWrongRetryDeadline.status, 0);
+
+  const hiddenAttemptDeadline = report(
+    Array.from({ length: 20 }, (_, i) =>
+      retrievalRow(
+        i,
+        i === 0
+          ? {
+              hybrid: {
+                retrieval: {
+                  backend: {
+                    calls: 2,
+                    retries: 1,
+                    attemptTimeoutMs: [5000],
+                  },
+                },
+              },
+            }
+          : {},
+      ),
+    ),
+  );
+  hiddenAttemptDeadline.operational.backendRetriesUsed = 1;
+  await writeFile(path, JSON.stringify(hiddenAttemptDeadline));
+  const rejectedHiddenAttemptDeadline = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedHiddenAttemptDeadline.status, 0);
 
   const excessiveBackendRetries = report(
     Array.from({ length: 20 }, (_, i) =>

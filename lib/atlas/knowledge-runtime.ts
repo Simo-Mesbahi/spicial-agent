@@ -84,6 +84,8 @@ export type KnowledgeSearchResult = {
       calls: number;
       retries: number;
       timeoutMs: number;
+      retryTimeoutMs: number;
+      attemptTimeoutMs: number[];
       error: 'timeout' | 'network' | 'rate_limited' | 'unavailable' | 'request_failed' | null;
     };
     evaluationProbe?: {
