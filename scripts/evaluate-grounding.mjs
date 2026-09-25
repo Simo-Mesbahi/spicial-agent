@@ -135,6 +135,10 @@ else {
       if (diagnostics.reason === 'upstream_request_rejected') rejectedStreak++;
       else rejectedStreak = 0;
 
+      if (diagnostics.reason === 'upstream_rate_limited') {
+        systemicTransportFailure = 'provider_rate_limited';
+        break;
+      }
       if (['upstream_auth', 'configuration'].includes(diagnostics.reason)) {
         systemicTransportFailure = diagnostics.reason;
         break;
