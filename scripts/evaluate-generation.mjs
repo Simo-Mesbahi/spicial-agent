@@ -138,7 +138,7 @@ if (!options.live) {
 
         generationRetriesUsed++;
         counters.generationRetries++;
-        await retryBackoff.wait(Math.max(counters.generationRetries, counters.validationRetries) - 1);
+        await retryBackoff.wait(counters.generationRetries - 1);
       }
       return { draft, diagnostics, attempts, fixture: activeFixture };
     }
@@ -181,7 +181,7 @@ if (!options.live) {
 
         validationRetriesUsed++;
         counters.validationRetries++;
-        await retryBackoff.wait();
+        await retryBackoff.wait(counters.validationRetries - 1);
       }
       return { factualValidation, attempts, fixture: activeFixture };
     }
