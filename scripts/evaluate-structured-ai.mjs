@@ -261,6 +261,22 @@ const metrics = Object.fromEntries(
     ];
   }),
 );
+const semanticFailures = rows
+  .map((row) => {
+    const failedChecks = Object.entries(row.checks ?? {})
+      .filter(([, passed]) => passed === false)
+      .map(([key]) => key);
+    return failedChecks.length
+      ? {
+          id: row.id,
+          failedChecks,
+          expected: row.expected,
+          actual: row.actual,
+        }
+      : null;
+  })
+  .filter(Boolean);
+
 const latencies = rows
   .flatMap((r) => (r.latencyMs === null ? [] : [r.latencyMs]))
   .sort((a, b) => a - b);
@@ -312,6 +328,7 @@ const report = {
     'case_selection',
     'retrieval_relevance',
   ],
+  semanticFailures,
   comparison: previous
     ? {
         provider: previous.provider,

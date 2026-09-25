@@ -385,6 +385,12 @@ function sourceTreeState() {
 }
 
 const executions = [];
+const attemptedReports = {
+  retrieval: live || finalizeExisting,
+  structured: finalizeExisting,
+  generation: finalizeExisting,
+  grounding: new Set(finalizeExisting ? paths.grounding : []),
+};
 
 if (live) {
   if (reuseRetrieval) {
@@ -410,6 +416,7 @@ if (live) {
   }
 
   const smoke = groundingPlan[0];
+  attemptedReports.grounding.add(smoke.path);
   const smokeRun = runNode('scripts/evaluate-grounding.mjs', [
     '--live',
     '--offset',
@@ -426,6 +433,7 @@ if (live) {
   let continueQualification = smokeRun.status === 0;
 
   if (continueQualification) {
+    attemptedReports.structured = true;
     const structuredRun = runNode('scripts/evaluate-structured-ai.mjs', [
       '--live',
       '--mode',
@@ -444,6 +452,7 @@ if (live) {
   }
 
   if (continueQualification) {
+    attemptedReports.generation = true;
     const generationRun = runNode('scripts/evaluate-generation.mjs', [
       '--live',
       '--max-cases',
@@ -463,6 +472,7 @@ if (live) {
 
   if (continueQualification) {
     for (const entry of groundingPlan.slice(1)) {
+      attemptedReports.grounding.add(entry.path);
       const groundingRun = runNode('scripts/evaluate-grounding.mjs', [
         '--live',
         '--offset',
@@ -501,12 +511,17 @@ let retrieval = null;
 let generation = null;
 const groundingReports = [];
 const readFailures = [];
+const skippedReports = [];
 
 for (const [name, path] of [
   ['structured', paths.structured],
   ['retrieval', paths.retrieval],
   ['generation', paths.generation],
 ]) {
+  if (!attemptedReports[name]) {
+    skippedReports.push({ name, path, reason: 'skipped_due_to_prior_gate' });
+    continue;
+  }
   try {
     const parsed = await readJson(path);
     if (name === 'structured') structured = parsed;
@@ -518,6 +533,10 @@ for (const [name, path] of [
 }
 
 for (const path of paths.grounding) {
+  if (!attemptedReports.grounding.has(path)) {
+    skippedReports.push({ name: 'grounding', path, reason: 'skipped_due_to_prior_gate' });
+    continue;
+  }
   try {
     groundingReports.push(await readJson(path));
   } catch (error) {
@@ -531,7 +550,7 @@ for (const path of paths.grounding) {
 
 let artifacts = null;
 let qualificationId = null;
-if (readFailures.length === 0) {
+if (readFailures.length === 0 && skippedReports.length === 0) {
   try {
     artifacts = {
       sourceTreeSha: source.treeSha,
@@ -922,6 +941,9 @@ const report = {
     subprocesses: subprocessFailures,
     reportReads: readFailures,
   },
+  skipped: {
+    reports: skippedReports,
+  },
   gates: automatedGates,
   metrics: {
     structured: structured
@@ -933,6 +955,7 @@ const report = {
           languageCoverage: structuredLanguageCoverage,
           requiredFamilies: contract.structured.requiredFamilies,
           metrics: structured.metrics,
+          semanticFailures: structured.semanticFailures ?? [],
           operational: structured.operational,
         }
       : null,

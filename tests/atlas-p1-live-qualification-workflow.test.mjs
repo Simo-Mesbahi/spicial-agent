@@ -300,6 +300,23 @@ test('P1.7 grounding requires the expected semantic rejection, not any block', (
   assert.equal(groundingDecisionPasses(wrongIssue), false);
 });
 
+test('P1.7 release diagnostics distinguish fail-fast skips from missing artifacts', async () => {
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+  const structured = await readFile('scripts/evaluate-structured-ai.mjs', 'utf8');
+
+  assert.match(structured, /semanticFailures/);
+  assert.match(structured, /failedChecks/);
+  assert.match(release, /attemptedReports/);
+  assert.match(release, /skippedReports/);
+  assert.match(release, /skipped_due_to_prior_gate/);
+  assert.match(release, /readFailures\.length === 0 && skippedReports\.length === 0/);
+  assert.match(release, /semanticFailures: structured\.semanticFailures \?\? \[\]/);
+  assert.doesNotMatch(
+    release,
+    /if \(!attemptedReports\[name\]\)\s*\{\s*readFailures\.push/s,
+  );
+});
+
 test('P1.7 live workflow remains fail-closed until human review', async () => {
   const source = await readFile(workflowPath, 'utf8');
 
