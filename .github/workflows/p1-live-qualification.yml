@@ -264,8 +264,21 @@ jobs:
             throw new Error('Live automated phase must not authorize release before human review.');
           }
           if (report.automatedPassed !== true) {
+            if (
+              report.outcome === 'external_dependency_blocked' &&
+              report.blocker?.category === 'external_dependency'
+            ) {
+              const blocker = report.blocker;
+              const retry = blocker.retryRecommended
+                ? 'Retry after provider capacity recovers.'
+                : 'Do not retry until provider quota/capacity is restored.';
+              console.error(
+                `::error title=P1.7 blocked by external provider::stage=${blocker.stage}; provider=${blocker.provider ?? 'unknown'}; model=${blocker.model ?? 'unknown'}; code=${blocker.code}. ${retry} Release remains blocked.`,
+              );
+              process.exit(1);
+            }
             console.error(JSON.stringify({ gates: report.gates, failures: report.failures }, null, 2));
-            throw new Error('Automated P1.7 qualification failed.');
+            throw new Error('Automated P1.7 qualification failed due to an internal or quality gate.');
           }
           if (!/^[a-f0-9]{64}$/.test(report.qualificationId ?? '')) {
             throw new Error('Qualification ID is missing or invalid.');
