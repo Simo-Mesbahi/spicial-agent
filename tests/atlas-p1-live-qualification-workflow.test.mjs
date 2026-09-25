@@ -6,6 +6,10 @@ import {
   liveTransientRetryBackoff,
   rateLimitSystemicFailure,
 } from '../scripts/lib/live-eval-pacing.mjs';
+import {
+  classifyExternalQualificationBlocker,
+  qualificationOutcome,
+} from '../scripts/lib/p1-qualification-outcome.mjs';
 
 const workflowPath = '.github/workflows/p1-live-qualification.yml';
 
@@ -165,6 +169,99 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumBackendRetryCalls: 4/);
   assert.match(contract, /maximumEmbeddingCalls: 24/);
   assert.match(contract, /maximumTotalCompletionCalls: 240/);
+});
+
+test('P1.7 classifies external provider blockers without weakening release gating', () => {
+  const daily = classifyExternalQualificationBlocker({
+    structured: {
+      provider: 'gemini',
+      model: 'gemini-3.5-flash-lite',
+      operational: { systemicTransportFailure: 'provider_daily_quota_exhausted' },
+    },
+  });
+  assert.deepEqual(daily, {
+    category: 'external_dependency',
+    dependency: 'llm_provider',
+    stage: 'structured',
+    code: 'provider_daily_quota_exhausted',
+    provider: 'gemini',
+    model: 'gemini-3.5-flash-lite',
+    releaseBlocked: true,
+    retryRecommended: false,
+  });
+  assert.equal(
+    qualificationOutcome({
+      releaseAllowed: false,
+      automatedPassed: false,
+      blocker: daily,
+    }),
+    'external_dependency_blocked',
+  );
+
+  const transient = classifyExternalQualificationBlocker({
+    groundingReports: [
+      {
+        provider: 'gemini',
+        model: 'gemini-3.5-flash-lite',
+        systemicTransportFailure: 'provider_rate_limited',
+      },
+    ],
+  });
+  assert.equal(transient.stage, 'grounding');
+  assert.equal(transient.retryRecommended, true);
+
+  assert.equal(
+    classifyExternalQualificationBlocker({
+      generation: {
+        provider: 'gemini',
+        model: 'gemini-3.5-flash-lite',
+        operational: { systemicTransportFailure: 'unsupported_claim' },
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    qualificationOutcome({
+      releaseAllowed: false,
+      automatedPassed: false,
+      blocker: null,
+    }),
+    'qualification_failed',
+  );
+  assert.equal(
+    qualificationOutcome({
+      releaseAllowed: false,
+      automatedPassed: true,
+      blocker: null,
+    }),
+    'human_review_required',
+  );
+  assert.equal(
+    qualificationOutcome({
+      releaseAllowed: true,
+      automatedPassed: true,
+      blocker: null,
+    }),
+    'release_qualified',
+  );
+});
+
+test('P1.7 workflow surfaces external blockers explicitly but remains fail-closed', async () => {
+  const source = await readFile(workflowPath, 'utf8');
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(release, /classifyExternalQualificationBlocker/);
+  assert.match(release, /qualificationOutcome/);
+  assert.match(release, /outcome,/);
+  assert.match(release, /blocker,/);
+  assert.match(source, /external_dependency_blocked/);
+  assert.match(source, /P1\.7 blocked by external provider/);
+  assert.match(source, /Release remains blocked/);
+  assert.match(source, /process\.exit\(1\)/);
+  assert.match(
+    source,
+    /Automated P1\.7 qualification failed due to an internal or quality gate/,
+  );
 });
 
 test('P1.7 rate-limit retry policy waits a full quota window and refuses long/daily quota retries', () => {
