@@ -30,6 +30,7 @@ export const p1ReleaseQualificationContract = Object.freeze({
     minimumHybridPrecisionAtK: 1 / 3,
     allowRecallRegressionVsLexical: false,
     requireEmbeddingSuccess: true,
+    maximumTransientRetries: 2,
   },
   generation: {
     requiredScenarios: 10,
