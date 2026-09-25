@@ -22,6 +22,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint:app
       - run: npm test
+      - run: npm run check:regressions
       - run: npm run test:origin-runtime
       - run: npm run eval:ai
       - run: npm run eval:rag
