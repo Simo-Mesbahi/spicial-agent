@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import type { Database } from './api';
-import { supabaseRequest, supabaseSettings, type SupabaseRuntimeEnv } from './supabase';
+import {
+  SupabaseRequestError,
+  supabaseRequest,
+  supabaseSettings,
+  type SupabaseRuntimeEnv,
+} from './supabase';
 import {
   embedTexts,
   embeddingSettings,
@@ -10,7 +15,6 @@ import {
   type EmbeddingEnv,
 } from './embedding-runtime';
 import { ProviderError } from './provider-runtime';
-import { SupabaseRequestError } from './supabase';
 import type { KnowledgeSearchResult } from './knowledge-runtime';
 export type HybridSettings = EmbeddingEnv & {
   RAG_MODE?: string;
@@ -349,7 +353,11 @@ export async function searchHybridKnowledge(
     return result;
   } catch (error) {
     telemetry.fallbackReason =
-      error instanceof ProviderError ? error.reason : 'retrieval_unavailable';
+      error instanceof ProviderError
+        ? error.reason
+        : error instanceof SupabaseRequestError
+          ? telemetry.backend.error ?? 'request_failed'
+          : 'retrieval_unavailable';
     return result;
   } finally {
     telemetry.latencyMs = Math.round(performance.now() - started);
