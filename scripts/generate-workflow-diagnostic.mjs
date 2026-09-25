@@ -141,8 +141,8 @@ async function main() {
   const logs = await loadLogs(args['logs-dir']);
   const artifactDocuments = await loadArtifactDocuments(args['artifacts-dir']);
 
-  if (run?.conclusion !== 'failure') {
-    throw new Error('Diagnostic input must reference a failed workflow run.');
+  if (run?.status !== 'completed' || run?.conclusion !== 'failure') {
+    throw new Error('Only completed failed workflow runs can be diagnosed.');
   }
   if (!Number.isSafeInteger(run?.id) || run.id <= 0) {
     throw new Error('Workflow run ID is missing or invalid.');
