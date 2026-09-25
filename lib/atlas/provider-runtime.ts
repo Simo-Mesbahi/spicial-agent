@@ -17,11 +17,19 @@ export type ProviderFailureReason =
   | 'tool_loop'
   | 'configuration'
   | 'unknown';
+export type ProviderRateLimitScope =
+  | 'minute'
+  | 'token_minute'
+  | 'day'
+  | 'spend'
+  | 'unknown';
 export type ProviderDiagnostic = {
   reason: ProviderFailureReason;
   httpStatus: number | null;
   code: string | null;
   parameter: string | null;
+  retryAfterMs: number | null;
+  rateLimitScope: ProviderRateLimitScope | null;
 };
 export class ProviderError extends Error {
   readonly status = 503;
@@ -32,6 +40,8 @@ export class ProviderError extends Error {
       httpStatus: null,
       code: null,
       parameter: null,
+      retryAfterMs: null,
+      rateLimitScope: null,
     },
   ) {
     super('Le service IA est temporairement indisponible.');
@@ -107,6 +117,8 @@ const errorCodes = new Set([
   'invalid_api_key',
   'insufficient_quota',
   'rate_limit_exceeded',
+  'quota_exceeded',
+  'too_many_requests',
   'model_not_found',
   'unsupported_parameter',
   'unsupported_value',
@@ -148,6 +160,85 @@ export function classifyHttp(status: number): ProviderFailureReason {
   if (status === 400 || status === 422) return 'upstream_request_rejected';
   if (status >= 500) return 'upstream_unavailable';
   return 'upstream_rejected';
+}
+
+const maximumSafeRetryAfterMs = 24 * 60 * 60 * 1000;
+
+function boundedRetryDelay(ms: number) {
+  if (!Number.isFinite(ms) || ms < 0 || ms > maximumSafeRetryAfterMs) return null;
+  return Math.ceil(ms);
+}
+
+export function parseRetryAfterMs(raw: string | null, now = Date.now()) {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (/^\d{1,8}$/.test(value))
+    return boundedRetryDelay(Number(value) * 1000);
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? boundedRetryDelay(Math.max(0, at - now)) : null;
+}
+
+function parseGoogleRetryDelayMs(raw: unknown) {
+  if (typeof raw !== 'string') return null;
+  const match = /^(\d{1,6})(?:\.(\d{1,9}))?s$/.exec(raw.trim());
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  const fractional = match[2] ? Number('0.' + match[2]) : 0;
+  return boundedRetryDelay((seconds + fractional) * 1000);
+}
+
+function quotaScopeFromText(value: unknown): ProviderRateLimitScope | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.toLowerCase();
+  if (/perday|daily|requestsperday|tokensperday|rpd|tpd/.test(normalized)) return 'day';
+  if (/input.?tokens?.*perminute|tokens?.*perminute|tpm/.test(normalized))
+    return 'token_minute';
+  if (/perminute|requestsperminute|rpm/.test(normalized)) return 'minute';
+  if (/spend|billing.*window|cost/.test(normalized)) return 'spend';
+  return null;
+}
+
+function safeRateLimitMetadata(
+  body: unknown,
+  safeCode: string | null,
+): { retryAfterMs: number | null; rateLimitScope: ProviderRateLimitScope } {
+  let retryAfterMs: number | null = null;
+  let rateLimitScope: ProviderRateLimitScope | null =
+    safeCode === 'quota_exceeded'
+      ? 'day'
+      : safeCode === 'rate_limit_exceeded' || safeCode === 'too_many_requests'
+        ? 'minute'
+        : null;
+
+  const parsed = z
+    .object({
+      error: z.object({
+        details: z.array(z.unknown()).max(32).optional(),
+      }),
+    })
+    .safeParse(body);
+  for (const detail of parsed.success ? parsed.data.error.details ?? [] : []) {
+    if (!detail || typeof detail !== 'object' || Array.isArray(detail)) continue;
+    const row = detail as Record<string, unknown>;
+    const type = typeof row['@type'] === 'string' ? row['@type'] : '';
+    if (type === 'type.googleapis.com/google.rpc.RetryInfo') {
+      const candidate = parseGoogleRetryDelayMs(row.retryDelay);
+      if (candidate !== null)
+        retryAfterMs = retryAfterMs === null ? candidate : Math.max(retryAfterMs, candidate);
+    }
+    if (type === 'type.googleapis.com/google.rpc.QuotaFailure') {
+      const violations = Array.isArray(row.violations) ? row.violations.slice(0, 32) : [];
+      for (const violation of violations) {
+        if (!violation || typeof violation !== 'object' || Array.isArray(violation)) continue;
+        const item = violation as Record<string, unknown>;
+        rateLimitScope ??=
+          quotaScopeFromText(item.quotaId) ??
+          quotaScopeFromText(item.quotaMetric) ??
+          quotaScopeFromText(item.description);
+      }
+    }
+  }
+  return { retryAfterMs, rateLimitScope: rateLimitScope ?? 'unknown' };
 }
 export function completionPayload(
   env: ModelEnvironment,
@@ -235,6 +326,8 @@ export async function providerCompletion(
         httpStatus: response.status,
         code: null,
         parameter: null,
+        retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')),
+        rateLimitScope: response.status === 429 ? 'unknown' : null,
       };
       if (response.status >= 300 && response.status < 400) {
         void response.body?.cancel().catch(() => {});
@@ -250,6 +343,7 @@ export async function providerCompletion(
               status: z.unknown().optional(),
               type: z.unknown().optional(),
               param: z.unknown().optional(),
+              details: z.array(z.unknown()).max(32).optional(),
             }),
           })
           .safeParse(body);
@@ -261,6 +355,15 @@ export async function providerCompletion(
             ) ?? null;
           diagnostic.parameter =
             typeof param === 'string' && errorParameters.has(param) ? param : null;
+          if (response.status === 429) {
+            const metadata = safeRateLimitMetadata(body, diagnostic.code);
+            diagnostic.rateLimitScope = metadata.rateLimitScope;
+            if (metadata.retryAfterMs !== null)
+              diagnostic.retryAfterMs =
+                diagnostic.retryAfterMs === null
+                  ? metadata.retryAfterMs
+                  : Math.max(diagnostic.retryAfterMs, metadata.retryAfterMs);
+          }
         }
       }
       throw new ProviderError(reason, diagnostic);
