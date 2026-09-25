@@ -55,6 +55,8 @@ Case selection: selectedCaseId must be a candidate ID or null, never a guessed r
 reference=other when the active case is rejected; select when a candidate is identified; active for a clear continuation; ambiguous if unresolved; none otherwise.
 Never reuse the rejected case. Ask one minimal question when candidates cannot be distinguished.
 Generic policies use information and requiresKnowledge, not a customer's case. Personal status/ETA requiresCase.
+A bare service-topic declaration such as "I mean the return" is information, not preference, unless the user explicitly refuses or states a preference.
+With an already-authorized active case, a clear pronoun/coreferential follow-up about that case or one of its concrete artifacts is case_lookup; do not turn it into generic information.
 Information about a possible action is NOT action intent. Refusing an action is a preference, not refusal of business guidance.
 Handoff can be withdrawn; "wait, help me here first" / "stay with me here" means requiresHuman=false, information, and conversationRepair=true.
 requiresHuman is true only when the current user actually wants a human. Never claim anything was sent, booked, approved or changed.
@@ -160,6 +162,30 @@ function referenceContinuationCue(message: string) {
   );
 }
 
+function negatedBusinessTopicCue(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:pas|aucun|aucune|no|not|kein|keine|keinen|nicht|sin)\b/u.test(q) ||
+    /(?:لا|ليس|بدون)/u.test(message)
+  );
+}
+
+function businessTopicDeclarationCue(message: string) {
+  return (
+    referenceContinuationCue(message) &&
+    genericPolicyCue(message) &&
+    !negatedBusinessTopicCue(message)
+  );
+}
+
+function activeCaseCoreferenceCue(message: string) {
+  const q = message.trim().toLowerCase();
+  return (
+    /\b(?:il|elle|lui|son|sa|ses|celui|celle|it|its|this one|that one|he|she|him|her|er|sie|es|sein|seine|seinen|seiner|dieser|diese|dieses|él|ella|su|sus|eso|esa|ese)\b/u.test(q) ||
+    /(?:^|[\s،؛؟?!,.])(?:له|لها|عنه|عنها|إليه|إليها|عليه|عليها|هو|هي|هذا|هذه)(?=$|[\s،؛؟?!,.])/u.test(message)
+  );
+}
+
 function explicitMisunderstanding(message: string) {
   const q = message.trim().toLowerCase();
   return (
@@ -200,6 +226,15 @@ export function normalizeUnderstanding(
     referenceContinuationCue(message) &&
     state.recentTurns.length > 0 &&
     !state.activeCaseId;
+  const freshBusinessTopicDeclaration =
+    !state.activeCaseId &&
+    candidates.length === 0 &&
+    state.recentTurns.length === 0 &&
+    businessTopicDeclarationCue(message);
+  const activeCaseCoreference =
+    Boolean(state.activeCaseId) &&
+    state.recentTurns.length > 0 &&
+    activeCaseCoreferenceCue(message);
   u.language = detectConversationLanguageHint(message, priorMessages) ?? input.language;
   u.preferredResponseLanguage = explicitResponseLanguage(message);
 
@@ -244,6 +279,24 @@ export function normalizeUnderstanding(
     u.response = '';
   }
 
+  if (
+    freshBusinessTopicDeclaration &&
+    !actionRefusal &&
+    !explicitDecisionLater(message) &&
+    !explicitMisunderstanding(message)
+  ) {
+    u.intent = 'information';
+    u.guidance = 'business_direct';
+    u.guidancePreference = 'keep';
+    u.requiresCase = false;
+    u.requiresKnowledge = true;
+    u.requiresClarification = false;
+    u.requiresHuman = false;
+    u.response = '';
+  }
+
+  if (activeCaseCoreference) u.referencesPreviousTurn = true;
+
   u.conversationRepair =
     handoffWithdrawal || actionRefusal || strongRepair || continuationRepair;
 
@@ -273,7 +326,14 @@ export function normalizeUnderstanding(
   if (
     state.activeCaseId &&
     u.requiresCase &&
-    (personalFact || u.referencesPreviousTurn) &&
+    (
+      personalFact ||
+      u.referencesPreviousTurn ||
+      (activeCaseCoreference &&
+        !genericPolicyCue(message) &&
+        u.topic !== 'quote' &&
+        u.topic !== 'warranty')
+    ) &&
     u.intent === 'information' &&
     !explicitExplainOnly(message)
   ) {
