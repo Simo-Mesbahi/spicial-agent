@@ -182,6 +182,103 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   );
   assert.equal(acceptedRecoveredTransient.status, 0, acceptedRecoveredTransient.stderr);
 
+  const recoveredEmbeddingRows = Array.from({ length: 20 }, (_, i) =>
+    retrievalRow(
+      i,
+      i === 0
+        ? {
+            hybrid: {
+              embeddingRetries: 1,
+              providerAttempts: [
+                {
+                  scope: 'supabase_unavailable',
+                  embeddingCalls: 1,
+                  embeddingError: 'upstream_rate_limited',
+                  backendCalls: 0,
+                  backendRetries: 0,
+                  backendError: null,
+                },
+                {
+                  scope: 'supabase_published',
+                  embeddingCalls: 1,
+                  embeddingError: null,
+                  backendCalls: 1,
+                  backendRetries: 0,
+                  backendError: null,
+                },
+              ],
+            },
+          }
+        : {},
+    ),
+  );
+  const recoveredEmbedding = report(recoveredEmbeddingRows);
+  await writeFile(path, JSON.stringify(recoveredEmbedding));
+  const acceptedEmbeddingRecovery = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.equal(acceptedEmbeddingRecovery.status, 0, acceptedEmbeddingRecovery.stderr);
+  assert.equal(recoveredEmbedding.operational.embeddingRetriesUsed, 1);
+  assert.equal(recoveredEmbedding.operational.embeddingProviderCalls, 21);
+
+  const hiddenEmbeddingCall = report(recoveredEmbeddingRows);
+  hiddenEmbeddingCall.operational.embeddingProviderCalls = 20;
+  await writeFile(path, JSON.stringify(hiddenEmbeddingCall));
+  const rejectedHiddenEmbeddingCall = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedHiddenEmbeddingCall.status, 0);
+
+  const excessiveEmbeddingRetryRows = Array.from({ length: 20 }, (_, i) =>
+    retrievalRow(
+      i,
+      i === 0
+        ? {
+            hybrid: {
+              embeddingRetries: 2,
+              providerAttempts: [
+                {
+                  scope: 'supabase_unavailable',
+                  embeddingCalls: 1,
+                  embeddingError: 'upstream_rate_limited',
+                  backendCalls: 0,
+                  backendRetries: 0,
+                  backendError: null,
+                },
+                {
+                  scope: 'supabase_unavailable',
+                  embeddingCalls: 1,
+                  embeddingError: 'network_or_timeout',
+                  backendCalls: 0,
+                  backendRetries: 0,
+                  backendError: null,
+                },
+                {
+                  scope: 'supabase_published',
+                  embeddingCalls: 1,
+                  embeddingError: null,
+                  backendCalls: 1,
+                  backendRetries: 0,
+                  backendError: null,
+                },
+              ],
+            },
+          }
+        : {},
+    ),
+  );
+  await writeFile(path, JSON.stringify(report(excessiveEmbeddingRetryRows)));
+  const rejectedPerSearchEmbeddingRetry = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedPerSearchEmbeddingRetry.status, 0);
+
   const staleContract = report(Array.from({ length: 20 }, (_, i) => retrievalRow(i)));
   staleContract.configuration.queryContract = 'raw_multilingual_query';
   await writeFile(path, JSON.stringify(staleContract));
@@ -279,6 +376,45 @@ test('P1.7 lexical retrieval retries one transient Supabase outage without embed
   assert.equal(calls, 3);
   assert.equal(exhausted.retries, 2);
   assert.equal(exhausted.result.scope, 'supabase_unavailable');
+});
+
+test('P1.7 hybrid retrieval retries one transient embedding failure with exact attempts', async () => {
+  let calls = 0;
+  const waits = [];
+  const paces = [];
+  const recovered = await searchHybridWithEmbeddingRetries(
+    async () => {
+      calls++;
+      return calls === 1
+        ? {
+            scope: 'supabase_unavailable',
+            retrieval: {
+              embedding: { calls: 1, error: 'upstream_rate_limited' },
+              backend: { calls: 0, retries: 0, error: null },
+            },
+          }
+        : {
+            scope: 'supabase_published',
+            articles: [{ title: 'verified' }],
+            retrieval: {
+              embedding: { calls: 1, error: null },
+              backend: { calls: 1, retries: 0, error: null },
+            },
+          };
+    },
+    1,
+    { wait: async (attempt) => waits.push(attempt) },
+    { beforeCall: async () => paces.push(calls) },
+  );
+  assert.equal(calls, 2);
+  assert.equal(recovered.retries, 1);
+  assert.equal(recovered.result.scope, 'supabase_published');
+  assert.equal(recovered.attempts.length, 2);
+  assert.equal(recovered.attempts[0].embeddingError, 'upstream_rate_limited');
+  assert.equal(recovered.attempts[0].backendCalls, 0);
+  assert.equal(recovered.attempts[1].embeddingError, null);
+  assert.deepEqual(waits, [0]);
+  assert.deepEqual(paces, [0, 1]);
 });
 
 test('P1.7 transient retry backoff is bounded and exponential', () => {
