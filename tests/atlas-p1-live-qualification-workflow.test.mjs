@@ -122,8 +122,10 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumGenerationRetryCalls: 2/);
   assert.match(contract, /maximumValidationRetryCalls: 2/);
   assert.match(contract, /maximumLanguageCorrectionCalls: 2/);
+  assert.match(contract, /maximumCitationCorrectionCalls: 2/);
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
   assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
+  assert.match(contract, /maximumCitationCorrectionCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
   assert.match(contract, /minimumEmbeddingPacingIntervalMs: 4000/);
   assert.match(contract, /maximumEmbeddingRetries: 4/);
@@ -133,7 +135,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumBackendRetriesPerSearch: 1/);
   assert.match(contract, /maximumBackendRetryCalls: 4/);
   assert.match(contract, /maximumEmbeddingCalls: 24/);
-  assert.match(contract, /maximumTotalCompletionCalls: 236/);
+  assert.match(contract, /maximumTotalCompletionCalls: 238/);
 });
 
 test('P1.7 release gate requires complete structured retry telemetry and exact final call accounting', async () => {
@@ -175,6 +177,7 @@ test('P1.7 live resilience is paced and retries only transport failures within e
   assert.match(release, /--max-generation-retries/);
   assert.match(release, /--max-validation-retries/);
   assert.match(release, /--max-language-corrections/);
+  assert.match(release, /--max-citation-corrections/);
   assert.match(release, /--max-retries/);
   assert.match(release, /groundingRetryCompletionCalls/);
 });
@@ -188,11 +191,34 @@ test('P1.7 release gate verifies exact generation/grounding corpus identity and 
   assert.match(release, /generationRetriesUsed === generationRetryRows/);
   assert.match(release, /validationRetriesUsed === validationRetryRows/);
   assert.match(release, /languageCorrectionsUsed === languageCorrectionRows/);
+  assert.match(release, /citationCorrectionsUsed === citationCorrectionRows/);
   assert.match(release, /providerCalls === generationProviderAttemptRows/);
 
   assert.match(release, /expectedGroundingIds/);
   assert.match(release, /groundingCoverageGate/);
   assert.match(release, /groundingScenarios\.every\(\(scenario\) => groundingIds\.has\(scenario\.id\)\)/);
+});
+
+test('P1.7 generation citation correction is separately governed and never replaces factual validation', async () => {
+  const generation = await readFile('scripts/evaluate-generation.mjs', 'utf8');
+  const natural = await readFile('lib/atlas/natural-generation.ts', 'utf8');
+  const release = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+  const contract = await readFile('evals/p1-release-contract.mjs', 'utf8');
+
+  assert.match(natural, /citation_mismatch/);
+  assert.match(natural, /draftCitationFailure/);
+  assert.match(natural, /failed evidence-reference validation/);
+  assert.match(generation, /maxCitationCorrections/);
+  assert.match(generation, /diagnostics\.reason === 'unknown_evidence_reference'/);
+  assert.match(generation, /counters\.citationCorrections === 0/);
+  assert.match(generation, /citationCorrectionsUsed < options\.maxCitationCorrections/);
+  assert.doesNotMatch(
+    generation,
+    /factualValidation\?\.reason === 'unsupported_claim'.*citationCorrections/s,
+  );
+  assert.match(release, /generationCitationCorrectionCalls/);
+  assert.match(release, /citationCorrectionsUsed === citationCorrectionRows/);
+  assert.match(contract, /maximumCitationCorrectionCalls: 2/);
 });
 
 test('P1.7 generation language correction is bounded and does not retry factual semantic failures', async () => {
