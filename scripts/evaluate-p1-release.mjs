@@ -12,6 +12,10 @@ import {
   p1GroundingPlan,
 } from '../evals/p1-grounding-plan.mjs';
 import { p1ReleaseQualificationContract as contract } from '../evals/p1-release-contract.mjs';
+import {
+  classifyExternalQualificationBlocker,
+  qualificationOutcome,
+} from './lib/p1-qualification-outcome.mjs';
 
 const args = process.argv.slice(2);
 const value = (flag, fallback = null) =>
@@ -1028,6 +1032,16 @@ const automatedPassed = Object.values(automatedGates).every(Boolean);
 const releaseAllowed =
   automatedPassed &&
   (!contract.generation.requireHumanReview || humanReview.approved === true);
+const blocker = classifyExternalQualificationBlocker({
+  structured,
+  generation,
+  groundingReports,
+});
+const outcome = qualificationOutcome({
+  releaseAllowed,
+  automatedPassed,
+  blocker,
+});
 
 const report = {
   schema: 1,
@@ -1040,6 +1054,8 @@ const report = {
     : null,
   releaseAllowed,
   automatedPassed,
+  outcome,
+  blocker,
   contract,
   scope: qualificationScope,
   source,
@@ -1097,13 +1113,10 @@ await writeFile(output, JSON.stringify(report, null, 2) + '\n');
 console.log(
   JSON.stringify(
     {
-      status: releaseAllowed
-        ? 'release_qualified'
-        : automatedPassed
-          ? 'human_review_required'
-          : 'qualification_failed',
+      status: outcome,
       releaseAllowed,
       automatedPassed,
+      blocker,
       gates: automatedGates,
       grounding: groundingMetrics,
       qualificationId,
