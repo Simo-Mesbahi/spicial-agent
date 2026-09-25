@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
 import { retrievalScenarios } from '../evals/retrieval.mjs';
 import { liveEmbeddingPacer, liveTransientRetryBackoff } from './lib/live-eval-pacing.mjs';
+import { searchLexicalWithTransientRetries } from './lib/live-retrieval-resilience.mjs';
 const args = process.argv.slice(2);
 const options = { live: false, maxQueries: 5, maxTransientRetries: 0, output: 'outputs/retrieval-evaluation.json' };
 for (let i = 0; i < args.length; i++) {
@@ -77,22 +78,22 @@ if (!options.live) {
         const start = performance.now();
         let result;
         let modeRetries = 0;
-        while (true) {
-          result = await searchKnowledge(
+        const search = () =>
+          searchKnowledge(
             { ...cfg, EMBEDDING_DAILY_LIMIT: limit },
             scenario.retrievalQuery,
           );
-          // Run #16 proved a Supabase RPC can fail once and recover seconds later.
-          // Retry only the lexical leg: it spends no embedding/provider budget.
-          if (
-            mode !== 'lexical' ||
-            result.scope !== 'supabase_unavailable' ||
-            transientRetriesUsed >= options.maxTransientRetries
-          )
-            break;
-          transientRetriesUsed++;
-          modeRetries++;
-          await retryBackoff.wait(modeRetries - 1);
+        if (mode === 'lexical') {
+          const retried = await searchLexicalWithTransientRetries(
+            search,
+            options.maxTransientRetries - transientRetriesUsed,
+            retryBackoff,
+          );
+          result = retried.result;
+          modeRetries = retried.retries;
+          transientRetriesUsed += retried.retries;
+        } else {
+          result = await search();
         }
         const hits = result.articles.filter((a) =>
           scenario.expectedTitles.includes(a.title),
