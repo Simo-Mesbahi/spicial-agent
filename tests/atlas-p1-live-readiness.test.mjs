@@ -113,6 +113,17 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
     false,
   );
 
+  const excessiveRetries = report(Array.from({ length: 20 }, (_, i) => retrievalRow(i)));
+  excessiveRetries.operational.maximumTransientRetries = 3;
+  await writeFile(path, JSON.stringify(excessiveRetries));
+  const rejectedRetryBudget = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedRetryBudget.status, 0);
+  assert.equal(JSON.parse(rejectedRetryBudget.stdout).operational.maximumTransientRetries, 3);
+
   const unsafe = Array.from({ length: 20 }, (_, i) =>
     retrievalRow(i, i === 7 ? { hybrid: { recallAtK: 0 } } : {}),
   );
