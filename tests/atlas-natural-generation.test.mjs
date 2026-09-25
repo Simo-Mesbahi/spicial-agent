@@ -380,6 +380,60 @@ for (const [name, data, reason] of [
     assert.equal(result.draft, null);
     assert.equal(result.diagnostics.reason, reason);
   });
+test('Natural generation classifies citation failures without retaining model text or invented refs', async (t) => {
+  const cases = [
+    {
+      name: 'invented',
+      data: { language: 'fr', sentences: [{ text: 'Statut.', evidenceRefs: ['case.status'] }] },
+      code: 'unknown_evidence_reference',
+      sentenceIndex: 0,
+    },
+    {
+      name: 'duplicate',
+      data: {
+        language: 'fr',
+        sentences: [{ text: 'Statut.', evidenceRefs: ['case.statusLabel', 'case.statusLabel'] }],
+      },
+      code: 'duplicate_evidence_reference',
+      sentenceIndex: 0,
+    },
+    {
+      name: 'uncited fact',
+      data: { language: 'fr', sentences: [{ text: 'Aucune date confirmée.', evidenceRefs: [] }] },
+      code: 'missing_all_evidence_references',
+      sentenceIndex: null,
+    },
+  ];
+  for (const entry of cases) {
+    const c = setup(t);
+    t.mock.method(globalThis, 'fetch', async () => response(entry.data));
+    const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+    assert.equal(result.draft, null, entry.name);
+    assert.equal(result.diagnostics.reason, 'unknown_evidence_reference', entry.name);
+    assert.equal(result.diagnostics.citationFailure.code, entry.code, entry.name);
+    assert.equal(result.diagnostics.citationFailure.sentenceIndex, entry.sentenceIndex, entry.name);
+    assert.doesNotMatch(JSON.stringify(result.diagnostics.citationFailure), /Statut|case\.status"/);
+    t.mock.restoreAll();
+  }
+});
+
+test('Natural generation citation-correction prompt is server-owned, exact-key-only and does not reuse rejected prose', async (t) => {
+  const c = setup(t);
+  c.input.correction = 'citation_mismatch';
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    assert.match(payload.messages[0].content, /previous candidate failed evidence-reference validation/i);
+    assert.match(payload.messages[0].content, /exact keys present in evidence\.references/i);
+    assert.match(payload.messages[0].content, /Never invent, rename, translate, omit, or duplicate/i);
+    assert.doesNotMatch(payload.messages[1].content, /previous candidate|rejected candidate/i);
+    return response(draft('fr'));
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+  assert.equal(result.diagnostics.reason, null);
+  assert.equal(result.diagnostics.citationFailure, null);
+});
+
 test('Natural generation prompt transport binds evidenceRefs to the current evidence pack', async (t) => {
   const c = setup(t);
   c.env.LLM_STRUCTURED_OUTPUT = 'prompt';
