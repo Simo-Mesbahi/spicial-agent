@@ -268,14 +268,25 @@ function retrievalEmbeddingAttemptsPass(hybrid) {
 
 function retrievalBackendPasses(turn) {
   const backend = turn?.retrieval?.backend;
-  return (
-    backend?.timeoutMs === contract.retrieval.backendTimeoutMs &&
-    backend?.calls >= 1 &&
-    backend?.calls <= 1 + contract.retrieval.maximumBackendRetriesPerSearch &&
-    backend?.retries >= 0 &&
-    backend?.retries <= contract.retrieval.maximumBackendRetriesPerSearch &&
-    backend?.error === null
-  );
+  if (
+    backend?.timeoutMs !== contract.retrieval.backendTimeoutMs ||
+    backend?.retryTimeoutMs !== contract.retrieval.backendRetryTimeoutMs ||
+    !Number.isInteger(backend?.calls) ||
+    backend.calls < 1 ||
+    backend.calls > 1 + contract.retrieval.maximumBackendRetriesPerSearch ||
+    !Number.isInteger(backend?.retries) ||
+    backend.retries < 0 ||
+    backend.retries > contract.retrieval.maximumBackendRetriesPerSearch ||
+    backend.calls !== backend.retries + 1 ||
+    !Array.isArray(backend?.attemptTimeoutMs) ||
+    backend.attemptTimeoutMs.length !== backend.calls ||
+    backend.attemptTimeoutMs[0] !== contract.retrieval.backendTimeoutMs ||
+    (backend.calls === 2 &&
+      backend.attemptTimeoutMs[1] !== contract.retrieval.backendRetryTimeoutMs) ||
+    backend.error !== null
+  )
+    return false;
+  return true;
 }
 
 function retrievalRowPasses(row) {
