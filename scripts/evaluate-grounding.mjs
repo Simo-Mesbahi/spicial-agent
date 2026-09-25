@@ -82,7 +82,7 @@ else {
   const DB = database(),
     pacing = liveCompletionPacer(),
     retryBackoff = liveTransientRetryBackoff();
-  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable']);
+  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited']);
   try {
     const results = [];
     let rejectedStreak = 0;
@@ -119,7 +119,7 @@ else {
 
         retriesUsed++;
         scenarioRetries++;
-        await retryBackoff.wait();
+        await retryBackoff.wait(scenarioRetries - 1);
       }
 
       results.push({
