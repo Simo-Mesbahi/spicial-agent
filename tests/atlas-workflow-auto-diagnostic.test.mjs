@@ -390,6 +390,10 @@ test('auto-diagnostic workflow is automatic, manual, read-only and trusted-sourc
   assert.match(source, /path: diagnostics\/output\//);
   assert.doesNotMatch(source, /path: diagnostics\/input\//);
   assert.match(source, /retention-days: 30/);
+  assert.match(source, /Preserve fail-closed diagnostic failure marker/);
+  assert.match(source, /diagnostic_pipeline_failed/);
+  assert.match(source, /if: always\(\)/);
+  assert.doesNotMatch(source, /git push|gh pr merge|merge_pull_request|contents: write/);
 });
 
 test('auto-diagnostic artifact extraction rejects traversal and bounds JSON payloads', () => {
