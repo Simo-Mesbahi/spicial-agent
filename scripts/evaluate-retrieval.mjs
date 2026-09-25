@@ -6,13 +6,23 @@ import { performance } from 'node:perf_hooks';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
 import { retrievalScenarios } from '../evals/retrieval.mjs';
 import { liveEmbeddingPacer, liveTransientRetryBackoff } from './lib/live-eval-pacing.mjs';
-import { searchLexicalWithTransientRetries } from './lib/live-retrieval-resilience.mjs';
+import {
+  searchHybridWithEmbeddingRetries,
+  searchLexicalWithTransientRetries,
+} from './lib/live-retrieval-resilience.mjs';
 const args = process.argv.slice(2);
-const options = { live: false, maxQueries: 5, maxTransientRetries: 0, output: 'outputs/retrieval-evaluation.json' };
+const options = {
+  live: false,
+  maxQueries: 5,
+  maxTransientRetries: 0,
+  maxEmbeddingRetries: 0,
+  output: 'outputs/retrieval-evaluation.json',
+};
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--live') options.live = true;
   else if (args[i] === '--max-queries') options.maxQueries = Number(args[++i]);
   else if (args[i] === '--max-transient-retries') options.maxTransientRetries = Number(args[++i]);
+  else if (args[i] === '--max-embedding-retries') options.maxEmbeddingRetries = Number(args[++i]);
   else if (args[i] === '--output') options.output = args[++i];
   else throw new Error('Unknown argument');
 }
@@ -23,6 +33,9 @@ if (
   !Number.isInteger(options.maxTransientRetries) ||
   options.maxTransientRetries < 0 ||
   options.maxTransientRetries > 4 ||
+  !Number.isInteger(options.maxEmbeddingRetries) ||
+  options.maxEmbeddingRetries < 0 ||
+  options.maxEmbeddingRetries > 4 ||
   !options.output
 )
   throw new Error('Invalid evaluation options');
@@ -33,8 +46,9 @@ if (!options.live) {
       {
         status: 'dry_run',
         scenarios: scenarios.map((s) => s.id),
-        maxEmbeddingCalls: scenarios.length,
+        maxEmbeddingCalls: scenarios.length + options.maxEmbeddingRetries,
         maxTransientRetries: options.maxTransientRetries,
+        maxEmbeddingRetries: options.maxEmbeddingRetries,
         maxCompletionCalls: 0,
         note: 'No requests sent. Labels refer to the published repository seed corpus.',
       },
@@ -58,13 +72,14 @@ if (!options.live) {
     embeddingPacing = liveEmbeddingPacer(),
     retryBackoff = liveTransientRetryBackoff();
   let transientRetriesUsed = 0;
+  let embeddingRetriesUsed = 0;
   try {
     const cfg = {
       ...process.env,
       DB,
       RAG_MODE: 'hybrid',
       RAG_RESULTS: 3,
-      EMBEDDING_DAILY_LIMIT: String(scenarios.length),
+      EMBEDDING_DAILY_LIMIT: String(scenarios.length + options.maxEmbeddingRetries),
       RAG_EVAL_VECTOR_PROBE: 'true',
       RAG_EVAL_VECTOR_CANDIDATE_FLOOR: '0.3',
     };
@@ -72,15 +87,19 @@ if (!options.live) {
       const turns = {};
       for (const [mode, limit] of [
         ['lexical', '0'],
-        ['hybrid', String(scenarios.length)],
+        ['hybrid', String(scenarios.length + options.maxEmbeddingRetries)],
       ]) {
-        if (mode === 'hybrid') await embeddingPacing.beforeCall();
         const start = performance.now();
         let result;
         let modeRetries = 0;
+        let providerAttempts = [];
         const search = () =>
           searchKnowledge(
-            { ...cfg, EMBEDDING_DAILY_LIMIT: limit },
+            {
+              ...cfg,
+              EMBEDDING_DAILY_LIMIT: limit,
+              ...(mode === 'hybrid' ? { RAG_EVAL_REQUIRE_EMBEDDING: 'true' } : {}),
+            },
             scenario.retrievalQuery,
           );
         if (mode === 'lexical') {
@@ -93,7 +112,16 @@ if (!options.live) {
           modeRetries = retried.retries;
           transientRetriesUsed += retried.retries;
         } else {
-          result = await search();
+          const retried = await searchHybridWithEmbeddingRetries(
+            search,
+            Math.min(1, options.maxEmbeddingRetries - embeddingRetriesUsed),
+            retryBackoff,
+            embeddingPacing,
+          );
+          result = retried.result;
+          modeRetries = retried.retries;
+          providerAttempts = retried.attempts;
+          embeddingRetriesUsed += retried.retries;
         }
         const hits = result.articles.filter((a) =>
           scenario.expectedTitles.includes(a.title),
@@ -112,7 +140,9 @@ if (!options.live) {
           expectedProbeSimilarities,
           vectorProbe: result.retrieval?.evaluationProbe ?? null,
           returnedTitles: result.articles.map((a) => a.title),
-          transientRetries: modeRetries,
+          transientRetries: mode === 'lexical' ? modeRetries : 0,
+          embeddingRetries: mode === 'hybrid' ? modeRetries : 0,
+          providerAttempts: mode === 'hybrid' ? providerAttempts : [],
         };
       }
       results.push({
@@ -143,7 +173,19 @@ if (!options.live) {
       (sum, row) =>
         sum +
         (row.lexical.retrieval?.backend?.retries ?? 0) +
-        (row.hybrid.retrieval?.backend?.retries ?? 0),
+        row.hybrid.providerAttempts.reduce(
+          (attemptSum, attempt) => attemptSum + attempt.backendRetries,
+          0,
+        ),
+      0,
+    );
+    const embeddingProviderCalls = results.reduce(
+      (sum, row) =>
+        sum +
+        row.hybrid.providerAttempts.reduce(
+          (attemptSum, attempt) => attemptSum + attempt.embeddingCalls,
+          0,
+        ),
       0,
     );
     const report = {
@@ -164,6 +206,9 @@ if (!options.live) {
       operational: {
         transientRetriesUsed,
         maximumTransientRetries: options.maxTransientRetries,
+        embeddingRetriesUsed,
+        maximumEmbeddingRetries: options.maxEmbeddingRetries,
+        embeddingProviderCalls,
         backendRetriesUsed,
       },
       status: results.every(
@@ -171,7 +216,8 @@ if (!options.live) {
           r.lexical.scope === 'supabase_published' &&
           r.hybrid.scope === 'supabase_published' &&
           r.hybrid.retrieval?.embedding.calls === 1 &&
-          r.hybrid.retrieval.embedding.error === null,
+          r.hybrid.retrieval.embedding.error === null &&
+          r.hybrid.embeddingRetries <= 1,
       )
         ? 'completed'
         : 'incomplete',
@@ -198,6 +244,8 @@ if (!options.live) {
         queries: results.length,
         embeddingPacingIntervalMs: embeddingPacing.intervalMs,
         transientRetriesUsed,
+        embeddingRetriesUsed,
+        embeddingProviderCalls,
         backendRetriesUsed,
         output: options.output,
       }),
