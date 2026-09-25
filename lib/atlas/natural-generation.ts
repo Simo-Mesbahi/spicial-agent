@@ -189,6 +189,16 @@ const guidanceSchema = z
   })
   .strict();
 export type GenerationGuidance = z.infer<typeof guidanceSchema>;
+export type CitationFailureCode =
+  | 'missing_all_evidence_references'
+  | 'uncited_factual_sentence'
+  | 'unknown_evidence_reference'
+  | 'duplicate_evidence_reference';
+export type CitationFailure = {
+  code: CitationFailureCode;
+  sentenceIndex: number | null;
+  referenceCount: number;
+};
 export type GenerationDiagnostics = {
   mode: 'off' | 'shadow' | 'release';
   outcome: 'skipped' | 'candidate_generated' | 'failed';
@@ -211,11 +221,50 @@ export type GenerationDiagnostics = {
   latencyMs: number;
   inputTokens: number | null;
   outputTokens: number | null;
+  citationFailure: CitationFailure | null;
 };
 class DraftError extends Error {
   constructor(public code: 'unknown_evidence_reference' | 'output_language_mismatch') {
     super(code);
   }
+}
+
+export function draftCitationFailure(
+  draft: NaturalDraft,
+  references: Record<string, unknown>,
+): CitationFailure | null {
+  const allRefs = draft.sentences.flatMap((sentence) => sentence.evidenceRefs);
+  if (!allRefs.length)
+    return {
+      code: 'missing_all_evidence_references',
+      sentenceIndex: null,
+      referenceCount: 0,
+    };
+
+  for (const [sentenceIndex, sentence] of draft.sentences.entries()) {
+    if (new Set(sentence.evidenceRefs).size !== sentence.evidenceRefs.length)
+      return {
+        code: 'duplicate_evidence_reference',
+        sentenceIndex,
+        referenceCount: sentence.evidenceRefs.length,
+      };
+    if (sentence.evidenceRefs.some((ref) => !Object.hasOwn(references, ref)))
+      return {
+        code: 'unknown_evidence_reference',
+        sentenceIndex,
+        referenceCount: sentence.evidenceRefs.length,
+      };
+    if (
+      sentence.evidenceRefs.length === 0 &&
+      !isEvidenceFreeCourtesy(draft.language, sentence.text)
+    )
+      return {
+        code: 'uncited_factual_sentence',
+        sentenceIndex,
+        referenceCount: 0,
+      };
+  }
+  return null;
 }
 /** Deliberately omit tenant/session IDs and full history; keys are aliases for this pack only. */
 export function generationEvidence(pack: EvidencePack) {
@@ -283,7 +332,7 @@ export async function generateNaturalDraft(
     context: EvidenceContext;
     message: string;
     guidance: GenerationGuidance;
-    correction?: 'language_mismatch';
+    correction?: 'language_mismatch' | 'citation_mismatch';
   },
   trace: ProviderTrace,
 ): Promise<{ draft: NaturalDraft | null; diagnostics: GenerationDiagnostics }> {
@@ -306,6 +355,7 @@ export async function generateNaturalDraft(
     latencyMs: 0,
     inputTokens: 0,
     outputTokens: 0,
+    citationFailure: null,
   };
   let draft: NaturalDraft | null = null;
   let responseReceived = false;
@@ -355,11 +405,15 @@ export async function generateNaturalDraft(
       pack.responseLanguage,
     );
     const providerSchema = structuredSchemaForProvider(settings.provider, requestJsonSchema);
+    const correctionInstruction =
+      input.correction === 'language_mismatch'
+        ? ' A previous candidate failed language validation. Do not repeat or copy that candidate; rewrite the answer entirely in the required language using the same verified facts.'
+        : input.correction === 'citation_mismatch'
+          ? ' A previous candidate failed evidence-reference validation. Rewrite the draft from scratch. Every factual or business sentence must cite one or more exact keys present in evidence.references. Never invent, rename, translate, omit, or duplicate evidence reference keys. A small courtesy may be uncited only when it contains no business fact. Do not copy the rejected candidate.'
+          : '';
     const languageInstruction =
       `The ONLY permitted response language is ${languageNames[pack.responseLanguage]} (${pack.responseLanguage}). Every customer-facing sentence, including courtesies, must be written in that language. The JSON language field and the prose must agree. ${languageStyleInstructions[pack.responseLanguage]}` +
-      (input.correction === 'language_mismatch'
-        ? ' A previous candidate failed language validation. Do not repeat or copy that candidate; rewrite the answer entirely in the required language using the same verified facts.'
-        : '');
+      correctionInstruction;
     const payload = {
       ...completionPayload(
         env,
@@ -424,13 +478,8 @@ export async function generateNaturalDraft(
     );
     if (actualLanguageHint && actualLanguageHint !== pack.responseLanguage)
       throw new DraftError('output_language_mismatch');
-    const refs = draft.sentences.flatMap((s) => s.evidenceRefs);
-    if (
-      !refs.length ||
-      !draftEvidenceBoundaryValid(draft) ||
-      refs.some((ref) => !Object.hasOwn(evidence.references, ref)) ||
-      draft.sentences.some((s) => new Set(s.evidenceRefs).size !== s.evidenceRefs.length)
-    )
+    diagnostics.citationFailure = draftCitationFailure(draft, evidence.references);
+    if (diagnostics.citationFailure)
       throw new DraftError('unknown_evidence_reference');
     diagnostics.outcome = 'candidate_generated';
     diagnostics.reason = null;
