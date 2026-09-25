@@ -82,7 +82,7 @@ else {
   const DB = database(),
     pacing = liveCompletionPacer(),
     retryBackoff = liveTransientRetryBackoff();
-  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable']);
+  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited']);
   try {
     const results = [];
     let rejectedStreak = 0;
@@ -119,7 +119,7 @@ else {
 
         retriesUsed++;
         scenarioRetries++;
-        await retryBackoff.wait();
+        await retryBackoff.wait(scenarioRetries - 1);
       }
 
       results.push({
@@ -135,6 +135,10 @@ else {
       if (diagnostics.reason === 'upstream_request_rejected') rejectedStreak++;
       else rejectedStreak = 0;
 
+      if (diagnostics.reason === 'upstream_rate_limited') {
+        systemicTransportFailure = 'provider_rate_limited';
+        break;
+      }
       if (['upstream_auth', 'configuration'].includes(diagnostics.reason)) {
         systemicTransportFailure = diagnostics.reason;
         break;

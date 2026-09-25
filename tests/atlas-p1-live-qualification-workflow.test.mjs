@@ -82,6 +82,7 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.ok(retrievalPreflightIndex > verifyIndex);
   assert.ok(retrievalPreflightIndex < liveIndex);
   assert.match(source, /scripts\/evaluate-retrieval\.mjs/);
+  assert.match(source, /--max-transient-retries 2/);
   assert.match(source, /scripts\/check-retrieval-qualification\.mjs/);
   assert.match(
     source,
@@ -102,7 +103,8 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
   assert.match(structured, /retryBackoffMs/);
-  assert.match(structured, /setTimeout\(resolve, retryBackoffMs\)/);
+  assert.match(structured, /Math\.min\(30000, retryBackoffMs \* 2 \*\* retryAttempt\)/);
+  assert.match(structured, /setTimeout\(resolve, delay\)/);
   assert.match(structured, /discardedProviderCalls/);
   assert.match(structured, /finalProviderCalls/);
   assert.match(structured, /retryUsageComplete/);
@@ -110,7 +112,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(structured, /provider_rate_limited/);
   assert.match(structured, /response\.status !== 200 \|\| m\.fallback/);
   assert.match(structured, /while \(true\)/);
-  assert.doesNotMatch(structured, /'upstream_rate_limited',\s*\n\s*'upstream_unavailable'/);
+  assert.match(structured, /'upstream_rate_limited'/);
   assert.match(contract, /maximumScenarioRetries: 6/);
   assert.match(contract, /maximumRetryCompletionCalls: 30/);
   assert.match(contract, /maximumGenerationRetryCalls: 2/);
@@ -119,6 +121,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
   assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
+  assert.match(contract, /maximumTransientRetries: 2/);
   assert.match(contract, /maximumTotalCompletionCalls: 236/);
 });
 
@@ -151,10 +154,13 @@ test('P1.7 live resilience is paced and retries only transport failures within e
   assert.match(pacing, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS/);
   assert.match(pacing, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS/);
   assert.match(retrieval, /liveEmbeddingPacer/);
-  assert.match(generation, /new Set\(\['network_or_timeout', 'upstream_unavailable'\]\)/);
-  assert.match(grounding, /new Set\(\['network_or_timeout', 'upstream_unavailable'\]\)/);
-  assert.doesNotMatch(generation, /retryableTransportReasons.*upstream_rate_limited/s);
-  assert.doesNotMatch(grounding, /retryableTransportReasons.*upstream_rate_limited/s);
+  assert.match(retrieval, /searchLexicalWithTransientRetries/);
+  assert.match(retrieval, /options\.maxTransientRetries - transientRetriesUsed/);
+  assert.match(retrieval, /maxTransientRetries/);
+  assert.match(generation, /new Set\(\['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited'\]\)/);
+  assert.match(grounding, /new Set\(\['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited'\]\)/);
+  assert.match(generation, /systemicTransportFailure = 'provider_rate_limited'/);
+  assert.match(grounding, /systemicTransportFailure = 'provider_rate_limited'/);
   assert.match(release, /--max-generation-retries/);
   assert.match(release, /--max-validation-retries/);
   assert.match(release, /--max-language-corrections/);

@@ -55,6 +55,8 @@ const configured =
 const passed =
   report.status === 'completed' &&
   report.completionCalls === contract.retrieval.completionCalls &&
+  report.operational?.maximumTransientRetries === contract.retrieval.maximumTransientRetries &&
+  report.operational?.transientRetriesUsed <= contract.retrieval.maximumTransientRetries &&
   rows.length === contract.retrieval.requiredQueries &&
   failed.length === 0 &&
   fresh &&
@@ -67,6 +69,7 @@ console.log(
       queries: rows.length,
       configuration,
       metrics: report.metrics ?? null,
+      operational: report.operational ?? null,
       failures: failed,
       reportFresh: fresh,
       configurationMatchesEnvironment: configured,

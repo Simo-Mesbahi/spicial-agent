@@ -91,12 +91,13 @@ if (!options.live) {
   const DB = database(),
     pacing = liveCompletionPacer(),
     retryBackoff = liveTransientRetryBackoff();
-  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable']);
+  const retryableTransportReasons = new Set(['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited']);
   try {
     const results = [];
     let generationRetriesUsed = 0;
     let validationRetriesUsed = 0;
     let languageCorrectionsUsed = 0;
+    let systemicTransportFailure = null;
 
     async function generateCandidate(fixture, correction, counters) {
       let draft = null;
@@ -138,7 +139,7 @@ if (!options.live) {
 
         generationRetriesUsed++;
         counters.generationRetries++;
-        await retryBackoff.wait();
+        await retryBackoff.wait(counters.generationRetries - 1);
       }
       return { draft, diagnostics, attempts, fixture: activeFixture };
     }
@@ -181,7 +182,7 @@ if (!options.live) {
 
         validationRetriesUsed++;
         counters.validationRetries++;
-        await retryBackoff.wait();
+        await retryBackoff.wait(counters.validationRetries - 1);
       }
       return { factualValidation, attempts, fixture: activeFixture };
     }
@@ -258,6 +259,14 @@ if (!options.live) {
         factualValidationAttempts,
         validationRetries: counters.validationRetries,
       });
+
+      if (
+        diagnostics?.reason === 'upstream_rate_limited' ||
+        factualValidation?.reason === 'upstream_rate_limited'
+      ) {
+        systemicTransportFailure = 'provider_rate_limited';
+        break;
+      }
     }
     const status = results.every(
       (r) =>
@@ -287,6 +296,7 @@ if (!options.live) {
             maximumGenerationRetries: options.maxGenerationRetries,
             maximumValidationRetries: options.maxValidationRetries,
             maximumLanguageCorrections: options.maxLanguageCorrections,
+            systemicTransportFailure,
             providerCalls: results.reduce(
               (n, r) =>
                 n +
@@ -313,6 +323,7 @@ if (!options.live) {
         generationRetriesUsed,
         validationRetriesUsed,
         languageCorrectionsUsed,
+        systemicTransportFailure,
         failures: results
           .filter(
             (r) =>

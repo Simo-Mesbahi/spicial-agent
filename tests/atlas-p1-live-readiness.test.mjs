@@ -4,7 +4,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { liveCompletionPacer } from '../scripts/lib/live-eval-pacing.mjs';
+import {
+  liveCompletionPacer,
+  boundedExponentialRetryDelay,
+} from '../scripts/lib/live-eval-pacing.mjs';
+import { searchLexicalWithTransientRetries } from '../scripts/lib/live-retrieval-resilience.mjs';
 
 const qualificationEnv = {
   ...process.env,
@@ -73,6 +77,10 @@ function report(rows) {
     },
     status: 'completed',
     completionCalls: 0,
+    operational: {
+      transientRetriesUsed: 0,
+      maximumTransientRetries: 2,
+    },
     results: rows,
   };
 }
@@ -105,6 +113,17 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
     false,
   );
 
+  const excessiveRetries = report(Array.from({ length: 20 }, (_, i) => retrievalRow(i)));
+  excessiveRetries.operational.maximumTransientRetries = 3;
+  await writeFile(path, JSON.stringify(excessiveRetries));
+  const rejectedRetryBudget = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedRetryBudget.status, 0);
+  assert.equal(JSON.parse(rejectedRetryBudget.stdout).operational.maximumTransientRetries, 3);
+
   const unsafe = Array.from({ length: 20 }, (_, i) =>
     retrievalRow(i, i === 7 ? { hybrid: { recallAtK: 0 } } : {}),
   );
@@ -119,6 +138,48 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   assert.equal(failure.status, 'retrieval_not_qualified');
   assert.equal(failure.failures.length, 1);
   assert.equal(failure.failures[0].id, 'retrieval-contract-7');
+});
+
+test('P1.7 lexical retrieval retries one transient Supabase outage without embedding spend', async () => {
+  let calls = 0;
+  const waits = [];
+  const recovered = await searchLexicalWithTransientRetries(
+    async () => {
+      calls++;
+      return calls === 1
+        ? { scope: 'supabase_unavailable', articles: [] }
+        : { scope: 'supabase_published', articles: [{ title: 'verified' }] };
+    },
+    2,
+    { wait: async (attempt) => waits.push(attempt) },
+  );
+  assert.equal(calls, 2);
+  assert.equal(recovered.retries, 1);
+  assert.equal(recovered.result.scope, 'supabase_published');
+  assert.deepEqual(waits, [0]);
+
+  calls = 0;
+  const exhausted = await searchLexicalWithTransientRetries(
+    async () => {
+      calls++;
+      return { scope: 'supabase_unavailable', articles: [] };
+    },
+    2,
+    { wait: async () => {} },
+  );
+  assert.equal(calls, 3);
+  assert.equal(exhausted.retries, 2);
+  assert.equal(exhausted.result.scope, 'supabase_unavailable');
+});
+
+test('P1.7 transient retry backoff is bounded and exponential', () => {
+  assert.equal(boundedExponentialRetryDelay(15000, 0), 15000);
+  assert.equal(boundedExponentialRetryDelay(15000, 1), 30000);
+  assert.equal(boundedExponentialRetryDelay(15000, 2), 30000);
+  assert.equal(boundedExponentialRetryDelay(0, 4), 0);
+  assert.throws(() => boundedExponentialRetryDelay(-1, 0));
+  assert.throws(() => boundedExponentialRetryDelay(15000, -1));
+  assert.throws(() => boundedExponentialRetryDelay(15000, 17));
 });
 
 test('P1.7 completion pacing is bounded, deterministic and does not issue provider calls', async () => {

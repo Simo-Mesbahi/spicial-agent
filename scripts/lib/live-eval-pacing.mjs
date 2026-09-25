@@ -43,12 +43,39 @@ export function liveEmbeddingPacer(env = process.env) {
   );
 }
 
+/**
+ * Truncated exponential backoff for qualification-only transient retries.
+ * Runs are serialized by the workflow concurrency group, so deterministic delays avoid
+ * non-reproducible tests while still backing off more aggressively after repeated 429/5xx.
+ */
+export function boundedExponentialRetryDelay(baseMs, attempt, capMs = 30000) {
+  if (
+    !Number.isInteger(baseMs) ||
+    baseMs < 0 ||
+    baseMs > 30000 ||
+    !Number.isInteger(attempt) ||
+    attempt < 0 ||
+    attempt > 16 ||
+    !Number.isInteger(capMs) ||
+    capMs < 0 ||
+    capMs > 30000
+  )
+    throw new Error('Invalid live evaluation retry backoff');
+  if (!baseMs || !capMs) return 0;
+  return Math.min(capMs, baseMs * 2 ** attempt);
+}
+
 export function liveTransientRetryBackoff(env = process.env) {
   const intervalMs = boundedInterval(env.P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS, 0);
   return {
     intervalMs,
-    async wait() {
-      if (intervalMs) await sleep(intervalMs);
+    maxIntervalMs: 30000,
+    delayMs(attempt = 0) {
+      return boundedExponentialRetryDelay(intervalMs, attempt, 30000);
+    },
+    async wait(attempt = 0) {
+      const delay = boundedExponentialRetryDelay(intervalMs, attempt, 30000);
+      if (delay) await sleep(delay);
     },
   };
 }
