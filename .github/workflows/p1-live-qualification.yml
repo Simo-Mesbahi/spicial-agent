@@ -236,6 +236,7 @@ jobs:
           node scripts/evaluate-retrieval.mjs \
             --live \
             --max-queries 20 \
+            --max-transient-retries 2 \
             --output outputs/p1-live/retrieval.json
           node scripts/check-retrieval-qualification.mjs outputs/p1-live/retrieval.json
 
