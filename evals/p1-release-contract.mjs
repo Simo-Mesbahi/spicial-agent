@@ -30,6 +30,9 @@ export const p1ReleaseQualificationContract = Object.freeze({
     minimumHybridPrecisionAtK: 1 / 3,
     allowRecallRegressionVsLexical: false,
     requireEmbeddingSuccess: true,
+    minimumEmbeddingPacingIntervalMs: 4000,
+    maximumEmbeddingRetries: 4,
+    maximumEmbeddingRetriesPerSearch: 1,
     maximumTransientRetries: 2,
     backendTimeoutMs: 5000,
     maximumBackendRetriesPerSearch: 1,
@@ -65,7 +68,7 @@ export const p1ReleaseQualificationContract = Object.freeze({
     maximumLanguageCorrectionValidationCalls: 2,
     maximumGroundingCalls: 70,
     maximumGroundingRetryCalls: 8,
-    maximumEmbeddingCalls: 20,
+    maximumEmbeddingCalls: 24,
     maximumTotalCompletionCalls: 236,
   },
   releaseRule:
