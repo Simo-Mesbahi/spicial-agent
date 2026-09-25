@@ -75,6 +75,9 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.match(source, /P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /default: gemini-3\.5-flash-lite/);
   assert.match(source, /RAG_MIN_SIMILARITY: '0.7'/);
+  assert.match(source, /RAG_RPC_TIMEOUT_MS: '5000'/);
+  assert.match(source, /RAG_RPC_MAX_RETRIES: '1'/);
+  assert.match(source, /RAG_RPC_RETRY_BACKOFF_MS: '1000'/);
 
   const retrievalPreflightIndex = source.indexOf(
     'Qualify live hybrid retrieval before completion spend',
@@ -122,6 +125,9 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
   assert.match(contract, /maximumTransientRetries: 2/);
+  assert.match(contract, /backendTimeoutMs: 5000/);
+  assert.match(contract, /maximumBackendRetriesPerSearch: 1/);
+  assert.match(contract, /maximumBackendRetryCalls: 4/);
   assert.match(contract, /maximumTotalCompletionCalls: 236/);
 });
 

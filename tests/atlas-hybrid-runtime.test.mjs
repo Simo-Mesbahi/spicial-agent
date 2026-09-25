@@ -211,6 +211,147 @@ for (const query of [
     assert.equal(out.evidence[0].chunkId, chunk);
     assert.equal(out.retrieval.embedding.inputTokens, 12);
   });
+test('Hybrid RPC retries one transient backend failure without re-embedding', async (t) => {
+  const cfg = {
+    ...setup(t),
+    RAG_RPC_RETRY_BACKOFF_MS: '0',
+    RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_MAX_RETRIES: '1',
+  };
+  let embeddingCalls = 0;
+  let rpcCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return embeddingResponse();
+    }
+    assert.match(url, /knowledge_hybrid_candidates$/);
+    rpcCalls++;
+    if (rpcCalls === 1)
+      return Response.json({ message: 'temporary backend failure' }, { status: 503 });
+    return Response.json([await row()]);
+  });
+
+  const out = await searchKnowledge(cfg, 'retour');
+  assert.equal(out.scope, 'supabase_published');
+  assert.equal(out.retrieval.outcome, 'hybrid_hit');
+  assert.equal(embeddingCalls, 1);
+  assert.equal(rpcCalls, 2);
+  assert.deepEqual(out.retrieval.backend, {
+    calls: 2,
+    retries: 1,
+    timeoutMs: 5000,
+    error: null,
+  });
+});
+
+test('Hybrid RPC stops after one persistent transient retry and never re-embeds', async (t) => {
+  const cfg = {
+    ...setup(t),
+    RAG_RPC_RETRY_BACKOFF_MS: '0',
+    RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_MAX_RETRIES: '1',
+  };
+  let embeddingCalls = 0;
+  let rpcCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return embeddingResponse();
+    }
+    rpcCalls++;
+    return Response.json({ message: 'temporary backend failure' }, { status: 503 });
+  });
+
+  const out = await searchKnowledge(cfg, 'retour');
+  assert.equal(out.scope, 'supabase_unavailable');
+  assert.equal(out.retrieval.fallbackReason, 'unavailable');
+  assert.equal(embeddingCalls, 1);
+  assert.equal(rpcCalls, 2);
+  assert.deepEqual(out.retrieval.backend, {
+    calls: 2,
+    retries: 1,
+    timeoutMs: 5000,
+    error: 'unavailable',
+  });
+});
+
+test('Hybrid RPC never retries deterministic client errors', async (t) => {
+  const cfg = {
+    ...setup(t),
+    RAG_RPC_RETRY_BACKOFF_MS: '0',
+    RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_MAX_RETRIES: '1',
+  };
+  let embeddingCalls = 0;
+  let rpcCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return embeddingResponse();
+    }
+    rpcCalls++;
+    return Response.json({ message: 'bad request' }, { status: 400 });
+  });
+
+  const out = await searchKnowledge(cfg, 'retour');
+  assert.equal(out.scope, 'supabase_unavailable');
+  assert.equal(out.retrieval.fallbackReason, 'request_failed');
+  assert.equal(embeddingCalls, 1);
+  assert.equal(rpcCalls, 1);
+  assert.equal(out.retrieval.backend.retries, 0);
+});
+
+test('Hybrid RPC does not retry malformed JSON responses', async (t) => {
+  const cfg = {
+    ...setup(t),
+    RAG_RPC_RETRY_BACKOFF_MS: '0',
+    RAG_RPC_TIMEOUT_MS: '5000',
+    RAG_RPC_MAX_RETRIES: '1',
+  };
+  let embeddingCalls = 0;
+  let rpcCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url.endsWith('/embeddings')) {
+      embeddingCalls++;
+      return embeddingResponse();
+    }
+    rpcCalls++;
+    return new Response('{bad', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const out = await searchKnowledge(cfg, 'retour');
+  assert.equal(out.scope, 'supabase_unavailable');
+  assert.equal(out.retrieval.fallbackReason, 'request_failed');
+  assert.equal(embeddingCalls, 1);
+  assert.equal(rpcCalls, 1);
+  assert.equal(out.retrieval.backend.retries, 0);
+});
+
+test('Hybrid RPC policy rejects non-integer or out-of-range settings before provider spend', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    throw new Error('must not call');
+  });
+  for (const changes of [
+    { RAG_RPC_TIMEOUT_MS: '2499' },
+    { RAG_RPC_TIMEOUT_MS: '5000.5' },
+    { RAG_RPC_MAX_RETRIES: '2' },
+    { RAG_RPC_MAX_RETRIES: '0.5' },
+    { RAG_RPC_RETRY_BACKOFF_MS: '5001' },
+  ]) {
+    await assert.rejects(
+      searchKnowledge({ ...env, ...changes }, 'retour'),
+      (error) => error?.reason === 'configuration',
+    );
+  }
+  assert.equal(calls, 0);
+});
+
 test('RRF rewards channel agreement, deduplicates documents and preserves chunk provenance', async () => {
   const a = await row({ channel: 'lexical', rank: 4 }),
     b = await row({

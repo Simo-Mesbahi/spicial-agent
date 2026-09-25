@@ -231,6 +231,18 @@ function git(args) {
   return (result.stdout ?? '').trim();
 }
 
+function retrievalBackendPasses(turn) {
+  const backend = turn?.retrieval?.backend;
+  return (
+    backend?.timeoutMs === contract.retrieval.backendTimeoutMs &&
+    backend?.calls >= 1 &&
+    backend?.calls <= 1 + contract.retrieval.maximumBackendRetriesPerSearch &&
+    backend?.retries >= 0 &&
+    backend?.retries <= contract.retrieval.maximumBackendRetriesPerSearch &&
+    backend?.error === null
+  );
+}
+
 function retrievalRowPasses(row) {
   const hybrid = row?.hybrid ?? {};
   const lexical = row?.lexical ?? {};
@@ -238,6 +250,8 @@ function retrievalRowPasses(row) {
   return (
     hybrid.scope === 'supabase_published' &&
     lexical.scope === 'supabase_published' &&
+    retrievalBackendPasses(hybrid) &&
+    retrievalBackendPasses(lexical) &&
     hybrid.recallAtK >= contract.retrieval.minimumHybridRecallAtK &&
     hybrid.precisionAtK >= contract.retrieval.minimumHybridPrecisionAtK &&
     (contract.retrieval.allowRecallRegressionVsLexical ||
@@ -255,6 +269,7 @@ function retrievalReportPasses(report) {
       report.completionCalls === contract.retrieval.completionCalls &&
       report.operational?.maximumTransientRetries === contract.retrieval.maximumTransientRetries &&
       report.operational?.transientRetriesUsed <= contract.retrieval.maximumTransientRetries &&
+      report.operational?.backendRetriesUsed <= contract.retrieval.maximumBackendRetryCalls &&
       rows.length === contract.retrieval.requiredQueries &&
       rows.every(retrievalRowPasses),
   );
