@@ -19,6 +19,7 @@ const options = {
   maxGenerationRetries: 0,
   maxValidationRetries: 0,
   maxLanguageCorrections: 0,
+  maxCitationCorrections: 0,
   output: 'outputs/generation-evaluation.json',
 };
 for (let i = 0; i < args.length; i++) {
@@ -28,6 +29,8 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--max-validation-retries') options.maxValidationRetries = Number(args[++i]);
   else if (args[i] === '--max-language-corrections')
     options.maxLanguageCorrections = Number(args[++i]);
+  else if (args[i] === '--max-citation-corrections')
+    options.maxCitationCorrections = Number(args[++i]);
   else if (args[i] === '--output') options.output = args[++i];
   else throw new Error('Unknown argument');
 }
@@ -44,6 +47,9 @@ if (
   !Number.isInteger(options.maxLanguageCorrections) ||
   options.maxLanguageCorrections < 0 ||
   options.maxLanguageCorrections > 4 ||
+  !Number.isInteger(options.maxCitationCorrections) ||
+  options.maxCitationCorrections < 0 ||
+  options.maxCitationCorrections > 4 ||
   !options.output
 )
   throw new Error('Invalid generation evaluation options');
@@ -57,7 +63,8 @@ if (!options.live) {
         maxGenerationCalls:
           selected.length +
           options.maxGenerationRetries +
-          options.maxLanguageCorrections,
+          options.maxLanguageCorrections +
+          options.maxCitationCorrections,
         maxValidationCalls:
           selected.length +
           options.maxValidationRetries +
@@ -66,7 +73,8 @@ if (!options.live) {
           selected.length * 2 +
           options.maxGenerationRetries +
           options.maxValidationRetries +
-          options.maxLanguageCorrections * 2,
+          options.maxLanguageCorrections * 2 +
+          options.maxCitationCorrections,
         note: 'Synthetic evidence only. No requests sent. Live qualification validates every generated candidate factually before human review.',
       },
       null,
@@ -97,6 +105,7 @@ if (!options.live) {
     let generationRetriesUsed = 0;
     let validationRetriesUsed = 0;
     let languageCorrectionsUsed = 0;
+    let citationCorrectionsUsed = 0;
     let systemicTransportFailure = null;
 
     async function generateCandidate(fixture, correction, counters) {
@@ -117,7 +126,8 @@ if (!options.live) {
             LLM_GENERATION_DAILY_LIMIT: String(
               options.maxCases +
                 options.maxGenerationRetries +
-                options.maxLanguageCorrections,
+                options.maxLanguageCorrections +
+                options.maxCitationCorrections,
             ),
           },
           {
@@ -193,9 +203,11 @@ if (!options.live) {
         generationRetries: 0,
         validationRetries: 0,
         languageCorrections: 0,
+        citationCorrections: 0,
       };
       const providerAttempts = [];
       const factualValidationAttempts = [];
+      const citationFailures = [];
       let draft = null;
       let diagnostics = null;
       let factualValidation = null;
@@ -217,6 +229,18 @@ if (!options.live) {
             languageCorrectionsUsed++;
             counters.languageCorrections++;
             correction = 'language_mismatch';
+            continue;
+          }
+          if (
+            diagnostics.reason === 'unknown_evidence_reference' &&
+            counters.citationCorrections === 0 &&
+            citationCorrectionsUsed < options.maxCitationCorrections
+          ) {
+            citationCorrectionsUsed++;
+            counters.citationCorrections++;
+            if (diagnostics.citationFailure)
+              citationFailures.push(diagnostics.citationFailure);
+            correction = 'citation_mismatch';
             continue;
           }
           break;
@@ -251,6 +275,8 @@ if (!options.live) {
         providerAttempts,
         generationRetries: counters.generationRetries,
         languageCorrections: counters.languageCorrections,
+        citationCorrections: counters.citationCorrections,
+        citationFailures,
         groundedness:
           factualValidation?.outcome === 'supported_candidate' &&
           factualValidation?.reason === null,
@@ -293,9 +319,11 @@ if (!options.live) {
             generationRetriesUsed,
             validationRetriesUsed,
             languageCorrectionsUsed,
+            citationCorrectionsUsed,
             maximumGenerationRetries: options.maxGenerationRetries,
             maximumValidationRetries: options.maxValidationRetries,
             maximumLanguageCorrections: options.maxLanguageCorrections,
+            maximumCitationCorrections: options.maxCitationCorrections,
             systemicTransportFailure,
             providerCalls: results.reduce(
               (n, r) =>
@@ -323,6 +351,7 @@ if (!options.live) {
         generationRetriesUsed,
         validationRetriesUsed,
         languageCorrectionsUsed,
+        citationCorrectionsUsed,
         systemicTransportFailure,
         failures: results
           .filter(
@@ -335,6 +364,8 @@ if (!options.live) {
           .map((r) => ({
             id: r.id,
             generationReason: r.diagnostics.reason,
+            citationFailure: r.diagnostics.citationFailure ?? null,
+            citationFailures: r.citationFailures,
             validationOutcome: r.factualValidation?.outcome ?? null,
             validationReason: r.factualValidation?.reason ?? null,
             validationIssues: r.factualValidation?.issues ?? [],

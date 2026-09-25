@@ -68,6 +68,8 @@ const plannedCalls = {
   generationRetryCompletionCalls: contract.generation.maximumGenerationRetryCalls,
   generationLanguageCorrectionCalls:
     contract.generation.maximumLanguageCorrectionCalls,
+  generationCitationCorrectionCalls:
+    contract.generation.maximumCitationCorrectionCalls,
   generationValidationCalls: contract.generation.requiredValidationCalls,
   generationValidationRetryCompletionCalls:
     contract.generation.maximumValidationRetryCalls,
@@ -83,6 +85,7 @@ const plannedCalls = {
     contract.generation.requiredScenarios +
     contract.generation.maximumGenerationRetryCalls +
     contract.generation.maximumLanguageCorrectionCalls +
+    contract.generation.maximumCitationCorrectionCalls +
     contract.generation.requiredValidationCalls +
     contract.generation.maximumValidationRetryCalls +
     contract.generation.maximumLanguageCorrectionCalls +
@@ -98,6 +101,8 @@ if (
     contract.liveBudget.maximumGenerationRetryCalls ||
   plannedCalls.generationLanguageCorrectionCalls >
     contract.liveBudget.maximumLanguageCorrectionCalls ||
+  plannedCalls.generationCitationCorrectionCalls >
+    contract.liveBudget.maximumCitationCorrectionCalls ||
   plannedCalls.generationValidationCalls >
     contract.liveBudget.maximumGenerationValidationCalls ||
   plannedCalls.generationValidationRetryCompletionCalls >
@@ -463,6 +468,8 @@ if (live) {
       String(contract.generation.maximumValidationRetryCalls),
       '--max-language-corrections',
       String(contract.generation.maximumLanguageCorrectionCalls),
+      '--max-citation-corrections',
+      String(contract.generation.maximumCitationCorrectionCalls),
       '--output',
       paths.generation,
     ]);
@@ -693,6 +700,10 @@ const languageCorrectionRows = generationRows.reduce(
   (total, row) => total + (row.languageCorrections ?? 0),
   0,
 );
+const citationCorrectionRows = generationRows.reduce(
+  (total, row) => total + (row.citationCorrections ?? 0),
+  0,
+);
 const generationProviderAttemptRows = generationRows.reduce(
   (total, row) =>
     total +
@@ -708,6 +719,7 @@ const generationGate = Boolean(
     generation.operational?.generationRetriesUsed === generationRetryRows &&
     generation.operational?.validationRetriesUsed === validationRetryRows &&
     generation.operational?.languageCorrectionsUsed === languageCorrectionRows &&
+    generation.operational?.citationCorrectionsUsed === citationCorrectionRows &&
     generation.operational?.providerCalls === generationProviderAttemptRows &&
     generation.operational?.generationRetriesUsed <=
       contract.generation.maximumGenerationRetryCalls &&
@@ -715,10 +727,13 @@ const generationGate = Boolean(
       contract.generation.maximumValidationRetryCalls &&
     generation.operational?.languageCorrectionsUsed <=
       contract.generation.maximumLanguageCorrectionCalls &&
+    generation.operational?.citationCorrectionsUsed <=
+      contract.generation.maximumCitationCorrectionCalls &&
     generation.operational?.providerCalls <=
       contract.generation.requiredScenarios +
         contract.generation.maximumGenerationRetryCalls +
         contract.generation.maximumLanguageCorrectionCalls +
+        contract.generation.maximumCitationCorrectionCalls +
         contract.generation.requiredValidationCalls +
         contract.generation.maximumValidationRetryCalls +
         contract.generation.maximumLanguageCorrectionCalls &&
@@ -733,6 +748,9 @@ const generationGate = Boolean(
         Number.isInteger(row.languageCorrections) &&
         row.languageCorrections >= 0 &&
         row.languageCorrections <= 1 &&
+        Number.isInteger(row.citationCorrections) &&
+        row.citationCorrections >= 0 &&
+        row.citationCorrections <= 1 &&
         row.factualValidation?.outcome === 'supported_candidate' &&
         row.factualValidation?.reason === null &&
         row.factualValidation?.issues?.length === 0 &&
