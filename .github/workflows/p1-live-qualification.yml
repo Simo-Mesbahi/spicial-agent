@@ -198,6 +198,7 @@ jobs:
           npm run typecheck
           npm run lint:app
           npm test
+          npm run check:regressions
           npm run test:origin-runtime
           npm run eval:ai
           npm run eval:rag
