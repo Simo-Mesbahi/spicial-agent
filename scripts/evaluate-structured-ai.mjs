@@ -240,6 +240,7 @@ try {
       }
     }
     rows.push(...scenarioRows);
+    if (systemicTransportFailure) break scenarioLoop;
   }
 } finally {
   console.info = savedInfo;
