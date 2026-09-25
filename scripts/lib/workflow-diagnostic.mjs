@@ -180,6 +180,7 @@ const STEP_RULES = [
   [/lint/i, 'code_quality', 'lint_failed'],
   [/check:regressions|historical regression/i, 'regression_governance', 'historical_regression_gate_failed'],
   [/test:origin-runtime/i, 'runtime_integration', 'origin_runtime_failed'],
+  [/npm test/i, 'test', 'test_failure'],
   [/eval:ai/i, 'semantic_quality', 'ai_evaluation_failed'],
   [/eval:rag|hybrid retrieval|retrieval/i, 'retrieval_quality', 'retrieval_qualification_failed'],
   [/eval:generation|generation/i, 'generation_quality', 'generation_evaluation_failed'],
@@ -306,15 +307,32 @@ function safeArtifactSignal(artifactDocuments) {
   return null;
 }
 
-function safeLogSignal(logs) {
-  const combined = Object.values(logs ?? {})
-    .filter((value) => typeof value === 'string')
-    .join('\n')
-    .toLowerCase();
+function safeLogSignal(logs, failure) {
+  if (!failure?.jobId || !failure?.startedAt || !failure?.completedAt) return null;
+  const log = logs?.[String(failure.jobId) + '.log'];
+  if (typeof log !== 'string') return null;
 
+  const startedAt = Date.parse(failure.startedAt);
+  const completedAt = Date.parse(failure.completedAt);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(completedAt)) return null;
+
+  const lowerBound = startedAt - 2_000;
+  const upperBound = completedAt + 5_000;
+  const scoped = [];
+  for (const line of log.split('\n')) {
+    const timestamp = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s/);
+    if (!timestamp) continue;
+    const time = Date.parse(timestamp[1]);
+    if (Number.isFinite(time) && time >= lowerBound && time <= upperBound) {
+      scoped.push(line.toLowerCase());
+    }
+  }
+  if (scoped.length === 0) return null;
+
+  const combined = scoped.join('\n');
   for (const rule of SAFE_SIGNAL_RULES) {
     if (combined.includes(rule.needle)) {
-      return { ...rule, source: 'allowlisted_log_signal' };
+      return { ...rule, source: 'allowlisted_failed_step_log_signal' };
     }
   }
   return null;
@@ -386,7 +404,7 @@ export function buildWorkflowDiagnostic({
   const failures = firstFailedStep(jobs);
 
   const artifactSignal = safeArtifactSignal(artifactDocuments);
-  const logSignal = artifactSignal ? null : safeLogSignal(logs);
+  const logSignal = artifactSignal ? null : safeLogSignal(logs, failures.first);
   const rootCause = {
     ...(artifactSignal ?? logSignal ?? stepFallback(failures.first)),
   };
