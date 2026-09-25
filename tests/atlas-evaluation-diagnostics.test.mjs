@@ -95,6 +95,108 @@ test('retrieval live runner recovers one embedding 429 without backend spend on 
   assert.equal(report.results[0].hybrid.retrieval.embedding.error, null);
 });
 
+test('structured live runner exposes semantic mismatches directly in report diagnostics', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-semantic-failure-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    globalThis.fetch = async () =>
+      Response.json({
+        choices: [{
+          finish_reason: 'stop',
+          message: {
+            role: 'assistant',
+            content: JSON.stringify({
+              language: 'fr',
+              preferredResponseLanguage: null,
+              intent: 'casual',
+              subIntent: 'general',
+              topic: null,
+              guidance: 'none',
+              guidancePreference: 'keep',
+              reference: 'none',
+              selectedCaseId: null,
+              referencedProduct: null,
+              referencesPreviousTurn: false,
+              conversationRepair: false,
+              requiresCase: false,
+              requiresKnowledge: false,
+              requiresClarification: false,
+              requiresHuman: false,
+              confidence: 0.95,
+              style: { length: 'keep', emoji: 'keep' },
+              retrievalQuery: null,
+              response: 'Bonjour.',
+            }),
+          },
+        }],
+        usage: { prompt_tokens: 20, completion_tokens: 10 },
+      });
+    `,
+  );
+
+  let stdout;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(preload).href,
+        'scripts/evaluate-structured-ai.mjs',
+        '--live',
+        '--mode',
+        'structured',
+        '--max-turns',
+        '5',
+        '--languages',
+        'fr',
+        '--families',
+        'handoff-toggle',
+        '--output',
+        output,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          LLM_PROVIDER: 'gemini',
+          LLM_MODEL: '',
+          LLM_BUDGET_MODE: 'free',
+          LLM_DAILY_LIMIT: '100',
+          GEMINI_MODEL: 'gemini-2.5-flash',
+          GEMINI_API_KEY: 'test-key',
+          LLM_STRUCTURED_OUTPUT: '',
+          LLM_REQUEST_TIMEOUT_MS: '20000',
+          P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+          P1_STRUCTURED_MAX_SCENARIO_RETRIES: '0',
+          P1_STRUCTURED_RETRY_BACKOFF_MS: '0',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    assert.fail('Expected semantic qualification failure');
+  } catch (error) {
+    assert.equal(error.status, 1);
+    stdout = error.stdout;
+  }
+
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.ok(Array.isArray(summary.semanticFailures));
+  assert.ok(summary.semanticFailures.length > 0);
+  assert.deepEqual(summary.semanticFailures, report.semanticFailures);
+  assert.ok(summary.semanticFailures.some((row) => row.id === 'pre-p1-handoff-toggle-fr/1'));
+  assert.ok(
+    summary.semanticFailures.some(
+      (row) => row.failedChecks.includes('intent') && row.failedChecks.includes('guidance'),
+    ),
+  );
+  assert.doesNotMatch(JSON.stringify(summary.semanticFailures), /test-key/);
+});
+
 test('structured live runner retries one 429 then stops after persistent rate limit', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-rate-limit-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
