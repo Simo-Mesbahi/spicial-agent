@@ -24,6 +24,7 @@ export type HybridSettings = EmbeddingEnv & {
   RAG_MIN_LEXICAL_SCORE?: string;
   RAG_EVAL_VECTOR_CANDIDATE_FLOOR?: string;
   RAG_EVAL_VECTOR_PROBE?: string;
+  RAG_EVAL_REQUIRE_EMBEDDING?: string;
   RAG_RPC_TIMEOUT_MS?: string;
   RAG_RPC_MAX_RETRIES?: string;
   RAG_RPC_RETRY_BACKOFF_MS?: string;
@@ -265,6 +266,10 @@ export async function searchHybridKnowledge(
       embedding.error = error instanceof ProviderError ? error.reason : 'configuration';
     }
     telemetry.fallbackReason = embedding.error;
+    // Qualification can require a real vector result. In that mode there is no value in
+    // spending backend time on lexical degradation after a transient embedding failure;
+    // the evaluator will retry the embedding within an explicit global budget.
+    if (env.RAG_EVAL_REQUIRE_EMBEDDING === 'true' && !vector) return result;
     const raw = await hybridCandidatesRequest(
       env,
       {
