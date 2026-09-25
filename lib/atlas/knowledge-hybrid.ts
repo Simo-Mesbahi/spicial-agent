@@ -26,6 +26,7 @@ export type HybridSettings = EmbeddingEnv & {
   RAG_EVAL_VECTOR_PROBE?: string;
   RAG_EVAL_REQUIRE_EMBEDDING?: string;
   RAG_RPC_TIMEOUT_MS?: string;
+  RAG_RPC_RETRY_TIMEOUT_MS?: string;
   RAG_RPC_MAX_RETRIES?: string;
   RAG_RPC_RETRY_BACKOFF_MS?: string;
 };
@@ -134,11 +135,17 @@ export function fuseCandidates(rows: Candidate[], minLexical: number, minSimilar
 }
 function hybridRpcPolicy(env: KnowledgeEnvironment) {
   const timeoutMs = numeric(env.RAG_RPC_TIMEOUT_MS, 5000, 2500, 10000);
+  const retryTimeoutMs = numeric(
+    env.RAG_RPC_RETRY_TIMEOUT_MS,
+    Math.min(10000, timeoutMs * 2),
+    timeoutMs,
+    10000,
+  );
   const maxRetries = numeric(env.RAG_RPC_MAX_RETRIES, 1, 0, 1);
   const retryBackoffMs = numeric(env.RAG_RPC_RETRY_BACKOFF_MS, 1000, 0, 5000);
-  if (![timeoutMs, maxRetries, retryBackoffMs].every(Number.isInteger))
+  if (![timeoutMs, retryTimeoutMs, maxRetries, retryBackoffMs].every(Number.isInteger))
     throw new ProviderError('configuration');
-  return { timeoutMs, maxRetries, retryBackoffMs };
+  return { timeoutMs, retryTimeoutMs, maxRetries, retryBackoffMs };
 }
 
 function normalizedBackendFailure(error: unknown) {
@@ -176,7 +183,9 @@ async function hybridCandidatesRequest(
   policy: ReturnType<typeof hybridRpcPolicy>,
 ) {
   for (let attempt = 0; ; attempt++) {
+    const attemptTimeoutMs = attempt === 0 ? policy.timeoutMs : policy.retryTimeoutMs;
     backend.calls++;
+    backend.attemptTimeoutMs.push(attemptTimeoutMs);
     try {
       const result = await supabaseRequest<unknown>(
         env,
@@ -184,7 +193,7 @@ async function hybridCandidatesRequest(
         {
           mode: { kind: 'privileged' },
           method: 'POST',
-          timeoutMs: policy.timeoutMs,
+          timeoutMs: attemptTimeoutMs,
           body,
         },
       );
@@ -219,6 +228,8 @@ export async function searchHybridKnowledge(
       calls: 0,
       retries: 0,
       timeoutMs: rpcPolicy.timeoutMs,
+      retryTimeoutMs: rpcPolicy.retryTimeoutMs,
+      attemptTimeoutMs: [],
       error: null,
     },
   };
