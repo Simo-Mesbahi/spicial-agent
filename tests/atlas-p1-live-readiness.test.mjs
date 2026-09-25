@@ -8,7 +8,10 @@ import {
   liveCompletionPacer,
   boundedExponentialRetryDelay,
 } from '../scripts/lib/live-eval-pacing.mjs';
-import { searchLexicalWithTransientRetries } from '../scripts/lib/live-retrieval-resilience.mjs';
+import {
+  searchHybridWithEmbeddingRetries,
+  searchLexicalWithTransientRetries,
+} from '../scripts/lib/live-retrieval-resilience.mjs';
 
 const qualificationEnv = {
   ...process.env,
@@ -23,75 +26,102 @@ const qualificationEnv = {
 
 function retrievalRow(index, changes = {}) {
   const languages = ['fr', 'en', 'de', 'es', 'ar'];
-  const base = {
-    id: `retrieval-contract-${index}`,
-    language: languages[index % languages.length],
-    lexical: {
-      scope: 'supabase_published',
-      recallAtK: 1,
-      precisionAtK: 1 / 3,
-      retrieval: {
-        backend: {
-          calls: 1,
-          retries: 0,
-          timeoutMs: 5000,
-          error: null,
-        },
-      },
+  const lexicalBackend = {
+    calls: 1,
+    retries: 0,
+    timeoutMs: 5000,
+    error: null,
+    ...(changes.lexical?.retrieval?.backend ?? {}),
+  };
+  const hybridBackend = {
+    calls: 1,
+    retries: 0,
+    timeoutMs: 5000,
+    error: null,
+    ...(changes.hybrid?.retrieval?.backend ?? {}),
+  };
+  const embedding = {
+    calls: 1,
+    error: null,
+    ...(changes.hybrid?.retrieval?.embedding ?? {}),
+  };
+  const lexical = {
+    scope: 'supabase_published',
+    recallAtK: 1,
+    precisionAtK: 1 / 3,
+    transientRetries: 0,
+    ...(changes.lexical ?? {}),
+    retrieval: {
+      ...(changes.lexical?.retrieval ?? {}),
+      backend: lexicalBackend,
     },
-    hybrid: {
-      scope: 'supabase_published',
-      recallAtK: 1,
-      precisionAtK: 1 / 3,
-      retrieval: {
-        backend: {
-          calls: 1,
-          retries: 0,
-          timeoutMs: 5000,
-          error: null,
-        },
-        embedding: {
-          calls: 1,
-          error: null,
-        },
-      },
+    backendAttempts:
+      changes.lexical?.backendAttempts ??
+      [{
+        scope: changes.lexical?.scope ?? 'supabase_published',
+        backendCalls: lexicalBackend.calls,
+        backendRetries: lexicalBackend.retries,
+        backendError: lexicalBackend.error,
+      }],
+  };
+  const hybrid = {
+    scope: 'supabase_published',
+    recallAtK: 1,
+    precisionAtK: 1 / 3,
+    embeddingRetries: 0,
+    ...(changes.hybrid ?? {}),
+    retrieval: {
+      ...(changes.hybrid?.retrieval ?? {}),
+      backend: hybridBackend,
+      embedding,
     },
   };
+  hybrid.providerAttempts =
+    changes.hybrid?.providerAttempts ??
+    [{
+      scope: hybrid.scope,
+      embeddingCalls: embedding.calls,
+      embeddingError: embedding.error,
+      backendCalls: hybridBackend.calls,
+      backendRetries: hybridBackend.retries,
+      backendError: hybridBackend.error,
+    }];
   return {
-    ...base,
+    id: `retrieval-contract-${index}`,
+    language: languages[index % languages.length],
     ...changes,
-    lexical: {
-      ...base.lexical,
-      ...(changes.lexical ?? {}),
-      retrieval: {
-        ...base.lexical.retrieval,
-        ...(changes.lexical?.retrieval ?? {}),
-        backend: {
-          ...base.lexical.retrieval.backend,
-          ...(changes.lexical?.retrieval?.backend ?? {}),
-        },
-      },
-    },
-    hybrid: {
-      ...base.hybrid,
-      ...(changes.hybrid ?? {}),
-      retrieval: {
-        ...base.hybrid.retrieval,
-        ...(changes.hybrid?.retrieval ?? {}),
-        backend: {
-          ...base.hybrid.retrieval.backend,
-          ...(changes.hybrid?.retrieval?.backend ?? {}),
-        },
-        embedding: {
-          ...base.hybrid.retrieval.embedding,
-          ...(changes.hybrid?.retrieval?.embedding ?? {}),
-        },
-      },
-    },
+    lexical,
+    hybrid,
   };
 }
 
 function report(rows) {
+  const embeddingRetriesUsed = rows.reduce(
+    (sum, row) => sum + (row.hybrid?.embeddingRetries ?? 0),
+    0,
+  );
+  const embeddingProviderCalls = rows.reduce(
+    (sum, row) =>
+      sum +
+      row.hybrid.providerAttempts.reduce(
+        (attemptSum, attempt) => attemptSum + attempt.embeddingCalls,
+        0,
+      ),
+    0,
+  );
+  const backendRetriesUsed = rows.reduce(
+    (sum, row) =>
+      sum +
+      row.lexical.backendAttempts.reduce(
+        (attemptSum, attempt) => attemptSum + attempt.backendRetries,
+        0,
+      ) +
+      row.hybrid.providerAttempts.reduce(
+        (attemptSum, attempt) => attemptSum + attempt.backendRetries,
+        0,
+      ),
+    0,
+  );
   return {
     createdAt: new Date().toISOString(),
     configuration: {
@@ -106,10 +136,17 @@ function report(rows) {
     },
     status: 'completed',
     completionCalls: 0,
+    pacingIntervalMs: 4000,
     operational: {
-      transientRetriesUsed: 0,
+      transientRetriesUsed: rows.reduce(
+        (sum, row) => sum + (row.lexical?.transientRetries ?? 0),
+        0,
+      ),
       maximumTransientRetries: 2,
-      backendRetriesUsed: 0,
+      embeddingRetriesUsed,
+      maximumEmbeddingRetries: 4,
+      embeddingProviderCalls,
+      backendRetriesUsed,
     },
     results: rows,
   };
