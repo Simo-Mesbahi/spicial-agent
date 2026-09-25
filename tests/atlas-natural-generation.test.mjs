@@ -15,7 +15,12 @@ const built = await build({
   format: 'esm',
   write: false,
 });
-const { generateNaturalDraft, providerTrace, naturalDraftSchema } = await import(
+const {
+  generateNaturalDraft,
+  providerTrace,
+  naturalDraftSchema,
+  parseNaturalDraftContent,
+} = await import(
   'data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64')
 );
 function setup(t, scenario = generationScenarios[0]) {
@@ -380,6 +385,89 @@ for (const [name, data, reason] of [
     assert.equal(result.draft, null);
     assert.equal(result.diagnostics.reason, reason);
   });
+test('Natural generation classifies HTTP-200 local structure failures without retaining rejected content', async (t) => {
+  const cases = [
+    {
+      name: 'invalid json',
+      content: '{"language":"fr","sentences":[',
+      code: 'invalid_json',
+      sentenceIndex: null,
+    },
+    {
+      name: 'schema mismatch',
+      content: JSON.stringify({ ...draft('fr'), action: 'refund' }),
+      code: 'schema_mismatch',
+      sentenceIndex: null,
+    },
+    {
+      name: 'unsafe generated text',
+      content: JSON.stringify({
+        language: 'fr',
+        sentences: [
+          {
+            text: '<b>Statut</b>',
+            evidenceRefs: ['case.statusLabel'],
+          },
+        ],
+      }),
+      code: 'unsafe_generated_text',
+      sentenceIndex: 0,
+    },
+  ];
+
+  for (const entry of cases) {
+    const c = setup(t);
+    t.mock.method(globalThis, 'fetch', async () =>
+      Response.json({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: { role: 'assistant', content: entry.content },
+          },
+        ],
+        usage: { prompt_tokens: 80, completion_tokens: 25 },
+      }),
+    );
+    const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+    assert.equal(result.draft, null, entry.name);
+    assert.equal(result.diagnostics.reason, 'invalid_upstream_response', entry.name);
+    assert.deepEqual(
+      result.diagnostics.structureFailure,
+      { code: entry.code, sentenceIndex: entry.sentenceIndex },
+      entry.name,
+    );
+    assert.doesNotMatch(
+      JSON.stringify(result.diagnostics.structureFailure),
+      /<b>|refund|sentences|Statut/,
+      entry.name,
+    );
+    t.mock.restoreAll();
+  }
+
+  assert.throws(
+    () => parseNaturalDraftContent('{bad'),
+    (error) => error?.code === 'invalid_json' && error?.sentenceIndex === null,
+  );
+});
+
+test('Natural generation structure-correction prompt is server-owned and never replays rejected output', async (t) => {
+  const c = setup(t);
+  c.input.correction = 'structure_mismatch';
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    const system = payload.messages[0].content;
+    assert.match(system, /previous candidate failed local output-structure or output-policy validation/i);
+    assert.match(system, /Return exactly the requested JSON object and fields/i);
+    assert.match(system, /no links, HTML, markdown, control characters, secrets, or internal enum\/status identifiers/i);
+    assert.doesNotMatch(payload.messages[1].content, /previous candidate|rejected candidate|<b>Statut<\/b>/i);
+    return response(draft('fr'));
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+  assert.equal(result.diagnostics.reason, null);
+  assert.equal(result.diagnostics.structureFailure, null);
+});
+
 test('Natural generation classifies citation failures without retaining model text or invented refs', async (t) => {
   const cases = [
     {
