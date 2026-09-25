@@ -31,11 +31,13 @@ const valueSha256 = (value) =>
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const requiredGates = [
+  'historicalRegressions',
   'subprocesses',
   'reportsReadable',
   'qualificationArtifactIntegrity',
   'structured',
   'retrieval',
+  'documentaryFreshness',
   'generation',
   'grounding',
 ];
@@ -57,6 +59,8 @@ if (
   report?.humanReview?.qualificationId !== report.qualificationId ||
   typeof report?.artifacts?.sourceTreeSha !== 'string' ||
   !/^[a-f0-9]{40,64}$/.test(report.artifacts.sourceTreeSha) ||
+  typeof report?.artifacts?.documentaryFreshnessSha256 !== 'string' ||
+  !/^[a-f0-9]{64}$/.test(report.artifacts.documentaryFreshnessSha256) ||
   report?.source?.treeSha !== report.artifacts.sourceTreeSha ||
   typeof report?.scope?.organizationId !== 'string' ||
   !uuid.test(report.scope.organizationId) ||
