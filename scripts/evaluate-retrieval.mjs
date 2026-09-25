@@ -139,6 +139,13 @@ if (!options.live) {
         ];
       }),
     );
+    const backendRetriesUsed = results.reduce(
+      (sum, row) =>
+        sum +
+        (row.lexical.retrieval?.backend?.retries ?? 0) +
+        (row.hybrid.retrieval?.backend?.retries ?? 0),
+      0,
+    );
     const report = {
       createdAt: new Date().toISOString(),
       configuration: {
@@ -157,6 +164,7 @@ if (!options.live) {
       operational: {
         transientRetriesUsed,
         maximumTransientRetries: options.maxTransientRetries,
+        backendRetriesUsed,
       },
       status: results.every(
         (r) =>
@@ -190,6 +198,7 @@ if (!options.live) {
         queries: results.length,
         embeddingPacingIntervalMs: embeddingPacing.intervalMs,
         transientRetriesUsed,
+        backendRetriesUsed,
         output: options.output,
       }),
     );
