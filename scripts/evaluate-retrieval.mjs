@@ -5,12 +5,13 @@ import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { database } from '../tests/helpers/atlas-fixture.mjs';
 import { retrievalScenarios } from '../evals/retrieval.mjs';
-import { liveEmbeddingPacer } from './lib/live-eval-pacing.mjs';
+import { liveEmbeddingPacer, liveTransientRetryBackoff } from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
-const options = { live: false, maxQueries: 5, output: 'outputs/retrieval-evaluation.json' };
+const options = { live: false, maxQueries: 5, maxTransientRetries: 0, output: 'outputs/retrieval-evaluation.json' };
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--live') options.live = true;
   else if (args[i] === '--max-queries') options.maxQueries = Number(args[++i]);
+  else if (args[i] === '--max-transient-retries') options.maxTransientRetries = Number(args[++i]);
   else if (args[i] === '--output') options.output = args[++i];
   else throw new Error('Unknown argument');
 }
@@ -18,6 +19,9 @@ if (
   !Number.isInteger(options.maxQueries) ||
   options.maxQueries < 1 ||
   options.maxQueries > 20 ||
+  !Number.isInteger(options.maxTransientRetries) ||
+  options.maxTransientRetries < 0 ||
+  options.maxTransientRetries > 4 ||
   !options.output
 )
   throw new Error('Invalid evaluation options');
@@ -29,6 +33,7 @@ if (!options.live) {
         status: 'dry_run',
         scenarios: scenarios.map((s) => s.id),
         maxEmbeddingCalls: scenarios.length,
+        maxTransientRetries: options.maxTransientRetries,
         maxCompletionCalls: 0,
         note: 'No requests sent. Labels refer to the published repository seed corpus.',
       },
@@ -49,7 +54,9 @@ if (!options.live) {
   );
   const DB = database(),
     results = [],
-    embeddingPacing = liveEmbeddingPacer();
+    embeddingPacing = liveEmbeddingPacer(),
+    retryBackoff = liveTransientRetryBackoff();
+  let transientRetriesUsed = 0;
   try {
     const cfg = {
       ...process.env,
@@ -68,10 +75,25 @@ if (!options.live) {
       ]) {
         if (mode === 'hybrid') await embeddingPacing.beforeCall();
         const start = performance.now();
-        const result = await searchKnowledge(
-          { ...cfg, EMBEDDING_DAILY_LIMIT: limit },
-          scenario.retrievalQuery,
-        );
+        let result;
+        let modeRetries = 0;
+        while (true) {
+          result = await searchKnowledge(
+            { ...cfg, EMBEDDING_DAILY_LIMIT: limit },
+            scenario.retrievalQuery,
+          );
+          // Run #16 proved a Supabase RPC can fail once and recover seconds later.
+          // Retry only the lexical leg: it spends no embedding/provider budget.
+          if (
+            mode !== 'lexical' ||
+            result.scope !== 'supabase_unavailable' ||
+            transientRetriesUsed >= options.maxTransientRetries
+          )
+            break;
+          transientRetriesUsed++;
+          modeRetries++;
+          await retryBackoff.wait(modeRetries - 1);
+        }
         const hits = result.articles.filter((a) =>
           scenario.expectedTitles.includes(a.title),
         ).length;
@@ -89,6 +111,7 @@ if (!options.live) {
           expectedProbeSimilarities,
           vectorProbe: result.retrieval?.evaluationProbe ?? null,
           returnedTitles: result.articles.map((a) => a.title),
+          transientRetries: modeRetries,
         };
       }
       results.push({
@@ -129,6 +152,11 @@ if (!options.live) {
         embeddingRevision: cfg.EMBEDDING_REVISION ?? '1',
       },
       pacingIntervalMs: embeddingPacing.intervalMs,
+      retryBackoffMs: retryBackoff.intervalMs,
+      operational: {
+        transientRetriesUsed,
+        maximumTransientRetries: options.maxTransientRetries,
+      },
       status: results.every(
         (r) =>
           r.lexical.scope === 'supabase_published' &&
@@ -160,6 +188,7 @@ if (!options.live) {
         status: report.status,
         queries: results.length,
         embeddingPacingIntervalMs: embeddingPacing.intervalMs,
+        transientRetriesUsed,
         output: options.output,
       }),
     );
