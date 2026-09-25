@@ -31,6 +31,9 @@ export const p1ReleaseQualificationContract = Object.freeze({
     allowRecallRegressionVsLexical: false,
     requireEmbeddingSuccess: true,
     maximumTransientRetries: 2,
+    backendTimeoutMs: 5000,
+    maximumBackendRetriesPerSearch: 1,
+    maximumBackendRetryCalls: 4,
   },
   generation: {
     requiredScenarios: 10,
