@@ -103,7 +103,8 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.doesNotMatch(pacing, /providerCompletion|fetch\s*\(/);
   assert.match(structured, /maximumScenarioRetries: retryLimit/);
   assert.match(structured, /retryBackoffMs/);
-  assert.match(structured, /setTimeout\(resolve, retryBackoffMs\)/);
+  assert.match(structured, /Math\.min\(30000, retryBackoffMs \* 2 \*\* retryAttempt\)/);
+  assert.match(structured, /setTimeout\(resolve, delay\)/);
   assert.match(structured, /discardedProviderCalls/);
   assert.match(structured, /finalProviderCalls/);
   assert.match(structured, /retryUsageComplete/);
