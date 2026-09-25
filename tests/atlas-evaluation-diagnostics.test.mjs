@@ -6,6 +6,95 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+test('retrieval live runner recovers one embedding 429 without backend spend on failed attempt', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-retrieval-embedding-retry-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let embeddingCalls = 0;
+    globalThis.fetch = async (url) => {
+      const target = String(url);
+      if (target.includes(':batchEmbedContents')) {
+        embeddingCalls++;
+        if (embeddingCalls === 1)
+          return Response.json({error:{code:429,status:'RESOURCE_EXHAUSTED'}}, {status:429});
+        return Response.json({
+          embeddings: [{ values: [1, ...Array(767).fill(0)] }],
+          usageMetadata: { promptTokenCount: 8 },
+        });
+      }
+      if (target.includes('/rest/v1/rpc/knowledge_hybrid_candidates'))
+        return Response.json([]);
+      throw new Error('Unexpected request: ' + target);
+    };
+    `,
+  );
+
+  const stdout = execFileSync(
+    process.execPath,
+    [
+      '--import',
+      pathToFileURL(preload).href,
+      'scripts/evaluate-retrieval.mjs',
+      '--live',
+      '--max-queries',
+      '1',
+      '--max-transient-retries',
+      '0',
+      '--max-embedding-retries',
+      '1',
+      '--output',
+      output,
+    ],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        SUPABASE_URL: 'https://fixture.supabase.co',
+        SUPABASE_PUBLISHABLE_KEY: 'test-publishable',
+        SUPABASE_SECRET_KEY: 'test-secret',
+        SUPABASE_ORGANIZATION_ID: '00000000-0000-4000-8000-000000000001',
+        LLM_BUDGET_MODE: 'free',
+        EMBEDDING_PROVIDER: 'gemini',
+        EMBEDDING_MODEL: 'gemini-embedding-2',
+        EMBEDDING_API_KEY: 'test-key',
+        EMBEDDING_REVISION: '1',
+        RAG_CORPUS_LOCALE: 'fr-FR',
+        RAG_MARKET: 'GLOBAL',
+        RAG_MIN_SIMILARITY: '0.7',
+        RAG_MIN_LEXICAL_SCORE: '3',
+        RAG_RPC_TIMEOUT_MS: '5000',
+        RAG_RPC_MAX_RETRIES: '1',
+        RAG_RPC_RETRY_BACKOFF_MS: '0',
+        P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '0',
+        P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(summary.status, 'completed');
+  assert.equal(summary.embeddingRetriesUsed, 1);
+  assert.equal(summary.embeddingProviderCalls, 2);
+  assert.equal(report.operational.embeddingRetriesUsed, 1);
+  assert.equal(report.operational.embeddingProviderCalls, 2);
+  assert.equal(report.results[0].hybrid.embeddingRetries, 1);
+  assert.equal(report.results[0].hybrid.providerAttempts.length, 2);
+  assert.equal(
+    report.results[0].hybrid.providerAttempts[0].embeddingError,
+    'upstream_rate_limited',
+  );
+  assert.equal(report.results[0].hybrid.providerAttempts[0].backendCalls, 0);
+  assert.equal(report.results[0].hybrid.providerAttempts[1].embeddingError, null);
+  assert.equal(report.results[0].hybrid.providerAttempts[1].backendCalls, 1);
+  assert.equal(report.results[0].hybrid.retrieval.embedding.error, null);
+});
+
 test('structured live runner retries one 429 then stops after persistent rate limit', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-rate-limit-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

@@ -69,7 +69,7 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.match(source, /LLM_GENERATION_TIMEOUT_MS: '20000'/);
   assert.match(source, /LLM_VALIDATION_TIMEOUT_MS: '20000'/);
   assert.match(source, /P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '7500'/);
-  assert.match(source, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '3000'/);
+  assert.match(source, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS: '4000'/);
   assert.match(source, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '15000'/);
   assert.match(source, /P1_STRUCTURED_MAX_SCENARIO_RETRIES: '6'/);
   assert.match(source, /P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'/);
@@ -86,6 +86,7 @@ test('P1.7 live qualification verifies the complete no-spend gate before provide
   assert.ok(retrievalPreflightIndex < liveIndex);
   assert.match(source, /scripts\/evaluate-retrieval\.mjs/);
   assert.match(source, /--max-transient-retries 2/);
+  assert.match(source, /--max-embedding-retries 4/);
   assert.match(source, /scripts\/check-retrieval-qualification\.mjs/);
   assert.match(
     source,
@@ -124,10 +125,14 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
   assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
+  assert.match(contract, /minimumEmbeddingPacingIntervalMs: 4000/);
+  assert.match(contract, /maximumEmbeddingRetries: 4/);
+  assert.match(contract, /maximumEmbeddingRetriesPerSearch: 1/);
   assert.match(contract, /maximumTransientRetries: 2/);
   assert.match(contract, /backendTimeoutMs: 5000/);
   assert.match(contract, /maximumBackendRetriesPerSearch: 1/);
   assert.match(contract, /maximumBackendRetryCalls: 4/);
+  assert.match(contract, /maximumEmbeddingCalls: 24/);
   assert.match(contract, /maximumTotalCompletionCalls: 236/);
 });
 

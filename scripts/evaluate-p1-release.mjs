@@ -75,7 +75,8 @@ const plannedCalls = {
     contract.generation.maximumLanguageCorrectionCalls,
   groundingCalls: contract.grounding.requiredScenarios,
   groundingRetryCompletionCalls: contract.grounding.maximumRetryCalls,
-  embeddingCalls: contract.retrieval.requiredQueries,
+  embeddingCalls:
+    contract.retrieval.requiredQueries + contract.retrieval.maximumEmbeddingRetries,
   completionCalls:
     structuredTurns +
     contract.structured.maximumRetryCompletionCalls +
@@ -231,6 +232,35 @@ function git(args) {
   return (result.stdout ?? '').trim();
 }
 
+const retryableRetrievalEmbeddingFailures = new Set([
+  'network_or_timeout',
+  'upstream_rate_limited',
+  'upstream_unavailable',
+]);
+
+function retrievalEmbeddingAttemptsPass(hybrid) {
+  const attempts = Array.isArray(hybrid?.providerAttempts) ? hybrid.providerAttempts : [];
+  const retries = hybrid?.embeddingRetries;
+  if (
+    !Number.isInteger(retries) ||
+    retries < 0 ||
+    retries > contract.retrieval.maximumEmbeddingRetriesPerSearch ||
+    attempts.length !== retries + 1
+  )
+    return false;
+  return attempts.every((attempt, index) => {
+    if (attempt?.embeddingCalls !== 1) return false;
+    if (index === attempts.length - 1)
+      return attempt.embeddingError === null;
+    return (
+      retryableRetrievalEmbeddingFailures.has(attempt.embeddingError) &&
+      attempt.backendCalls === 0 &&
+      attempt.backendRetries === 0 &&
+      attempt.backendError === null
+    );
+  });
+}
+
 function retrievalBackendPasses(turn) {
   const backend = turn?.retrieval?.backend;
   return (
@@ -252,6 +282,7 @@ function retrievalRowPasses(row) {
     lexical.scope === 'supabase_published' &&
     retrievalBackendPasses(hybrid) &&
     retrievalBackendPasses(lexical) &&
+    retrievalEmbeddingAttemptsPass(hybrid) &&
     hybrid.recallAtK >= contract.retrieval.minimumHybridRecallAtK &&
     hybrid.precisionAtK >= contract.retrieval.minimumHybridPrecisionAtK &&
     (contract.retrieval.allowRecallRegressionVsLexical ||
@@ -263,12 +294,58 @@ function retrievalRowPasses(row) {
 
 function retrievalReportPasses(report) {
   const rows = Array.isArray(report?.results) ? report.results : [];
+  const lexicalRetryRows = rows.reduce(
+    (sum, row) => sum + (row.lexical?.transientRetries ?? 0),
+    0,
+  );
+  const embeddingRetryRows = rows.reduce(
+    (sum, row) => sum + (row.hybrid?.embeddingRetries ?? 0),
+    0,
+  );
+  const embeddingProviderAttemptCalls = rows.reduce(
+    (sum, row) =>
+      sum +
+      (Array.isArray(row.hybrid?.providerAttempts)
+        ? row.hybrid.providerAttempts.reduce(
+            (attemptSum, attempt) => attemptSum + (attempt.embeddingCalls ?? 0),
+            0,
+          )
+        : 0),
+    0,
+  );
+  const backendRetryRows = rows.reduce(
+    (sum, row) =>
+      sum +
+      (Array.isArray(row.lexical?.backendAttempts)
+        ? row.lexical.backendAttempts.reduce(
+            (attemptSum, attempt) => attemptSum + (attempt.backendRetries ?? 0),
+            0,
+          )
+        : 0) +
+      (Array.isArray(row.hybrid?.providerAttempts)
+        ? row.hybrid.providerAttempts.reduce(
+            (attemptSum, attempt) => attemptSum + (attempt.backendRetries ?? 0),
+            0,
+          )
+        : 0),
+    0,
+  );
   return Boolean(
     report &&
       report.status === 'completed' &&
       report.completionCalls === contract.retrieval.completionCalls &&
+      report.pacingIntervalMs >= contract.retrieval.minimumEmbeddingPacingIntervalMs &&
       report.operational?.maximumTransientRetries === contract.retrieval.maximumTransientRetries &&
+      report.operational?.transientRetriesUsed === lexicalRetryRows &&
       report.operational?.transientRetriesUsed <= contract.retrieval.maximumTransientRetries &&
+      report.operational?.maximumEmbeddingRetries === contract.retrieval.maximumEmbeddingRetries &&
+      report.operational?.embeddingRetriesUsed === embeddingRetryRows &&
+      report.operational?.embeddingRetriesUsed <= contract.retrieval.maximumEmbeddingRetries &&
+      report.operational?.embeddingProviderCalls === embeddingProviderAttemptCalls &&
+      report.operational?.embeddingProviderCalls ===
+        contract.retrieval.requiredQueries + report.operational?.embeddingRetriesUsed &&
+      report.operational?.embeddingProviderCalls <= contract.liveBudget.maximumEmbeddingCalls &&
+      report.operational?.backendRetriesUsed === backendRetryRows &&
       report.operational?.backendRetriesUsed <= contract.retrieval.maximumBackendRetryCalls &&
       rows.length === contract.retrieval.requiredQueries &&
       rows.every(retrievalRowPasses),
@@ -324,6 +401,8 @@ if (live) {
         String(contract.retrieval.requiredQueries),
         '--max-transient-retries',
         String(contract.retrieval.maximumTransientRetries),
+        '--max-embedding-retries',
+        String(contract.retrieval.maximumEmbeddingRetries),
         '--output',
         paths.retrieval,
       ]),
