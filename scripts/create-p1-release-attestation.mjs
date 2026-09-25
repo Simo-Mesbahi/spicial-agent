@@ -3,6 +3,10 @@ import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import {
+  automatedReleaseGatesPass,
+  safeHistoricalRegressionSummary,
+} from './lib/p1-release-evidence.mjs';
 
 const args = process.argv.slice(2);
 const value = (flag, fallback = null) =>
@@ -30,16 +34,6 @@ const valueSha256 = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const requiredGates = [
-  'subprocesses',
-  'reportsReadable',
-  'qualificationArtifactIntegrity',
-  'structured',
-  'retrieval',
-  'generation',
-  'grounding',
-];
-
 if (
   report?.schema !== 1 ||
   report?.kind !== 'p1-live-release-qualification' ||
@@ -49,7 +43,8 @@ if (
   report?.humanReview?.approved !== true ||
   report?.humanReview?.valid !== true ||
   report?.qualificationAnchor?.valid !== true ||
-  requiredGates.some((gate) => report?.gates?.[gate] !== true) ||
+  !automatedReleaseGatesPass(report) ||
+  !safeHistoricalRegressionSummary(report) ||
   typeof report?.qualificationId !== 'string' ||
   !/^[a-f0-9]{64}$/.test(report.qualificationId) ||
   report?.parentQualificationId !== report.qualificationId ||
