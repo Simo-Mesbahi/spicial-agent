@@ -120,6 +120,7 @@ test('P1.7 live workflow paces calls and keeps retries scenario-level and explic
   assert.match(contract, /maximumGenerationValidationCalls: 10/);
   assert.match(contract, /maximumLanguageCorrectionValidationCalls: 2/);
   assert.match(contract, /maximumGroundingRetryCalls: 8/);
+  assert.match(contract, /maximumTransientRetries: 2/);
   assert.match(contract, /maximumTotalCompletionCalls: 236/);
 });
 
@@ -152,8 +153,8 @@ test('P1.7 live resilience is paced and retries only transport failures within e
   assert.match(pacing, /P1_LIVE_EMBEDDING_MIN_INTERVAL_MS/);
   assert.match(pacing, /P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS/);
   assert.match(retrieval, /liveEmbeddingPacer/);
-  assert.match(retrieval, /mode !== 'lexical'/);
-  assert.match(retrieval, /result\.scope !== 'supabase_unavailable'/);
+  assert.match(retrieval, /searchLexicalWithTransientRetries/);
+  assert.match(retrieval, /options\.maxTransientRetries - transientRetriesUsed/);
   assert.match(retrieval, /maxTransientRetries/);
   assert.match(generation, /new Set\(\['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited'\]\)/);
   assert.match(grounding, /new Set\(\['network_or_timeout', 'upstream_unavailable', 'upstream_rate_limited'\]\)/);
