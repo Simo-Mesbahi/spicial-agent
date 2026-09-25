@@ -225,6 +225,79 @@ jobs:
             --summary diagnostics/output/diagnostic-summary.md
           cat diagnostics/output/diagnostic-summary.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Preserve fail-closed diagnostic failure marker
+        if: failure()
+        shell: bash
+        env:
+          TARGET_RUN_ID: ${{ steps.target.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics/output
+          if [[ ! -f diagnostics/output/workflow-diagnostic.json ]]; then
+            node - <<'NODE'
+            const fs = require('node:fs');
+            const runId = Number(process.env.TARGET_RUN_ID);
+            const marker = {
+              schemaVersion: 1,
+              kind: 'workflow-diagnostic',
+              generatedAt: new Date().toISOString(),
+              source: {
+                repository: process.env.GITHUB_REPOSITORY ?? null,
+                runId: Number.isSafeInteger(runId) && runId > 0 ? runId : null,
+              },
+              failure: {
+                rootCause: {
+                  category: 'diagnostic_pipeline',
+                  code: 'diagnostic_pipeline_failed',
+                  scope: 'internal',
+                  retryable: true,
+                  confidence: 'high',
+                  action: 'inspect_diagnostic_pipeline',
+                  stage: null,
+                  provider: null,
+                  model: null,
+                  source: 'diagnostic_pipeline',
+                },
+                firstFailure: null,
+                secondaryFailures: [],
+              },
+              evidence: {
+                matchedSignal: 'diagnostic_pipeline_failed',
+                signalSource: 'diagnostic_pipeline',
+                artifactReports: [],
+                rawLogsIncluded: false,
+                rawArtifactPayloadsIncluded: false,
+              },
+              releaseImpact: {
+                blocked: true,
+                failClosed: true,
+                code: 'diagnostic_pipeline_failure',
+              },
+              recommendedAction: {
+                code: 'inspect_diagnostic_pipeline',
+                automaticCodeChangeAllowed: false,
+                automaticMergeAllowed: false,
+                humanControlledRemediationRequired: true,
+              },
+              privacy: {
+                allowlistOnly: true,
+                rawLogsIncluded: false,
+                rawProviderTextIncluded: false,
+                promptsIncluded: false,
+                credentialsIncluded: false,
+              },
+            };
+            fs.writeFileSync(
+              'diagnostics/output/workflow-diagnostic.json',
+              JSON.stringify(marker, null, 2) + '\n',
+            );
+            fs.writeFileSync(
+              'diagnostics/output/diagnostic-summary.md',
+              '# Workflow diagnostic\n\n- Category: diagnostic_pipeline\n- Code: diagnostic_pipeline_failed\n- Release blocked: true\n- Raw logs included: false\n',
+            );
+            NODE
+          fi
+
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
