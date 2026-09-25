@@ -83,6 +83,7 @@ test('workflow diagnostic reproduces run 26 daily-quota root cause without raw l
   );
   assert.equal(diagnostic.failure.rootCause.scope, 'external');
   assert.equal(diagnostic.failure.rootCause.retryable, false);
+  assert.equal('needle' in diagnostic.failure.rootCause, false);
   assert.equal(
     diagnostic.recommendedAction.code,
     'wait_for_provider_quota',
@@ -217,6 +218,48 @@ test('workflow diagnostic ignores allowlisted signals from earlier successful st
 
   assert.equal(diagnostic.failure.rootCause.category, 'build');
   assert.equal(diagnostic.failure.rootCause.code, 'build_failed');
+  assert.equal(diagnostic.failure.rootCause.source, 'failed_step');
+});
+
+test('workflow diagnostic never treats regression-fixture signals inside npm test as root cause', () => {
+  const diagnostic = buildWorkflowDiagnostic({
+    run: failedRun({
+      id: 36184446715,
+      name: 'Quality checks',
+      run_number: 369,
+      event: 'pull_request',
+      head_sha: '6f19f4ac3b583b33172c45a585369e679ec1c267',
+    }),
+    jobsResponse: {
+      jobs: [
+        {
+          id: 108236791053,
+          name: 'verify',
+          conclusion: 'failure',
+          steps: [
+            {
+              number: 7,
+              name: 'Run npm test',
+              conclusion: 'failure',
+              started_at: '2026-09-25T20:21:00Z',
+              completed_at: '2026-09-25T20:21:40Z',
+            },
+          ],
+        },
+      ],
+    },
+    logs: {
+      '108236791053.log': [
+        '2026-09-25T20:21:10.000Z fixture upstream_rate_limited',
+        '2026-09-25T20:21:11.000Z fixture provider_daily_quota_exhausted',
+        '2026-09-25T20:21:30.000Z AssertionError ERR_ASSERTION',
+      ].join('\n'),
+    },
+  });
+
+  assert.equal(diagnostic.failure.rootCause.category, 'test');
+  assert.equal(diagnostic.failure.rootCause.code, 'test_failure');
+  assert.equal(diagnostic.failure.rootCause.scope, 'internal');
   assert.equal(diagnostic.failure.rootCause.source, 'failed_step');
 });
 
