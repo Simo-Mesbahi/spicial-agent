@@ -569,6 +569,164 @@ for (const script of ['generation', 'grounding'])
   });
 
 
+test('generation live runner repairs one local structure drift within a dedicated bounded budget', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-structure-correction-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let calls = 0;
+    const ok = (content) => Response.json({
+      choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(content)}}],
+      usage:{prompt_tokens:10,completion_tokens:5}
+    });
+    globalThis.fetch = async (_url, init) => {
+      calls++;
+      const body = JSON.parse(init.body);
+      if (calls === 1)
+        return ok({
+          language:'fr',
+          sentences:[{text:'Votre dossier attend une pièce.',evidenceRefs:['case.statusLabel']}],
+          action:'refund'
+        });
+      if (calls === 2) {
+        if (!body.messages[0].content.includes('failed local output-structure or output-policy validation'))
+          throw new Error('Missing structure correction directive');
+        return ok({
+          language:'fr',
+          sentences:[
+            {text:'Votre dossier attend une pièce.',evidenceRefs:['case.statusLabel']},
+            {text:'Aucune date confirmée n’est disponible.',evidenceRefs:['case.confirmedEta']}
+          ]
+        });
+      }
+      if (calls === 3)
+        return ok({language:'fr',sentences:[{verdict:'supported',issues:[]},{verdict:'supported',issues:[]}]});
+      throw new Error('Unexpected extra call');
+    };
+    `,
+  );
+
+  const stdout = execFileSync(
+    process.execPath,
+    [
+      '--import',
+      pathToFileURL(preload).href,
+      'scripts/evaluate-generation.mjs',
+      '--live',
+      '--max-cases',
+      '1',
+      '--max-structure-corrections',
+      '1',
+      '--output',
+      output,
+    ],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        LLM_PROVIDER: 'gemini',
+        LLM_MODEL: '',
+        LLM_BUDGET_MODE: 'free',
+        GEMINI_MODEL: 'gemini-3.5-flash-lite',
+        GEMINI_API_KEY: 'test-key',
+        LLM_STRUCTURED_OUTPUT: '',
+        P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+        P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(summary.status, 'requires_human_review');
+  assert.equal(summary.structureCorrectionsUsed, 1);
+  assert.equal(summary.generationRetriesUsed, 0);
+  assert.equal(summary.languageCorrectionsUsed, 0);
+  assert.equal(summary.citationCorrectionsUsed, 0);
+  assert.equal(summary.generationCalls, 2);
+  assert.equal(summary.validationCalls, 1);
+  assert.equal(report.operational.structureCorrectionsUsed, 1);
+  assert.equal(report.results[0].structureCorrections, 1);
+  assert.deepEqual(report.results[0].structureFailures, [
+    { code: 'schema_mismatch', sentenceIndex: null },
+  ]);
+  assert.equal(report.results[0].diagnostics.reason, null);
+  assert.equal(report.results[0].diagnostics.structureFailure, null);
+  assert.equal(report.results[0].groundedness, true);
+});
+
+test('generation live runner never structure-repairs provider transport/outer-envelope failures', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-no-structure-provider-retry-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  writeFileSync(
+    preload,
+    `
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls > 1) throw new Error('Structure correction must not retry provider envelope failures');
+      return Response.json({
+        choices:[{finish_reason:'stop',message:{role:'assistant',content:null}}],
+        usage:{prompt_tokens:10,completion_tokens:5}
+      });
+    };
+    `,
+  );
+
+  let stdout;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(preload).href,
+        'scripts/evaluate-generation.mjs',
+        '--live',
+        '--max-cases',
+        '1',
+        '--max-structure-corrections',
+        '1',
+        '--output',
+        output,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          LLM_PROVIDER: 'gemini',
+          LLM_MODEL: '',
+          LLM_BUDGET_MODE: 'free',
+          GEMINI_MODEL: 'gemini-3.5-flash-lite',
+          GEMINI_API_KEY: 'test-key',
+          LLM_STRUCTURED_OUTPUT: '',
+          P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+          P1_LIVE_TRANSIENT_RETRY_BACKOFF_MS: '0',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    assert.fail('Expected provider envelope failure to remain fail-closed');
+  } catch (error) {
+    assert.equal(error.status, 1);
+    stdout = error.stdout;
+  }
+
+  const summary = JSON.parse(stdout);
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(summary.status, 'incomplete');
+  assert.equal(summary.structureCorrectionsUsed, 0);
+  assert.equal(summary.generationCalls, 1);
+  assert.equal(report.results[0].structureCorrections, 0);
+  assert.deepEqual(report.results[0].structureFailures, []);
+  assert.equal(report.results[0].diagnostics.structureFailure, null);
+});
+
 test('generation live runner repairs one citation-only drift within a dedicated bounded budget', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-eval-citation-correction-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

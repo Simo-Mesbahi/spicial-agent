@@ -75,14 +75,14 @@ export function isEvidenceFreeCourtesy(
   return evidenceFreeCourtesyPatterns[language].some((pattern) => pattern.test(normalized));
 }
 
-export const naturalDraftSchema = z
+const naturalDraftShapeSchema = z
   .object({
     language: z.enum(languages),
     sentences: z
       .array(
         z
           .object({
-            text: z.string().trim().min(1).max(500).refine(safeGeneratedSentenceText),
+            text: z.string().trim().min(1).max(500),
             evidenceRefs: z.array(z.string().min(1).max(80)).max(6),
           })
           .strict(),
@@ -91,6 +91,17 @@ export const naturalDraftSchema = z
       .max(6),
   })
   .strict();
+
+export const naturalDraftSchema = naturalDraftShapeSchema.superRefine((draft, context) => {
+  draft.sentences.forEach((sentence, sentenceIndex) => {
+    if (!safeGeneratedSentenceText(sentence.text))
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sentences', sentenceIndex, 'text'],
+        message: 'unsafe_generated_text',
+      });
+  });
+});
 export type NaturalDraft = z.infer<typeof naturalDraftSchema>;
 
 export function draftEvidenceBoundaryValid(draft: NaturalDraft) {
@@ -199,6 +210,14 @@ export type CitationFailure = {
   sentenceIndex: number | null;
   referenceCount: number;
 };
+export type StructureFailureCode =
+  | 'invalid_json'
+  | 'schema_mismatch'
+  | 'unsafe_generated_text';
+export type StructureFailure = {
+  code: StructureFailureCode;
+  sentenceIndex: number | null;
+};
 export type GenerationDiagnostics = {
   mode: 'off' | 'shadow' | 'release';
   outcome: 'skipped' | 'candidate_generated' | 'failed';
@@ -222,11 +241,35 @@ export type GenerationDiagnostics = {
   inputTokens: number | null;
   outputTokens: number | null;
   citationFailure: CitationFailure | null;
+  structureFailure: StructureFailure | null;
 };
 class DraftError extends Error {
   constructor(public code: 'unknown_evidence_reference' | 'output_language_mismatch') {
     super(code);
   }
+}
+class DraftStructureError extends Error {
+  constructor(
+    public code: StructureFailureCode,
+    public sentenceIndex: number | null = null,
+  ) {
+    super(code);
+  }
+}
+
+export function parseNaturalDraftContent(content: string): NaturalDraft {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(content);
+  } catch {
+    throw new DraftStructureError('invalid_json');
+  }
+  const shaped = naturalDraftShapeSchema.safeParse(decoded);
+  if (!shaped.success) throw new DraftStructureError('schema_mismatch');
+  for (const [sentenceIndex, sentence] of shaped.data.sentences.entries())
+    if (!safeGeneratedSentenceText(sentence.text))
+      throw new DraftStructureError('unsafe_generated_text', sentenceIndex);
+  return shaped.data;
 }
 
 export function draftCitationFailure(
@@ -332,7 +375,7 @@ export async function generateNaturalDraft(
     context: EvidenceContext;
     message: string;
     guidance: GenerationGuidance;
-    correction?: 'language_mismatch' | 'citation_mismatch';
+    correction?: 'language_mismatch' | 'citation_mismatch' | 'structure_mismatch';
   },
   trace: ProviderTrace,
 ): Promise<{ draft: NaturalDraft | null; diagnostics: GenerationDiagnostics }> {
@@ -356,6 +399,7 @@ export async function generateNaturalDraft(
     inputTokens: 0,
     outputTokens: 0,
     citationFailure: null,
+    structureFailure: null,
   };
   let draft: NaturalDraft | null = null;
   let responseReceived = false;
@@ -410,7 +454,9 @@ export async function generateNaturalDraft(
         ? ' A previous candidate failed language validation. Do not repeat or copy that candidate; rewrite the answer entirely in the required language using the same verified facts.'
         : input.correction === 'citation_mismatch'
           ? ' A previous candidate failed evidence-reference validation. Rewrite the draft from scratch. Every factual or business sentence must cite one or more exact keys present in evidence.references. Never invent, rename, translate, omit, or duplicate evidence reference keys. A small courtesy may be uncited only when it contains no business fact. Do not copy the rejected candidate.'
-          : '';
+          : input.correction === 'structure_mismatch'
+            ? ' A previous candidate failed local output-structure or output-policy validation. Rewrite the draft from scratch using only the supplied evidence. Return exactly the requested JSON object and fields. Use plain customer-facing text only: no links, HTML, markdown, control characters, secrets, or internal enum/status identifiers. Respect all local sentence and array bounds. Do not copy or reconstruct the rejected candidate.'
+            : '';
     const languageInstruction =
       `The ONLY permitted response language is ${languageNames[pack.responseLanguage]} (${pack.responseLanguage}). Every customer-facing sentence, including courtesies, must be written in that language. The JSON language field and the prose must agree. ${languageStyleInstructions[pack.responseLanguage]}` +
       correctionInstruction;
@@ -471,7 +517,7 @@ export async function generateNaturalDraft(
     if (choice.message.tool_calls?.length || choice.finish_reason !== 'stop')
       throw new ProviderError('invalid_upstream_response');
     responseReceived = true;
-    draft = naturalDraftSchema.parse(JSON.parse(choice.message.content ?? ''));
+    draft = parseNaturalDraftContent(choice.message.content ?? '');
     if (draft.language !== pack.responseLanguage) throw new DraftError('output_language_mismatch');
     const actualLanguageHint = detectConversationLanguageHint(
       draft.sentences.map((sentence) => sentence.text).join(' '),
@@ -486,14 +532,21 @@ export async function generateNaturalDraft(
   } catch (error) {
     draft = null;
     diagnostics.outcome = 'failed';
+    if (error instanceof DraftStructureError)
+      diagnostics.structureFailure = {
+        code: error.code,
+        sentenceIndex: error.sentenceIndex,
+      };
     diagnostics.reason =
       error instanceof ProviderError
         ? error.reason
         : error instanceof EvidencePackError || error instanceof DraftError
           ? error.code
-          : responseReceived
+          : error instanceof DraftStructureError
             ? 'invalid_upstream_response'
-            : 'configuration';
+            : responseReceived
+              ? 'invalid_upstream_response'
+              : 'configuration';
     // Classification for parsing/citation errors supplements the transport trace.
   } finally {
     diagnostics.calls = trace.calls - beforeCalls;

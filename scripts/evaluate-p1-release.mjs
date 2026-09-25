@@ -70,6 +70,8 @@ const plannedCalls = {
     contract.generation.maximumLanguageCorrectionCalls,
   generationCitationCorrectionCalls:
     contract.generation.maximumCitationCorrectionCalls,
+  generationStructureCorrectionCalls:
+    contract.generation.maximumStructureCorrectionCalls,
   generationValidationCalls: contract.generation.requiredValidationCalls,
   generationValidationRetryCompletionCalls:
     contract.generation.maximumValidationRetryCalls,
@@ -86,6 +88,7 @@ const plannedCalls = {
     contract.generation.maximumGenerationRetryCalls +
     contract.generation.maximumLanguageCorrectionCalls +
     contract.generation.maximumCitationCorrectionCalls +
+    contract.generation.maximumStructureCorrectionCalls +
     contract.generation.requiredValidationCalls +
     contract.generation.maximumValidationRetryCalls +
     contract.generation.maximumLanguageCorrectionCalls +
@@ -103,6 +106,8 @@ if (
     contract.liveBudget.maximumLanguageCorrectionCalls ||
   plannedCalls.generationCitationCorrectionCalls >
     contract.liveBudget.maximumCitationCorrectionCalls ||
+  plannedCalls.generationStructureCorrectionCalls >
+    contract.liveBudget.maximumStructureCorrectionCalls ||
   plannedCalls.generationValidationCalls >
     contract.liveBudget.maximumGenerationValidationCalls ||
   plannedCalls.generationValidationRetryCompletionCalls >
@@ -481,6 +486,8 @@ if (live) {
       String(contract.generation.maximumLanguageCorrectionCalls),
       '--max-citation-corrections',
       String(contract.generation.maximumCitationCorrectionCalls),
+      '--max-structure-corrections',
+      String(contract.generation.maximumStructureCorrectionCalls),
       '--output',
       paths.generation,
     ]);
@@ -715,6 +722,10 @@ const citationCorrectionRows = generationRows.reduce(
   (total, row) => total + (row.citationCorrections ?? 0),
   0,
 );
+const structureCorrectionRows = generationRows.reduce(
+  (total, row) => total + (row.structureCorrections ?? 0),
+  0,
+);
 const generationProviderAttemptRows = generationRows.reduce(
   (total, row) =>
     total +
@@ -726,11 +737,14 @@ const generationProviderAttemptRows = generationRows.reduce(
 );
 const generationGate = Boolean(
   generation &&
+    generation.status === 'requires_human_review' &&
+    generation.releaseAllowed === false &&
     generationCoverageGate &&
     generation.operational?.generationRetriesUsed === generationRetryRows &&
     generation.operational?.validationRetriesUsed === validationRetryRows &&
     generation.operational?.languageCorrectionsUsed === languageCorrectionRows &&
     generation.operational?.citationCorrectionsUsed === citationCorrectionRows &&
+    generation.operational?.structureCorrectionsUsed === structureCorrectionRows &&
     generation.operational?.providerCalls === generationProviderAttemptRows &&
     generation.operational?.generationRetriesUsed <=
       contract.generation.maximumGenerationRetryCalls &&
@@ -740,11 +754,14 @@ const generationGate = Boolean(
       contract.generation.maximumLanguageCorrectionCalls &&
     generation.operational?.citationCorrectionsUsed <=
       contract.generation.maximumCitationCorrectionCalls &&
+    generation.operational?.structureCorrectionsUsed <=
+      contract.generation.maximumStructureCorrectionCalls &&
     generation.operational?.providerCalls <=
       contract.generation.requiredScenarios +
         contract.generation.maximumGenerationRetryCalls +
         contract.generation.maximumLanguageCorrectionCalls +
         contract.generation.maximumCitationCorrectionCalls +
+        contract.generation.maximumStructureCorrectionCalls +
         contract.generation.requiredValidationCalls +
         contract.generation.maximumValidationRetryCalls +
         contract.generation.maximumLanguageCorrectionCalls &&
@@ -762,6 +779,20 @@ const generationGate = Boolean(
         Number.isInteger(row.citationCorrections) &&
         row.citationCorrections >= 0 &&
         row.citationCorrections <= 1 &&
+        Number.isInteger(row.structureCorrections) &&
+        row.structureCorrections >= 0 &&
+        row.structureCorrections <= 1 &&
+        Array.isArray(row.structureFailures) &&
+        row.structureFailures.length === row.structureCorrections &&
+        row.structureFailures.every(
+          (failure) =>
+            failure &&
+            ['invalid_json', 'schema_mismatch', 'unsafe_generated_text'].includes(
+              failure.code,
+            ) &&
+            (failure.sentenceIndex === null ||
+              (Number.isInteger(failure.sentenceIndex) && failure.sentenceIndex >= 0)),
+        ) &&
         row.factualValidation?.outcome === 'supported_candidate' &&
         row.factualValidation?.reason === null &&
         row.factualValidation?.issues?.length === 0 &&

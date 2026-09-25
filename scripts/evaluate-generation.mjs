@@ -20,6 +20,7 @@ const options = {
   maxValidationRetries: 0,
   maxLanguageCorrections: 0,
   maxCitationCorrections: 0,
+  maxStructureCorrections: 0,
   output: 'outputs/generation-evaluation.json',
 };
 for (let i = 0; i < args.length; i++) {
@@ -31,6 +32,8 @@ for (let i = 0; i < args.length; i++) {
     options.maxLanguageCorrections = Number(args[++i]);
   else if (args[i] === '--max-citation-corrections')
     options.maxCitationCorrections = Number(args[++i]);
+  else if (args[i] === '--max-structure-corrections')
+    options.maxStructureCorrections = Number(args[++i]);
   else if (args[i] === '--output') options.output = args[++i];
   else throw new Error('Unknown argument');
 }
@@ -50,6 +53,9 @@ if (
   !Number.isInteger(options.maxCitationCorrections) ||
   options.maxCitationCorrections < 0 ||
   options.maxCitationCorrections > 4 ||
+  !Number.isInteger(options.maxStructureCorrections) ||
+  options.maxStructureCorrections < 0 ||
+  options.maxStructureCorrections > 4 ||
   !options.output
 )
   throw new Error('Invalid generation evaluation options');
@@ -64,7 +70,8 @@ if (!options.live) {
           selected.length +
           options.maxGenerationRetries +
           options.maxLanguageCorrections +
-          options.maxCitationCorrections,
+          options.maxCitationCorrections +
+          options.maxStructureCorrections,
         maxValidationCalls:
           selected.length +
           options.maxValidationRetries +
@@ -74,7 +81,8 @@ if (!options.live) {
           options.maxGenerationRetries +
           options.maxValidationRetries +
           options.maxLanguageCorrections * 2 +
-          options.maxCitationCorrections,
+          options.maxCitationCorrections +
+          options.maxStructureCorrections,
         note: 'Synthetic evidence only. No requests sent. Live qualification validates every generated candidate factually before human review.',
       },
       null,
@@ -106,6 +114,7 @@ if (!options.live) {
     let validationRetriesUsed = 0;
     let languageCorrectionsUsed = 0;
     let citationCorrectionsUsed = 0;
+    let structureCorrectionsUsed = 0;
     let systemicTransportFailure = null;
 
     async function generateCandidate(fixture, correction, counters) {
@@ -127,7 +136,8 @@ if (!options.live) {
               options.maxCases +
                 options.maxGenerationRetries +
                 options.maxLanguageCorrections +
-                options.maxCitationCorrections,
+                options.maxCitationCorrections +
+                options.maxStructureCorrections,
             ),
           },
           {
@@ -204,10 +214,12 @@ if (!options.live) {
         validationRetries: 0,
         languageCorrections: 0,
         citationCorrections: 0,
+        structureCorrections: 0,
       };
       const providerAttempts = [];
       const factualValidationAttempts = [];
       const citationFailures = [];
+      const structureFailures = [];
       let draft = null;
       let diagnostics = null;
       let factualValidation = null;
@@ -241,6 +253,18 @@ if (!options.live) {
             if (diagnostics.citationFailure)
               citationFailures.push(diagnostics.citationFailure);
             correction = 'citation_mismatch';
+            continue;
+          }
+          if (
+            diagnostics.reason === 'invalid_upstream_response' &&
+            diagnostics.structureFailure &&
+            counters.structureCorrections === 0 &&
+            structureCorrectionsUsed < options.maxStructureCorrections
+          ) {
+            structureCorrectionsUsed++;
+            counters.structureCorrections++;
+            structureFailures.push(diagnostics.structureFailure);
+            correction = 'structure_mismatch';
             continue;
           }
           break;
@@ -277,6 +301,8 @@ if (!options.live) {
         languageCorrections: counters.languageCorrections,
         citationCorrections: counters.citationCorrections,
         citationFailures,
+        structureCorrections: counters.structureCorrections,
+        structureFailures,
         groundedness:
           factualValidation?.outcome === 'supported_candidate' &&
           factualValidation?.reason === null,
@@ -320,10 +346,12 @@ if (!options.live) {
             validationRetriesUsed,
             languageCorrectionsUsed,
             citationCorrectionsUsed,
+            structureCorrectionsUsed,
             maximumGenerationRetries: options.maxGenerationRetries,
             maximumValidationRetries: options.maxValidationRetries,
             maximumLanguageCorrections: options.maxLanguageCorrections,
             maximumCitationCorrections: options.maxCitationCorrections,
+            maximumStructureCorrections: options.maxStructureCorrections,
             systemicTransportFailure,
             providerCalls: results.reduce(
               (n, r) =>
@@ -352,6 +380,7 @@ if (!options.live) {
         validationRetriesUsed,
         languageCorrectionsUsed,
         citationCorrectionsUsed,
+        structureCorrectionsUsed,
         systemicTransportFailure,
         failures: results
           .filter(
@@ -366,6 +395,8 @@ if (!options.live) {
             generationReason: r.diagnostics.reason,
             citationFailure: r.diagnostics.citationFailure ?? null,
             citationFailures: r.citationFailures,
+            structureFailure: r.diagnostics.structureFailure ?? null,
+            structureFailures: r.structureFailures,
             validationOutcome: r.factualValidation?.outcome ?? null,
             validationReason: r.factualValidation?.reason ?? null,
             validationIssues: r.factualValidation?.issues ?? [],
