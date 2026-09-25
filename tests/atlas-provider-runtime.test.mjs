@@ -199,6 +199,8 @@ for (const array of [false, true])
       httpStatus: 404,
       code: 'NOT_FOUND',
       parameter: null,
+      retryAfterMs: null,
+      rateLimitScope: null,
     });
     assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
   });
@@ -332,6 +334,8 @@ test('Unknown codes, Google status fields and error types never leak to trace', 
     httpStatus: 404,
     code: null,
     parameter: null,
+    retryAfterMs: null,
+    rateLimitScope: null,
   });
   assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
 });
