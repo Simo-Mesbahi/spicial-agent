@@ -13,6 +13,7 @@ import {
 import {
   liveCompletionPacer,
   liveTransientRetryBackoff,
+  rateLimitSystemicFailure,
 } from './lib/live-eval-pacing.mjs';
 const args = process.argv.slice(2);
 const options = {
@@ -88,11 +89,14 @@ else {
     let rejectedStreak = 0;
     let systemicTransportFailure = null;
     let retriesUsed = 0;
+    let rateLimitRetriesUsed = 0;
+    let rateLimitWaitMs = 0;
     for (const scenario of selected) {
       let fixture = groundingFixture(scenario);
       let diagnostics = null;
       const providerAttempts = [];
       let scenarioRetries = 0;
+      let rateLimitFailure = null;
 
       while (true) {
         await pacing.beforeCall();
@@ -111,15 +115,30 @@ else {
         );
         providerAttempts.push(...trace.attempts);
 
-        if (
-          !retryableTransportReasons.has(diagnostics.reason) ||
-          retriesUsed >= options.maxRetries
-        )
+        if (!retryableTransportReasons.has(diagnostics.reason)) break;
+
+        const diagnostic = trace.attempts.at(-1)?.diagnostic ?? null;
+        const retryPlan = retryBackoff.plan(
+          diagnostics.reason,
+          scenarioRetries,
+          diagnostic,
+        );
+        if (!retryPlan.retryable) {
+          rateLimitFailure = retryPlan.source;
           break;
+        }
+        if (retriesUsed >= options.maxRetries) break;
 
         retriesUsed++;
         scenarioRetries++;
-        await retryBackoff.wait(scenarioRetries - 1);
+        if (diagnostics.reason === 'upstream_rate_limited') rateLimitRetriesUsed++;
+        const waited = await retryBackoff.wait(
+          scenarioRetries - 1,
+          diagnostics.reason,
+          diagnostic,
+        );
+        if (diagnostics.reason === 'upstream_rate_limited')
+          rateLimitWaitMs += waited.delayMs;
       }
 
       results.push({
@@ -130,11 +149,16 @@ else {
         diagnostics,
         providerAttempts,
         retries: scenarioRetries,
+        rateLimitFailure,
       });
 
       if (diagnostics.reason === 'upstream_request_rejected') rejectedStreak++;
       else rejectedStreak = 0;
 
+      if (rateLimitFailure) {
+        systemicTransportFailure = rateLimitSystemicFailure(rateLimitFailure);
+        break;
+      }
       if (diagnostics.reason === 'upstream_rate_limited') {
         systemicTransportFailure = 'provider_rate_limited';
         break;
@@ -182,9 +206,13 @@ else {
           coverage,
           pacingIntervalMs: pacing.intervalMs,
           retryBackoffMs: retryBackoff.intervalMs,
+          rateLimitRetryMinMs: retryBackoff.rateLimitMinMs,
+          rateLimitRetryMaxMs: retryBackoff.rateLimitMaxMs,
           operational: {
             retriesUsed,
             maximumRetries: options.maxRetries,
+            rateLimitRetriesUsed,
+            rateLimitWaitMs,
             providerCalls: results.reduce((n, r) => n + r.providerAttempts.length, 0),
           },
           requestedScenarios: selected.length,
@@ -222,6 +250,8 @@ else {
         output: options.output,
         calls: results.reduce((n, r) => n + r.providerAttempts.length, 0),
         retriesUsed,
+        rateLimitRetriesUsed,
+        rateLimitWaitMs,
         systemicTransportFailure,
         failures: decisionFailures.map((r) => ({
           id: r.id,
