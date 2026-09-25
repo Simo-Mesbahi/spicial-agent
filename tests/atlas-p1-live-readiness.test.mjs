@@ -30,12 +30,26 @@ function retrievalRow(index, changes = {}) {
       scope: 'supabase_published',
       recallAtK: 1,
       precisionAtK: 1 / 3,
+      retrieval: {
+        backend: {
+          calls: 1,
+          retries: 0,
+          timeoutMs: 5000,
+          error: null,
+        },
+      },
     },
     hybrid: {
       scope: 'supabase_published',
       recallAtK: 1,
       precisionAtK: 1 / 3,
       retrieval: {
+        backend: {
+          calls: 1,
+          retries: 0,
+          timeoutMs: 5000,
+          error: null,
+        },
         embedding: {
           calls: 1,
           error: null,
@@ -46,13 +60,28 @@ function retrievalRow(index, changes = {}) {
   return {
     ...base,
     ...changes,
-    lexical: { ...base.lexical, ...(changes.lexical ?? {}) },
+    lexical: {
+      ...base.lexical,
+      ...(changes.lexical ?? {}),
+      retrieval: {
+        ...base.lexical.retrieval,
+        ...(changes.lexical?.retrieval ?? {}),
+        backend: {
+          ...base.lexical.retrieval.backend,
+          ...(changes.lexical?.retrieval?.backend ?? {}),
+        },
+      },
+    },
     hybrid: {
       ...base.hybrid,
       ...(changes.hybrid ?? {}),
       retrieval: {
         ...base.hybrid.retrieval,
         ...(changes.hybrid?.retrieval ?? {}),
+        backend: {
+          ...base.hybrid.retrieval.backend,
+          ...(changes.hybrid?.retrieval?.backend ?? {}),
+        },
         embedding: {
           ...base.hybrid.retrieval.embedding,
           ...(changes.hybrid?.retrieval?.embedding ?? {}),
@@ -80,6 +109,7 @@ function report(rows) {
     operational: {
       transientRetriesUsed: 0,
       maximumTransientRetries: 2,
+      backendRetriesUsed: 0,
     },
     results: rows,
   };
@@ -123,6 +153,32 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   );
   assert.notEqual(rejectedRetryBudget.status, 0);
   assert.equal(JSON.parse(rejectedRetryBudget.stdout).operational.maximumTransientRetries, 3);
+
+  const excessiveBackendRetries = report(
+    Array.from({ length: 20 }, (_, i) =>
+      retrievalRow(i, i === 0
+        ? { hybrid: { retrieval: { backend: { calls: 3, retries: 2 } } } }
+        : {}),
+    ),
+  );
+  excessiveBackendRetries.operational.backendRetriesUsed = 2;
+  await writeFile(path, JSON.stringify(excessiveBackendRetries));
+  const rejectedBackendRetry = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedBackendRetry.status, 0);
+
+  const excessiveBackendTotal = report(Array.from({ length: 20 }, (_, i) => retrievalRow(i)));
+  excessiveBackendTotal.operational.backendRetriesUsed = 5;
+  await writeFile(path, JSON.stringify(excessiveBackendTotal));
+  const rejectedBackendTotal = spawnSync(
+    process.execPath,
+    ['scripts/check-retrieval-qualification.mjs', path],
+    { encoding: 'utf8', env: qualificationEnv },
+  );
+  assert.notEqual(rejectedBackendTotal.status, 0);
 
   const unsafe = Array.from({ length: 20 }, (_, i) =>
     retrievalRow(i, i === 7 ? { hybrid: { recallAtK: 0 } } : {}),
