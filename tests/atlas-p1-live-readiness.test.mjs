@@ -4,7 +4,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { liveCompletionPacer } from '../scripts/lib/live-eval-pacing.mjs';
+import {
+  liveCompletionPacer,
+  boundedExponentialRetryDelay,
+} from '../scripts/lib/live-eval-pacing.mjs';
 
 const qualificationEnv = {
   ...process.env,
@@ -73,6 +76,10 @@ function report(rows) {
     },
     status: 'completed',
     completionCalls: 0,
+    operational: {
+      transientRetriesUsed: 0,
+      maximumTransientRetries: 2,
+    },
     results: rows,
   };
 }
@@ -119,6 +126,16 @@ test('P1.7 retrieval preflight accepts only a fresh report satisfying every quer
   assert.equal(failure.status, 'retrieval_not_qualified');
   assert.equal(failure.failures.length, 1);
   assert.equal(failure.failures[0].id, 'retrieval-contract-7');
+});
+
+test('P1.7 transient retry backoff is bounded and exponential', () => {
+  assert.equal(boundedExponentialRetryDelay(15000, 0), 15000);
+  assert.equal(boundedExponentialRetryDelay(15000, 1), 30000);
+  assert.equal(boundedExponentialRetryDelay(15000, 2), 30000);
+  assert.equal(boundedExponentialRetryDelay(0, 4), 0);
+  assert.throws(() => boundedExponentialRetryDelay(-1, 0));
+  assert.throws(() => boundedExponentialRetryDelay(15000, -1));
+  assert.throws(() => boundedExponentialRetryDelay(15000, 17));
 });
 
 test('P1.7 completion pacing is bounded, deterministic and does not issue provider calls', async () => {
