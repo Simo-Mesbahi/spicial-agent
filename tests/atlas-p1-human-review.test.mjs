@@ -43,6 +43,7 @@ async function writeQualification(path, generationRaw, overrides = {}) {
     contractSha256: 'c'.repeat(64),
     structuredSha256: 'd'.repeat(64),
     retrievalSha256: 'e'.repeat(64),
+    documentaryFreshnessSha256: '9'.repeat(64),
     generationSha256: sha256(generationRaw),
     groundingSha256: [
       '1'.repeat(64),
