@@ -93,6 +93,16 @@ test('historical regression gate rejects incidents that are no longer marked cov
   );
 });
 
+test('P1 release evaluator validates historical regressions itself', async () => {
+  const source = await readFile('scripts/evaluate-p1-release.mjs', 'utf8');
+
+  assert.match(source, /validateHistoricalRegressionRegistry/);
+  assert.match(source, /Historical regression gate failed/);
+  assert.match(source, /historicalRegressions: historicalRegressionGate\.valid/);
+  assert.match(source, /historicalRegressionGate:/);
+  assert.match(source, /guardedRuns: historicalRegressionGate\.guardedRuns/);
+});
+
 test('CI and P1.7 execute the historical regression gate before live provider spend', async () => {
   const [ci, workflow, pkg] = await Promise.all([
     readFile('.github/workflows/ci.yml', 'utf8'),
