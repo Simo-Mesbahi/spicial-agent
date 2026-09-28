@@ -1,0 +1,79 @@
+name: P1.7 provider smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type P1_SMOKE to acknowledge one Gemini completion call'
+        required: true
+        type: string
+      qualification_environment:
+        description: 'Protected GitHub Environment containing the Gemini qualification key'
+        required: true
+        type: environment
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p1-live-qualification
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: github.ref == 'refs/heads/main'
+    name: one-call factual transport smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.qualification_environment }}
+    env:
+      SMOKE_CONFIRM: ${{ inputs.confirm }}
+      LLM_PROVIDER: gemini
+      LLM_MODEL: gemini-3.5-flash-lite
+      LLM_BUDGET_MODE: free
+      LLM_STRUCTURED_OUTPUT: json_schema
+      LLM_REQUEST_TIMEOUT_MS: '60000'
+      LLM_VALIDATION_TIMEOUT_MS: '20000'
+      LLM_VALIDATION_MODE: shadow
+      P1_RELEASE_MODE: off
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Validate bounded manual request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${SMOKE_CONFIRM}" != "P1_SMOKE" || "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo 'The one-call smoke requires P1_SMOKE and main.' >&2
+            exit 2
+          fi
+          if [[ -z "${GEMINI_API_KEY:-}" ]]; then
+            echo 'The selected environment has no GEMINI_API_KEY.' >&2
+            exit 2
+          fi
+
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund --strict-allow-scripts
+
+      - name: Test one synthetic factual request
+        run: node scripts/evaluate-grounding.mjs --live --offset 0 --max-cases 1 --max-retries 0 --output outputs/p1-provider-smoke/grounding.json
+
+      - name: Upload bounded diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: p1-provider-smoke-${{ github.run_id }}
+          path: outputs/p1-provider-smoke/grounding.json
+          if-no-files-found: warn
+          retention-days: 7
