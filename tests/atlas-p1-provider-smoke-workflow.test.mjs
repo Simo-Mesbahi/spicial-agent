@@ -10,8 +10,12 @@ test('provider smoke is manual, protected, single-call and cannot release respon
   assert.match(workflow, /environment: \$\{\{ inputs\.qualification_environment \}\}/);
   assert.match(workflow, /GEMINI_API_KEY: \$\{\{ secrets\.GEMINI_API_KEY \}\}/);
   assert.match(workflow, /SMOKE_CONFIRM: \$\{\{ inputs\.confirm \}\}/);
+  assert.match(workflow, /type: choice\n        default: gemini-3\.5-flash-lite\n        options:\n          - gemini-3\.5-flash-lite\n          - gemini-3\.1-flash-lite/);
+  assert.match(workflow, /LLM_MODEL: \$\{\{ inputs\.model \}\}/);
+  assert.match(workflow, /\$\{LLM_MODEL\}[^\n]*gemini-3\.5-flash-lite[^\n]*gemini-3\.1-flash-lite/);
   assert.match(workflow, /\$\{SMOKE_CONFIRM\}[^\n]*P1_SMOKE[^\n]*refs\/heads\/main/);
   assert.doesNotMatch(workflow, /run:[^]*\$\{\{ inputs\.confirm \}\}/);
+  assert.doesNotMatch(workflow, /run:[^]*\$\{\{ inputs\.model \}\}/);
   assert.match(workflow, /group: p1-live-qualification/);
   assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/);
   assert.match(workflow, /P1_RELEASE_MODE: off/);
@@ -22,4 +26,5 @@ test('provider smoke is manual, protected, single-call and cannot release respon
     /node scripts\/evaluate-grounding\.mjs --live --offset 0 --max-cases 1 --max-retries 0 --output outputs\/p1-provider-smoke\/grounding\.json/,
   );
   assert.equal((workflow.match(/scripts\/evaluate-grounding\.mjs --live/g) ?? []).length, 1);
+  assert.match(workflow, /name: p1-provider-smoke-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
 });

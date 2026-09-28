@@ -7,6 +7,14 @@ on:
         description: 'Type P1_SMOKE to acknowledge one Gemini completion call'
         required: true
         type: string
+      model:
+        description: 'Gemini model for the one-call transport diagnostic'
+        required: true
+        type: choice
+        default: gemini-3.5-flash-lite
+        options:
+          - gemini-3.5-flash-lite
+          - gemini-3.1-flash-lite
       qualification_environment:
         description: 'Protected GitHub Environment containing the Gemini qualification key'
         required: true
@@ -29,7 +37,7 @@ jobs:
     env:
       SMOKE_CONFIRM: ${{ inputs.confirm }}
       LLM_PROVIDER: gemini
-      LLM_MODEL: gemini-3.5-flash-lite
+      LLM_MODEL: ${{ inputs.model }}
       LLM_BUDGET_MODE: free
       LLM_STRUCTURED_OUTPUT: json_schema
       LLM_REQUEST_TIMEOUT_MS: '60000'
@@ -45,6 +53,10 @@ jobs:
           set -euo pipefail
           if [[ "${SMOKE_CONFIRM}" != "P1_SMOKE" || "${GITHUB_REF}" != "refs/heads/main" ]]; then
             echo 'The one-call smoke requires P1_SMOKE and main.' >&2
+            exit 2
+          fi
+          if [[ "${LLM_MODEL}" != "gemini-3.5-flash-lite" && "${LLM_MODEL}" != "gemini-3.1-flash-lite" ]]; then
+            echo 'The one-call smoke requires an approved free-tier Gemini model.' >&2
             exit 2
           fi
           if [[ -z "${GEMINI_API_KEY:-}" ]]; then
@@ -73,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
-          name: p1-provider-smoke-${{ github.run_id }}
+          name: p1-provider-smoke-${{ github.run_id }}-${{ github.run_attempt }}
           path: outputs/p1-provider-smoke/grounding.json
           if-no-files-found: warn
           retention-days: 7

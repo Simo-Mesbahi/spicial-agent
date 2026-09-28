@@ -87,8 +87,13 @@ permits **one completion call and zero retries**, with no retrieval embeddings o
 Supabase access. The seven-day artifact contains only bounded diagnostics and
 synthetic evaluation metadata. A green smoke means this single request worked;
 it does not qualify P1.7, authorize release or predict the full run's latency.
-After another timeout, investigate provider/project capacity before any further
-full-run attempt.
+The default `gemini-3.5-flash-lite` matches the full qualification. After repeated
+provider `503` responses, the optional `gemini-3.1-flash-lite` choice makes one
+independent transport probe with the same key and project. It uses that model's
+prompt-constrained factual contract, so a green result diagnoses availability only;
+it cannot qualify the 3.5 model or replace its exact smoke. Each rerun writes an
+artifact named with both run ID and attempt number. Investigate provider/project
+capacity before any further full-run attempt.
 
 The selected environment must provide these GitHub Actions secrets:
 
