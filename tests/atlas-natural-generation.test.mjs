@@ -620,6 +620,36 @@ test('Natural generation prompt explicitly addresses run-13 human-review natural
   assert.equal(result.diagnostics.reason, null);
 });
 
+test('Natural generation focuses run-27 status and return answers on relevant facts', async (t) => {
+  const scenario = generationScenarios.find((row) => row.id === 'waiting-part-en');
+  const c = setup(t, scenario);
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    const system = payload.messages[0].content;
+    const request = JSON.parse(payload.messages[1].content);
+    assert.match(system, /Do not add warranty coverage, case update timestamps/i);
+    assert.match(system, /Never join separate evidence labels into one noun phrase/i);
+    assert.match(system, /state the recorded status without inventing a reason/i);
+    assert.ok(request.evidence.references['case.warrantyLabel']);
+    return response({
+      language: 'en',
+      sentences: [
+        {
+          text: 'Your television repair is waiting for a part.',
+          evidenceRefs: ['case.product', 'case.kindLabel', 'case.statusLabel'],
+        },
+        {
+          text: 'A return date has not been confirmed.',
+          evidenceRefs: ['case.confirmedEta'],
+        },
+      ],
+    });
+  });
+  const result = await generateNaturalDraft(c.env, c.input, providerTrace());
+  assert.equal(result.diagnostics.outcome, 'candidate_generated');
+  assert.equal(result.diagnostics.reason, null);
+});
+
 test('Natural generation rejects the exact run-12 French prose mislabeled as German', async (t) => {
   const scenario = generationScenarios.find((row) => row.id === 'refund-policy-de');
   const c = setup(t, scenario);
