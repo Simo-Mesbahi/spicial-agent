@@ -882,6 +882,18 @@ export function localizedCaseReply(
     'reference' | 'product' | 'status' | 'quote_cents' | 'refund_cents' | 'store' | 'updated_at'
   >,
 ): string {
+  // This frequent case status has a complete, authored sentence in each
+  // language. Avoid composing a grammatical prefix with a localized label.
+  if (currentCase.status === 'waiting_part') {
+    const reference = currentCase.reference;
+    if (language === 'en') return `Your repair case ${reference} is waiting for a part.`;
+    if (language === 'de')
+      return `Für Ihren Reparaturvorgang ${reference} wird derzeit auf ein Ersatzteil gewartet.`;
+    if (language === 'es')
+      return `Su reparación (expediente ${reference}) está a la espera de una pieza.`;
+    if (language === 'ar') return `إصلاح جهازك في الملف ${reference} بانتظار قطعة غيار.`;
+    return `Votre dossier de réparation ${reference} est en attente d’une pièce.`;
+  }
   const status = localizedStatusLabel(language, currentCase.status);
   const amount =
     currentCase.status === 'quote_pending' && Number.isSafeInteger(currentCase.quote_cents) && currentCase.quote_cents! >= 0
@@ -893,7 +905,6 @@ export function localizedCaseReply(
 
   if (language === 'en') {
     let text = `Your verified case ${currentCase.reference} for ${currentCase.product} is currently “${status}”.`;
-    if (currentCase.status === 'waiting_part') text += ' The repair is waiting for the required part; I will not invent a delivery date if none is recorded.';
     if (currentCase.status === 'quote_pending') text += amount ? ` The recorded quote is ${amount} and is awaiting your decision.` : ' The quote amount is not recorded.';
     if (currentCase.status === 'ready') text += ` The item is recorded as ready for pickup at ${currentCase.store}.`;
     if (currentCase.status === 'delayed') text += ' The delivery is recorded as delayed; no new confirmed date should be assumed unless it appears in the case.';
@@ -903,7 +914,6 @@ export function localizedCaseReply(
   }
   if (language === 'de') {
     let text = `Ihr verifizierter Vorgang ${currentCase.reference} für ${currentCase.product} hat aktuell den Status „${status}“.`;
-    if (currentCase.status === 'waiting_part') text += ' Die Reparatur wartet auf das benötigte Ersatzteil; ohne bestätigte Angabe nenne ich kein Lieferdatum.';
     if (currentCase.status === 'quote_pending') text += amount ? ` Der hinterlegte Kostenvoranschlag beträgt ${amount} und wartet auf Ihre Entscheidung.` : ' Der Betrag des Kostenvoranschlags ist nicht hinterlegt.';
     if (currentCase.status === 'ready') text += ` Der Artikel ist zur Abholung bei ${currentCase.store} vorgemerkt.`;
     if (currentCase.status === 'delayed') text += ' Die Lieferung ist als verspätet erfasst; ein neues Datum wird nur genannt, wenn es bestätigt im Vorgang steht.';
@@ -911,7 +921,6 @@ export function localizedCaseReply(
   }
   if (language === 'es') {
     let text = `Su expediente verificado ${currentCase.reference} para ${currentCase.product} está actualmente en estado «${status}».`;
-    if (currentCase.status === 'waiting_part') text += ' La reparación está esperando la pieza necesaria; no indicaré una fecha si no está confirmada en el expediente.';
     if (currentCase.status === 'quote_pending') text += amount ? ` El presupuesto registrado es de ${amount} y está pendiente de su decisión.` : ' El importe del presupuesto no está registrado.';
     if (currentCase.status === 'ready') text += ` El producto figura como listo para recoger en ${currentCase.store}.`;
     if (currentCase.status === 'delayed') text += ' La entrega figura como retrasada; no se debe suponer una nueva fecha si no está confirmada.';
@@ -919,7 +928,6 @@ export function localizedCaseReply(
   }
   if (language === 'ar') {
     let text = `حالة ملفك الموثق ${currentCase.reference} الخاص بـ ${currentCase.product} هي حاليًا «${status}».`;
-    if (currentCase.status === 'waiting_part') text += ' الإصلاح ينتظر قطعة الغيار المطلوبة، ولن أذكر تاريخًا غير مؤكد.';
     if (currentCase.status === 'quote_pending') text += amount ? ` عرض السعر المسجل هو ${amount} وينتظر قرارك.` : ' قيمة عرض السعر غير مسجلة.';
     if (currentCase.status === 'ready') text += ` المنتج مسجل كجاهز للاستلام من ${currentCase.store}.`;
     if (currentCase.status === 'delayed') text += ' التوصيل مسجل كمتأخر، ولن أفترض موعدًا جديدًا ما لم يكن مؤكدًا في الملف.';
