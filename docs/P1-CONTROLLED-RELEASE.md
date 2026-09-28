@@ -78,6 +78,18 @@ Use a preproduction environment with reviewer protection for this operation; its
 secrets are exposed only to the qualification job after the environment gate is
 approved.
 
+If the first factual-transport smoke times out repeatedly, do not repeat the full
+qualification just to test provider availability. Manually dispatch
+`.github/workflows/p1-provider-smoke.yml` from `main`, select the same protected
+environment and enter `P1_SMOKE`. It runs the exact first synthetic factual
+scenario with the same Gemini model, JSON schema and 20-second deadline, but
+permits **one completion call and zero retries**, with no retrieval embeddings or
+Supabase access. The seven-day artifact contains only bounded diagnostics and
+synthetic evaluation metadata. A green smoke means this single request worked;
+it does not qualify P1.7, authorize release or predict the full run's latency.
+After another timeout, investigate provider/project capacity before any further
+full-run attempt.
+
 The selected environment must provide these GitHub Actions secrets:
 
 - `SUPABASE_URL`;
