@@ -144,6 +144,68 @@ test('normalized P1 release artifact outranks conflicting raw log signals', () =
   );
 });
 
+test('workflow diagnostic identifies run-28 grounding timeouts from bounded normalized evidence', () => {
+  const diagnostic = buildWorkflowDiagnostic({
+    run: failedRun({
+      id: 36397728877,
+      run_number: 28,
+      head_sha: 'ec8f0eb3b89e0a4c86bcc06d2fa77806a134bc42',
+    }),
+    jobsResponse: failedJobs(),
+    logs: {},
+    artifactDocuments: [
+      {
+        path: '004-grounding-40.json',
+        json: {
+          status: 'incomplete',
+          releaseAllowed: false,
+          systemicTransportFailure: null,
+          decisionFailures: [{ outcome: 'abstained', reason: 'network_or_timeout', id: 'private' }],
+        },
+      },
+      {
+        path: '007-release-qualification.json',
+        json: { outcome: 'qualification_failed', automatedPassed: false, blocker: null },
+      },
+    ],
+  });
+  assert.equal(diagnostic.failure.rootCause.category, 'transport_timeout');
+  assert.equal(diagnostic.failure.rootCause.code, 'grounding_provider_timeout');
+  assert.equal(diagnostic.failure.rootCause.source, 'normalized_evaluation_artifact');
+  assert.equal(diagnostic.failure.rootCause.stage, 'grounding');
+  assert.equal(diagnostic.releaseImpact.blocked, true);
+  assert.doesNotMatch(JSON.stringify(diagnostic), /private/);
+});
+
+test('grounding artifact cannot override a normalized release blocker or inject a timeout', () => {
+  const timeout = {
+    path: '004-grounding-40.json',
+    json: {
+      status: 'incomplete',
+      releaseAllowed: false,
+      systemicTransportFailure: null,
+      decisionFailures: [{ outcome: 'abstained', reason: 'network_or_timeout' }],
+    },
+  };
+  const release = {
+    path: '007-release-qualification.json',
+    json: {
+      outcome: 'external_dependency_blocked',
+      blocker: { category: 'external_dependency', code: 'provider_daily_quota_exhausted' },
+    },
+  };
+  const base = { run: failedRun(), jobsResponse: failedJobs(), logs: {} };
+  assert.equal(
+    buildWorkflowDiagnostic({ ...base, artifactDocuments: [timeout, release] }).failure.rootCause.code,
+    'provider_daily_quota_exhausted',
+  );
+  timeout.json.decisionFailures[0].reason = 'network_or_timeout; secret';
+  assert.equal(
+    buildWorkflowDiagnostic({ ...base, artifactDocuments: [timeout] }).failure.rootCause.code,
+    'release_gate_failed',
+  );
+});
+
 test('workflow diagnostic never copies untrusted blocker codes, providers or model strings', () => {
   const diagnostic = buildWorkflowDiagnostic({
     run: failedRun(),

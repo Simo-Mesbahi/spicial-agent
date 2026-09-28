@@ -265,6 +265,7 @@ function signalFromRule(rule, source, extras = {}) {
 }
 
 function safeArtifactSignal(artifactDocuments) {
+  // A normalized release blocker has precedence regardless of ZIP entry order.
   for (const document of artifactDocuments) {
     const report = document?.json;
     if (!report || typeof report !== 'object') continue;
@@ -295,6 +296,11 @@ function safeArtifactSignal(artifactDocuments) {
         model: safeModel(blocker.model),
       });
     }
+  }
+
+  for (const document of artifactDocuments) {
+    const report = document?.json;
+    if (!report || typeof report !== 'object') continue;
 
     const systemic =
       report?.operational?.systemicTransportFailure ??
@@ -311,6 +317,37 @@ function safeArtifactSignal(artifactDocuments) {
           model: safeModel(report?.model),
         });
       }
+    }
+
+    // Run #28: the release report only said qualification_failed, while two
+    // normalized grounding batches recorded exhausted transient timeouts.
+    // Never inspect arbitrary prose, provider errors or scenario IDs here.
+    if (
+      /(?:^|-)grounding-\d+\.json$/.test(basename(document?.path ?? '')) &&
+      report.status === 'incomplete' &&
+      report.releaseAllowed === false &&
+      report.systemicTransportFailure === null &&
+      Array.isArray(report.decisionFailures) &&
+      report.decisionFailures.length > 0 &&
+      report.decisionFailures.length <= 20 &&
+      report.decisionFailures.every(
+        (failure) =>
+          failure?.outcome === 'abstained' &&
+          failure?.reason === 'network_or_timeout',
+      )
+    ) {
+      return {
+        category: 'transport_timeout',
+        code: 'grounding_provider_timeout',
+        scope: 'external',
+        retryable: true,
+        confidence: 'high',
+        action: 'inspect_provider_latency_and_retry_budget',
+        source: 'normalized_evaluation_artifact',
+        stage: 'grounding',
+        provider: null,
+        model: null,
+      };
     }
   }
   return null;
