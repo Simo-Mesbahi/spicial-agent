@@ -177,6 +177,58 @@ test('workflow diagnostic identifies run-28 grounding timeouts from bounded norm
   assert.doesNotMatch(JSON.stringify(diagnostic), /private/);
 });
 
+test('workflow diagnostic identifies run-29 invalid structured response without a false semantic failure', () => {
+  const report = {
+    kind: 'live-provider-synthetic-data',
+    mode: 'structured',
+    provider: 'gemini',
+    model: 'gemini-3.5-flash-lite',
+    semanticFailures: [],
+    operational: { fallbackCount: 1 },
+    rows: [
+      {
+        fallback: 'provider_unavailable',
+        fallbackReason: 'invalid_upstream_response',
+        providerCalls: 1,
+        response: 'private synthetic response',
+      },
+    ],
+  };
+  const diagnostic = buildWorkflowDiagnostic({
+    run: failedRun({
+      id: 36402982630,
+      run_number: 29,
+      head_sha: '2ac6e5307a738e46b5b8d83e7f2c0e1229beaa34',
+    }),
+    jobsResponse: failedJobs(),
+    logs: { '108195913860.log': '2026-09-28T09:40:39Z semanticFailures: []' },
+    artifactDocuments: [{ path: '009-structured.json', json: report }],
+  });
+  assert.equal(diagnostic.failure.rootCause.code, 'invalid_upstream_response');
+  assert.equal(diagnostic.failure.rootCause.category, 'runtime_integration');
+  assert.equal(diagnostic.failure.rootCause.scope, 'unknown');
+  assert.equal(diagnostic.failure.rootCause.source, 'normalized_evaluation_artifact');
+  assert.equal(diagnostic.releaseImpact.blocked, true);
+  assert.doesNotMatch(JSON.stringify(diagnostic), /private synthetic response/);
+
+  report.rows[0].fallbackReason = 'malicious arbitrary value';
+  const invalid = buildWorkflowDiagnostic({
+    run: failedRun(),
+    jobsResponse: failedJobs(),
+    artifactDocuments: [{ path: '009-structured.json', json: report }],
+  });
+  assert.equal(invalid.failure.rootCause.code, 'release_gate_failed');
+  report.semanticFailures = [{ id: 'synthetic-private', failedChecks: ['intent'] }];
+  assert.equal(
+    buildWorkflowDiagnostic({
+      run: failedRun(),
+      jobsResponse: failedJobs(),
+      artifactDocuments: [{ path: '009-structured.json', json: report }],
+    }).failure.rootCause.code,
+    'structured_semantic_mismatch',
+  );
+});
+
 test('grounding artifact cannot override a normalized release blocker or inject a timeout', () => {
   const timeout = {
     path: '004-grounding-40.json',

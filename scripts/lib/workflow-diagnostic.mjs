@@ -137,15 +137,6 @@ const SAFE_SIGNAL_RULES = [
     action: 'inspect_grounding_evidence',
   },
   {
-    needle: 'semanticfailures',
-    category: 'semantic_quality',
-    code: 'structured_semantic_mismatch',
-    scope: 'quality',
-    retryable: false,
-    confidence: 'medium',
-    action: 'inspect_structured_semantic_regression',
-  },
-  {
     needle: 'data_unavailable',
     category: 'database_transport',
     code: 'data_unavailable',
@@ -301,6 +292,58 @@ function safeArtifactSignal(artifactDocuments) {
   for (const document of artifactDocuments) {
     const report = document?.json;
     if (!report || typeof report !== 'object') continue;
+
+    if (
+      /(?:^|-)structured\.json$/.test(basename(document?.path ?? '')) &&
+      report.kind === 'live-provider-synthetic-data' &&
+      report.mode === 'structured' &&
+      Array.isArray(report.semanticFailures) &&
+      report.semanticFailures.length > 0 &&
+      report.semanticFailures.length <= 100
+    ) {
+      return {
+        category: 'semantic_quality',
+        code: 'structured_semantic_mismatch',
+        scope: 'quality',
+        retryable: false,
+        confidence: 'high',
+        action: 'inspect_structured_semantic_regression',
+        source: 'normalized_evaluation_artifact',
+        stage: 'structured',
+        provider: safeProvider(report.provider),
+        model: safeModel(report.model),
+      };
+    }
+
+    if (
+      /(?:^|-)structured\.json$/.test(basename(document?.path ?? '')) &&
+      report.kind === 'live-provider-synthetic-data' &&
+      report.mode === 'structured' &&
+      Array.isArray(report.semanticFailures) &&
+      report.semanticFailures.length === 0 &&
+      report.operational?.fallbackCount > 0 &&
+      Array.isArray(report.rows) &&
+      report.rows.length <= 100 &&
+      report.rows.some(
+        (row) =>
+          row?.fallback === 'provider_unavailable' &&
+          row?.fallbackReason === 'invalid_upstream_response' &&
+          row?.providerCalls === 1,
+      )
+    ) {
+      return {
+        category: 'runtime_integration',
+        code: 'invalid_upstream_response',
+        scope: 'unknown',
+        retryable: false,
+        confidence: 'high',
+        action: 'inspect_provider_response_contract',
+        source: 'normalized_evaluation_artifact',
+        stage: 'structured',
+        provider: safeProvider(report.provider),
+        model: safeModel(report.model),
+      };
+    }
 
     const systemic =
       report?.operational?.systemicTransportFailure ??
