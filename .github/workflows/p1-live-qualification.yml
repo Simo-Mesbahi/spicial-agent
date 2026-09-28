@@ -55,11 +55,13 @@ concurrency:
 
 jobs:
   qualify:
+    if: github.ref == 'refs/heads/main'
     name: bounded live qualification
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: ${{ inputs.qualification_environment }}
     env:
+      P1_CONFIRM: ${{ inputs.confirm }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -103,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.confirm }}" != "P1_RELEASE" ]]; then
+          if [[ "${P1_CONFIRM}" != "P1_RELEASE" ]]; then
             echo "Refusing live qualification: confirmation must equal P1_RELEASE." >&2
             exit 2
           fi

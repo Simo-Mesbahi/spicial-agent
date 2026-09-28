@@ -21,8 +21,12 @@ test('P1.7 live qualification workflow is manual-only and explicitly acknowledge
   assert.doesNotMatch(source, /^\s*pull_request:/m);
   assert.match(source, /Type P1_RELEASE/);
   assert.match(source, /inputs\.confirm/);
+  assert.match(source, /P1_CONFIRM: \$\{\{ inputs\.confirm \}\}/);
+  assert.match(source, /\$\{P1_CONFIRM\}[^\n]*P1_RELEASE/);
+  assert.doesNotMatch(source, /run: \|[^]*\$\{\{ inputs\.confirm \}\}/);
   assert.match(source, /"P1_RELEASE"/);
   assert.match(source, /refs\/heads\/main/);
+  assert.match(source, /if: github\.ref == 'refs\/heads\/main'/);
   assert.match(source, /qualification_environment:/);
   assert.match(source, /type: environment/);
   assert.match(source, /environment: \$\{\{ inputs\.qualification_environment \}\}/);
