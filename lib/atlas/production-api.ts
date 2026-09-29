@@ -1,4 +1,6 @@
 import { caseSchema } from './case-schema';
+import { caseListWindowSchema } from './admin-case-list';
+import { caseKinds, caseStatuses } from './case-management';
 import { bindProductionCaseSession, caseSessionHash, CaseAccessError } from './case-adapter';
 import { productionChat } from './production-chat';
 import { releaseConfigurationState } from './p1-release';
@@ -768,8 +770,18 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
     const organizationId = params.get('organizationId') ?? '';
     if (!session.me.memberships.some((membership) => membership.organization_id === organizationId))
       fail(403, 'Organisation non autorisée.', 'organization_denied');
-    const limit = Math.max(1, Math.min(Number(params.get('limit') ?? 50) || 50, 100));
-    const offset = Math.max(0, Number(params.get('offset') ?? 0) || 0);
+    const window = caseListWindowSchema.safeParse({
+      limit: params.get('limit') ?? 50,
+      offset: params.get('offset') ?? 0,
+    });
+    if (!window.success) fail(400, 'Pagination invalide.', 'invalid_case_pagination');
+    const { limit, offset } = window.data;
+    const status = params.get('status') || null;
+    const kind = params.get('kind') || null;
+    if (status && !z.enum(caseStatuses).safeParse(status).success)
+      fail(400, 'Statut invalide.', 'invalid_case_status');
+    if (kind && !z.enum(caseKinds).safeParse(kind).success)
+      fail(400, 'Type de dossier invalide.', 'invalid_case_kind');
     const serviceType = params.get('serviceType') || null;
     if (serviceType && !['sav', 'customer_service'].includes(serviceType))
       fail(400, 'Service invalide.', 'invalid_service_type');
@@ -784,8 +796,8 @@ async function handleAdminRoutes(req: Request, env: ProductionEnv, path: string)
         p_limit: limit,
         p_offset: offset,
         p_search: (params.get('search') ?? '').slice(0, 120),
-        p_status: params.get('status') || null,
-        p_kind: params.get('kind') || null,
+        p_status: status,
+        p_kind: kind,
         p_service_type: serviceType,
         p_archive_filter: archiveFilter,
       },

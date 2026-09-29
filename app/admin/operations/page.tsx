@@ -2,6 +2,12 @@
 
 import { useRouter } from 'next/navigation';
 import {
+  CASE_PAGE_SIZE,
+  loadAdminCasePage,
+  type CaseListFilters,
+} from '@/lib/atlas/admin-case-list';
+import { latestRequest } from '@/lib/atlas/latest-request';
+import {
   productionRequest,
   ProductionRequestError as RequestError,
 } from '@/lib/atlas/production-client';
@@ -23,6 +29,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -232,12 +239,6 @@ type MutationResult = {
   version: number;
 };
 
-type CaseListFilters = {
-  search: string;
-  service: '' | CaseServiceType;
-  archive: 'active' | 'archived' | 'all';
-};
-
 type CreateDraft = {
   serviceType: CaseServiceType;
   kind: CaseKind;
@@ -431,12 +432,21 @@ export default function AdminOperationsPage() {
   const [queue, setQueue] = useState<Queue>({ priorities: [], handoffs: [] });
   const [cases, setCases] = useState<AdminCase[]>([]);
   const [caseTotal, setCaseTotal] = useState(0);
+  const [caseOffset, setCaseOffset] = useState(0);
+  const [appliedFilters, setAppliedFilters] = useState<CaseListFilters>({
+    search: '',
+    service: '',
+    archive: 'active',
+  });
+  const listReads = useRef(latestRequest());
+  const detailReads = useRef(latestRequest());
   const [selectedCase, setSelectedCase] = useState<CaseDetail | null>(null);
   const [audit, setAudit] = useState<Audit | null>(null);
   const [formOptions, setFormOptions] = useState<CaseFormOptions>({ stores: [] });
   const [search, setSearch] = useState('');
   const [serviceFilter, setServiceFilter] = useState<'' | CaseServiceType>('');
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'all'>('active');
+  const [statusFilter, setStatusFilter] = useState<'' | CaseStatus>('');
   const [note, setNote] = useState('');
   const [noteVisible, setNoteVisible] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -487,6 +497,31 @@ export default function AdminOperationsPage() {
   const nextStatuses = selectedCase
     ? allowedNextStatuses(selectedCase.service_type, selectedCase.status)
     : [];
+  const unsavedCase = Boolean(
+    (editing && selectedCase && editDraft &&
+      JSON.stringify(editDraft) !== JSON.stringify(editDraftFromCase(selectedCase))) ||
+    note.trim() || transitionNote.trim(),
+  );
+  useEffect(() => {
+    if (!unsavedCase) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsavedCase]);
+  function confirmCaseNavigation() {
+    return !unsavedCase || window.confirm('Des modifications du dossier ne sont pas enregistrées. Les abandonner ?');
+  }
+  function clearCaseDraft() {
+    detailReads.current.cancel();
+    setSelectedCase(null);
+    setEditing(false);
+    setEditDraft(null);
+    setNote('');
+    setTransitionNote('');
+  }
 
   const handleAuthError = useCallback(
     (cause: unknown) => {
@@ -494,10 +529,16 @@ export default function AdminOperationsPage() {
         cause instanceof RequestError &&
         (cause.status === 401 || (cause.status === 403 && cause.code === 'mfa_required'))
       ) {
+        listReads.current.cancel();
+        detailReads.current.cancel();
         setAdmin(null);
         setOverview(null);
         setSelectedCase(null);
         setCases([]);
+        setCaseTotal(0);
+        setCaseOffset(0);
+        setQueue({ priorities: [], handoffs: [] });
+        setOneTimeCode(null);
         setAudit(null);
         router.replace('/admin');
         return true;
@@ -510,9 +551,10 @@ export default function AdminOperationsPage() {
   const loadCase = useCallback(async (caseId: string, orgId: string) => {
     if (!caseId || !orgId) return null;
     const params = new URLSearchParams({ organizationId: orgId, caseId });
-    const result = await request<{ case: CaseDetail }>(
-      `/api/production/admin/operations/case?${params}`,
+    const result = await detailReads.current.run((signal) =>
+      request<{ case: CaseDetail }>(`/api/production/admin/operations/case?${params}`, { signal }),
     );
+    if (!result) return null;
     setSelectedCase(result.case);
     setEditing(false);
     setEditDraft(null);
@@ -556,8 +598,7 @@ export default function AdminOperationsPage() {
   );
 
   useEffect(() => {
-    if (!showCreate || selectedCustomer || customerLookupQuery.trim().length < 3)
-      return;
+    if (!showCreate || selectedCustomer || customerLookupQuery.trim().length < 3) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -596,8 +637,7 @@ export default function AdminOperationsPage() {
   ]);
 
   useEffect(() => {
-    if (!showCreate || selectedProduct || productLookupQuery.trim().length < 3)
-      return;
+    if (!showCreate || selectedProduct || productLookupQuery.trim().length < 3) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -635,24 +675,17 @@ export default function AdminOperationsPage() {
     showCreate,
   ]);
 
-  const loadCaseList = useCallback(
-    async (orgId: string, filters: CaseListFilters) => {
-      const params = new URLSearchParams({
-        organizationId: orgId,
-        search: filters.search,
-        limit: '30',
-        archive: filters.archive,
-      });
-      if (filters.service) params.set('serviceType', filters.service);
-      const result = await request<{ items: AdminCase[]; total: number }>(
-        `/api/production/admin/cases?${params}`,
+  const loadCaseList = useCallback(async (orgId: string, filters: CaseListFilters, offset = 0) => {
+    const result = await listReads.current.run((signal) =>
+      loadAdminCasePage<AdminCase>(request, orgId, filters, offset, signal),
       );
+    if (!result) return null;
       setCases(result.items);
       setCaseTotal(result.total);
+    setCaseOffset(result.offset);
+    setAppliedFilters(result.filters);
       return result;
-    },
-    [],
-  );
+  }, []);
 
   const loadAll = useCallback(
     async (orgId: string, role: Role | undefined, filters: CaseListFilters) => {
@@ -661,54 +694,54 @@ export default function AdminOperationsPage() {
       setError('');
       try {
         const params = new URLSearchParams({ organizationId: orgId });
+        const result = await listReads.current.run(async (signal) => {
         const overviewPromise = request<{ overview: Overview }>(
           `/api/production/admin/operations/overview?${params}`,
+            { signal },
         );
         const queuePromise = request<{ queue: Queue }>(
           `/api/production/admin/operations/queue?${params}`,
+            { signal },
         );
-        const listPromise = loadCaseList(orgId, filters);
+          const listPromise = loadAdminCasePage<AdminCase>(request, orgId, filters, 0, signal);
         const auditPromise =
           role === 'super_admin' || role === 'analyst'
-            ? request<{ audit: Audit }>(
-                `/api/production/admin/operations/audit?${params}`,
-              )
+              ? request<{ audit: Audit }>(`/api/production/admin/operations/audit?${params}`, {
+                  signal,
+                })
             : Promise.resolve(null);
 
-        const [overviewResult, queueResult, , auditResult] = await Promise.all([
-          overviewPromise,
-          queuePromise,
-          listPromise,
-          auditPromise,
-        ]);
-
+          return Promise.all([overviewPromise, queuePromise, listPromise, auditPromise]);
+        });
+        if (!result) return;
+        const [overviewResult, queueResult, listResult, auditResult] = result;
         setOverview(overviewResult.overview);
         setQueue(queueResult.queue);
         setAudit(auditResult?.audit ?? null);
+        setCases(listResult.items);
+        setCaseTotal(listResult.total);
+        setCaseOffset(listResult.offset);
+        setAppliedFilters(listResult.filters);
       } catch (cause) {
         if (!handleAuthError(cause))
-          setError(
-            cause instanceof Error ? cause.message : 'Chargement opérationnel impossible.',
-          );
+          setError(cause instanceof Error ? cause.message : 'Chargement opérationnel impossible.');
       } finally {
         setBusy(false);
       }
     },
-    [handleAuthError, loadCaseList],
+    [handleAuthError],
   );
 
   useEffect(() => {
     let active = true;
+    const listRequests = listReads.current;
+    const detailRequests = detailReads.current;
     void request<{ admin: Admin }>('/api/production/admin/session')
       .then(async (result) => {
         if (!active) return;
         const first = result.admin.memberships[0];
         if (!first)
-          throw new RequestError(
-            'Aucune organisation autorisée.',
-            403,
-            'organization_denied',
-          );
+          throw new RequestError('Aucune organisation autorisée.', 403, 'organization_denied');
         setAdmin(result.admin);
         setOrganizationId(first.organizationId);
         setCreateDraft(createDraftForRole(first.role));
@@ -727,20 +760,22 @@ export default function AdminOperationsPage() {
       });
     return () => {
       active = false;
+      listRequests.cancel();
+      detailRequests.cancel();
     };
   }, [handleAuthError, loadAll]);
 
   async function openCase(caseId: string) {
+    if (busy || !confirmCaseNavigation()) return;
     setBusy(true);
     setError('');
     setSuccess('');
     try {
-      await loadCase(caseId, organizationId);
+      const result = await loadCase(caseId, organizationId);
+      if (result) setNote('');
     } catch (cause) {
       if (!handleAuthError(cause))
-        setError(
-          cause instanceof Error ? cause.message : 'Détail du dossier indisponible.',
-        );
+        setError(cause instanceof Error ? cause.message : 'Détail du dossier indisponible.');
     } finally {
       setBusy(false);
     }
@@ -748,16 +783,17 @@ export default function AdminOperationsPage() {
 
   async function applySearch(event: FormEvent) {
     event.preventDefault();
-    if (!organizationId) return;
+    if (!organizationId || busy || !confirmCaseNavigation()) return;
     setBusy(true);
     setError('');
     try {
-      await loadCaseList(organizationId, {
+      const result = await loadCaseList(organizationId, {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
-      setSelectedCase(null);
+      if (result) clearCaseDraft();
     } catch (cause) {
       if (!handleAuthError(cause))
         setError(cause instanceof Error ? cause.message : 'Recherche impossible.');
@@ -769,21 +805,43 @@ export default function AdminOperationsPage() {
   async function changeFilters(
     nextService: '' | CaseServiceType,
     nextArchive: 'active' | 'archived' | 'all',
+    nextStatus: '' | CaseStatus = statusFilter,
   ) {
+    if (busy || !confirmCaseNavigation()) return;
     setServiceFilter(nextService);
     setArchiveFilter(nextArchive);
+    setStatusFilter(nextStatus);
     setBusy(true);
     setError('');
     try {
-      await loadCaseList(organizationId, {
+      const result = await loadCaseList(organizationId, {
         search,
         service: nextService,
         archive: nextArchive,
+        status: nextStatus,
       });
-      setSelectedCase(null);
+      if (result) clearCaseDraft();
     } catch (cause) {
+      setServiceFilter(appliedFilters.service);
+      setArchiveFilter(appliedFilters.archive);
+      setStatusFilter(appliedFilters.status ?? '');
       if (!handleAuthError(cause))
         setError(cause instanceof Error ? cause.message : 'Filtrage impossible.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changePage(offset: number) {
+    if (busy || offset < 0 || offset >= caseTotal || !confirmCaseNavigation()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await loadCaseList(organizationId, appliedFilters, offset);
+      if (result) clearCaseDraft();
+    } catch (cause) {
+      if (!handleAuthError(cause))
+        setError(cause instanceof Error ? cause.message : 'Chargement de la page impossible.');
     } finally {
       setBusy(false);
     }
@@ -870,13 +928,12 @@ export default function AdminOperationsPage() {
     setSuccess('');
     try {
       const customer =
-        !selectedCustomer && (
-        createDraft.customerExternalId ||
+        !selectedCustomer &&
+        (createDraft.customerExternalId ||
         createDraft.customerFirstName ||
         createDraft.customerLastName ||
         createDraft.customerEmail ||
-        createDraft.customerPhone
-        )
+          createDraft.customerPhone)
           ? {
               externalId: createDraft.customerExternalId || null,
               firstName: createDraft.customerFirstName || null,
@@ -885,7 +942,8 @@ export default function AdminOperationsPage() {
               phone: createDraft.customerPhone || null,
             }
           : null;
-      const product = !selectedProduct && createDraft.productName
+      const product =
+        !selectedProduct && createDraft.productName
         ? {
             externalId: createDraft.productExternalId || null,
             sku: createDraft.productSku || null,
@@ -928,6 +986,7 @@ export default function AdminOperationsPage() {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
       await loadCase(result.id, organizationId);
     } catch (cause) {
@@ -949,9 +1008,7 @@ export default function AdminOperationsPage() {
     } catch (cause) {
       if (!handleAuthError(cause))
         setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Préparation de la modification impossible.',
+          cause instanceof Error ? cause.message : 'Préparation de la modification impossible.',
         );
     }
   }
@@ -964,9 +1021,7 @@ export default function AdminOperationsPage() {
     setSuccess('');
     try {
       const caseId = selectedCase.id;
-      const result = await request<MutationResult>(
-        '/api/production/admin/operations/case/update',
-        {
+      const result = await request<MutationResult>('/api/production/admin/operations/case/update', {
           method: 'POST',
           body: JSON.stringify({
             organizationId,
@@ -986,14 +1041,14 @@ export default function AdminOperationsPage() {
             estimatedAt: toIsoDateTime(editDraft.estimatedAt),
             requestId: crypto.randomUUID(),
           }),
-        },
-      );
+      });
       setSuccess(`Dossier ${result.reference} mis à jour et audité.`);
       setEditing(false);
       await loadAll(organizationId, membership.role, {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
       await loadCase(caseId, organizationId);
     } catch (cause) {
@@ -1027,13 +1082,12 @@ export default function AdminOperationsPage() {
           }),
         },
       );
-      setSuccess(
-        `${result.reference} : statut « ${caseStatusLabels[result.status]} » enregistré.`,
-      );
+      setSuccess(`${result.reference} : statut « ${caseStatusLabels[result.status]} » enregistré.`);
       await loadAll(organizationId, membership.role, {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
       await loadCase(caseId, organizationId);
     } catch (cause) {
@@ -1075,6 +1129,7 @@ export default function AdminOperationsPage() {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
       await loadCase(caseId, organizationId);
     } catch (cause) {
@@ -1117,13 +1172,12 @@ export default function AdminOperationsPage() {
       setArchiveReady(false);
       setArchiveReason('');
       setArchiveConfirmed(false);
-      setSuccess(
-        `Dossier ${result.reference} archivé. Les accès client actifs ont été révoqués.`,
-      );
+      setSuccess(`Dossier ${result.reference} archivé. Les accès client actifs ont été révoqués.`);
       await loadAll(organizationId, membership.role, {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -1162,6 +1216,7 @@ export default function AdminOperationsPage() {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
       await loadCase(caseId, organizationId);
     } catch (cause) {
@@ -1191,6 +1246,7 @@ export default function AdminOperationsPage() {
         search,
         service: serviceFilter,
         archive: archiveFilter,
+        status: statusFilter,
       });
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -1203,9 +1259,7 @@ export default function AdminOperationsPage() {
   async function copyOneTimeCode() {
     if (!oneTimeCode) return;
     try {
-      await navigator.clipboard.writeText(
-        `${oneTimeCode.reference} · ${oneTimeCode.code}`,
-      );
+      await navigator.clipboard.writeText(`${oneTimeCode.reference} · ${oneTimeCode.code}`);
       setSuccess('Référence et code copiés.');
     } catch {
       setError('Copie automatique indisponible. Recopiez le code affiché.');
@@ -1232,13 +1286,11 @@ export default function AdminOperationsPage() {
           <h1>Centre opérationnel indisponible</h1>
           <div className="admin-ops-alert error" role="alert">
             <AlertTriangle size={18} />
-            <span>
-              {error || 'Connectez-vous pour accéder à votre organisation.'}
-            </span>
+            <span>{error || 'Connectez-vous pour accéder à votre organisation.'}</span>
           </div>
           <p>
-            Aucun indicateur ne peut être affiché tant que la connexion et le chargement
-            ne sont pas validés.
+            Aucun indicateur ne peut être affiché tant que la connexion et le chargement ne sont pas
+            validés.
           </p>
           {admin && (
             <button
@@ -1248,6 +1300,7 @@ export default function AdminOperationsPage() {
                   search,
                   service: serviceFilter,
                   archive: archiveFilter,
+                  status: statusFilter,
                 })
               }
             >
@@ -1268,17 +1321,26 @@ export default function AdminOperationsPage() {
           {admin.memberships.length > 1 && (
             <select
               aria-label="Organisation"
+              disabled={busy}
               value={organizationId}
               onChange={(event) => {
+                if (!confirmCaseNavigation()) return;
                 const value = event.target.value;
-                const next = admin.memberships.find(
-                  (item) => item.organizationId === value,
-                );
+                const next = admin.memberships.find((item) => item.organizationId === value);
                 setOrganizationId(value);
                 setSearch('');
                 setServiceFilter('');
                 setArchiveFilter('active');
-                setSelectedCase(null);
+                setStatusFilter('');
+                listReads.current.cancel();
+                detailReads.current.cancel();
+                setCases([]);
+                setCaseTotal(0);
+                setCaseOffset(0);
+                setOverview(null);
+                setQueue({ priorities: [], handoffs: [] });
+                setAudit(null);
+                clearCaseDraft();
                 setShowCreate(false);
                 setOneTimeCode(null);
                 setSelectedCustomer(null);
@@ -1318,6 +1380,7 @@ export default function AdminOperationsPage() {
                 search,
                 service: serviceFilter,
                 archive: archiveFilter,
+                status: statusFilter,
               })
             }
           >
@@ -1334,8 +1397,8 @@ export default function AdminOperationsPage() {
             </span>
             <h1>Agir sur ce qui compte maintenant.</h1>
             <p>
-              Création, cycle de vie, accès client, priorités et audit sur des données
-              réellement enregistrées.
+              Création, cycle de vie, accès client, priorités et audit sur des données réellement
+              enregistrées.
             </p>
           </div>
           <aside>
@@ -1371,8 +1434,8 @@ export default function AdminOperationsPage() {
               <span>
                 <strong>Code d’accès à transmettre une seule fois</strong>
                 <small>
-                  {oneTimeCode.reference} · ce code n’est jamais stocké en clair et ne
-                  pourra pas être réaffiché.
+                  {oneTimeCode.reference} · ce code n’est jamais stocké en clair et ne pourra pas
+                  être réaffiché.
                 </small>
               </span>
             </div>
@@ -1395,11 +1458,7 @@ export default function AdminOperationsPage() {
                 <p>NOUVEAU DOSSIER</p>
                 <h2>Créer un dossier SAV ou Service client</h2>
               </div>
-              <button
-                className="ghost"
-                type="button"
-                onClick={() => setShowCreate(false)}
-              >
+              <button className="ghost" type="button" onClick={() => setShowCreate(false)}>
                 <X size={16} /> Fermer
               </button>
             </header>
@@ -1501,11 +1560,7 @@ export default function AdminOperationsPage() {
                             .join(' · ') || 'Fiche client existante'}
                         </small>
                       </span>
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={clearCustomerSelection}
-                      >
+                      <button className="ghost" type="button" onClick={clearCustomerSelection}>
                         <X size={15} /> Changer
                       </button>
                     </div>
@@ -1528,14 +1583,15 @@ export default function AdminOperationsPage() {
                             autoComplete="off"
                           />
                           {customerLookupBusy && (
-                            <LoaderCircle className="spin" size={16} aria-label="Recherche en cours" />
+                            <LoaderCircle
+                              className="spin"
+                              size={16}
+                              aria-label="Recherche en cours"
+                            />
                           )}
                         </span>
                       </label>
-                      <div
-                        className="admin-ops-entity-status"
-                        aria-live="polite"
-                      >
+                      <div className="admin-ops-entity-status" aria-live="polite">
                         {customerLookupError && (
                           <span className="error">{customerLookupError}</span>
                         )}
@@ -1549,8 +1605,8 @@ export default function AdminOperationsPage() {
                           customerLookupQuery.trim().length >= 3 &&
                           customerLookupResults.length === 0 && (
                             <span>
-                              Aucun client existant trouvé. Vous pouvez renseigner une
-                              nouvelle fiche ci-dessous.
+                              Aucun client existant trouvé. Vous pouvez renseigner une nouvelle
+                              fiche ci-dessous.
                             </span>
                           )}
                       </div>
@@ -1683,11 +1739,7 @@ export default function AdminOperationsPage() {
                             .join(' · ') || 'Produit existant'}
                         </small>
                       </span>
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={clearProductSelection}
-                      >
+                      <button className="ghost" type="button" onClick={clearProductSelection}>
                         <X size={15} /> Changer
                       </button>
                     </div>
@@ -1710,17 +1762,16 @@ export default function AdminOperationsPage() {
                             autoComplete="off"
                           />
                           {productLookupBusy && (
-                            <LoaderCircle className="spin" size={16} aria-label="Recherche en cours" />
+                            <LoaderCircle
+                              className="spin"
+                              size={16}
+                              aria-label="Recherche en cours"
+                            />
                           )}
                         </span>
                       </label>
-                      <div
-                        className="admin-ops-entity-status"
-                        aria-live="polite"
-                      >
-                        {productLookupError && (
-                          <span className="error">{productLookupError}</span>
-                        )}
+                      <div className="admin-ops-entity-status" aria-live="polite">
+                        {productLookupError && <span className="error">{productLookupError}</span>}
                         {!productLookupError &&
                           productLookupQuery.trim().length > 0 &&
                           productLookupQuery.trim().length < 3 && (
@@ -1731,8 +1782,8 @@ export default function AdminOperationsPage() {
                           productLookupQuery.trim().length >= 3 &&
                           productLookupResults.length === 0 && (
                             <span>
-                              Aucun produit existant trouvé. Vous pouvez renseigner un
-                              nouveau produit ci-dessous.
+                              Aucun produit existant trouvé. Vous pouvez renseigner un nouveau
+                              produit ci-dessous.
                             </span>
                           )}
                       </div>
@@ -1973,10 +2024,7 @@ export default function AdminOperationsPage() {
                   <ShieldCheck size={15} />
                   Référence générée côté serveur · code d’accès haché · action auditée
                 </span>
-                <button
-                  type="submit"
-                  disabled={busy || createDraft.title.trim().length < 2}
-                >
+                <button type="submit" disabled={busy || createDraft.title.trim().length < 2}>
                   {busy ? <LoaderCircle className="spin" size={16} /> : <FilePlus2 size={16} />}
                   Créer le dossier
                 </button>
@@ -2110,10 +2158,7 @@ export default function AdminOperationsPage() {
                           </button>
                         )}
                         {item.case_id && (
-                          <button
-                            className="ghost"
-                            onClick={() => void openCase(item.case_id!)}
-                          >
+                          <button className="ghost" onClick={() => void openCase(item.case_id!)}>
                             <FileSearch size={15} /> Dossier
                           </button>
                         )}
@@ -2152,12 +2197,10 @@ export default function AdminOperationsPage() {
               />
               <select
                 aria-label="Filtrer par service"
+                disabled={busy}
                 value={serviceFilter}
                 onChange={(event) =>
-                  void changeFilters(
-                    event.target.value as '' | CaseServiceType,
-                    archiveFilter,
-                  )
+                  void changeFilters(event.target.value as '' | CaseServiceType, archiveFilter)
                 }
               >
                 <option value="">Tous les services</option>
@@ -2166,6 +2209,7 @@ export default function AdminOperationsPage() {
               </select>
               <select
                 aria-label="Filtrer les archives"
+                disabled={busy}
                 value={archiveFilter}
                 onChange={(event) =>
                   void changeFilters(
@@ -2178,13 +2222,33 @@ export default function AdminOperationsPage() {
                 <option value="archived">Archivés</option>
                 <option value="all">Tous</option>
               </select>
+              <select
+                aria-label="Filtrer par statut"
+                value={statusFilter}
+                disabled={busy}
+                onChange={(event) =>
+                  void changeFilters(
+                    serviceFilter,
+                    archiveFilter,
+                    event.target.value as '' | CaseStatus,
+                  )
+                }
+              >
+                <option value="">Tous les statuts</option>
+                {Object.entries(caseStatusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
               <button disabled={busy}>Rechercher</button>
             </form>
-            <div className="admin-ops-case-results">
+            <div className="admin-ops-case-results" aria-busy={busy}>
               {cases.map((item) => (
                 <button
                   className={selectedCase?.id === item.id ? 'active' : ''}
                   key={item.id}
+                  disabled={busy}
                   onClick={() => void openCase(item.id)}
                 >
                   <span>
@@ -2197,7 +2261,7 @@ export default function AdminOperationsPage() {
                     <b>
                       {item.archived_at
                         ? 'Archivé'
-                        : caseStatusLabels[item.status] ?? item.status}
+                        : (caseStatusLabels[item.status] ?? item.status)}
                     </b>
                     <small>{formatDate(item.updated_at)}</small>
                   </span>
@@ -2211,6 +2275,29 @@ export default function AdminOperationsPage() {
                 </div>
               )}
             </div>
+            <nav className="admin-ops-pagination" aria-label="Pages des dossiers">
+              <span role="status">
+                {caseTotal === 0
+                  ? '0 dossier'
+                  : `${caseOffset + 1}–${caseOffset + cases.length} sur ${caseTotal} dossiers`}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  disabled={busy || caseOffset === 0}
+                  onClick={() => void changePage(Math.max(0, caseOffset - CASE_PAGE_SIZE))}
+                >
+                  Précédent
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || caseOffset + cases.length >= caseTotal || cases.length === 0}
+                  onClick={() => void changePage(caseOffset + CASE_PAGE_SIZE)}
+                >
+                  Suivant
+                </button>
+              </div>
+            </nav>
           </article>
 
           <article className="admin-ops-panel">
@@ -2221,9 +2308,7 @@ export default function AdminOperationsPage() {
               </div>
               {selectedCase && (
                 <span>
-                  {selectedCase.archived_at
-                    ? 'Archivé'
-                    : caseStatusLabels[selectedCase.status]}
+                  {selectedCase.archived_at ? 'Archivé' : caseStatusLabels[selectedCase.status]}
                 </span>
               )}
             </header>
@@ -2242,9 +2327,7 @@ export default function AdminOperationsPage() {
                   <div>
                     <small>Client</small>
                     <strong>{customerLabel(selectedCase.customer)}</strong>
-                    <span>
-                      {selectedCase.store?.name ?? 'Magasin non renseigné'}
-                    </span>
+                    <span>{selectedCase.store?.name ?? 'Magasin non renseigné'}</span>
                   </div>
                   <div>
                     <small>Échéance</small>
@@ -2262,8 +2345,7 @@ export default function AdminOperationsPage() {
                     <span>
                       <strong>Dossier archivé le {formatDate(selectedCase.archived_at)}</strong>
                       <small>
-                        {selectedCase.archive_reason ??
-                          'Aucune raison d’archivage renseignée.'}
+                        {selectedCase.archive_reason ?? 'Aucune raison d’archivage renseignée.'}
                       </small>
                     </span>
                   </div>
@@ -2305,9 +2387,7 @@ export default function AdminOperationsPage() {
                           value={editDraft.description}
                           onChange={(event) =>
                             setEditDraft((draft) =>
-                              draft
-                                ? { ...draft, description: event.target.value }
-                                : draft,
+                              draft ? { ...draft, description: event.target.value } : draft,
                             )
                           }
                         />
@@ -2318,9 +2398,7 @@ export default function AdminOperationsPage() {
                           value={editDraft.storeId}
                           onChange={(event) =>
                             setEditDraft((draft) =>
-                              draft
-                                ? { ...draft, storeId: event.target.value }
-                                : draft,
+                              draft ? { ...draft, storeId: event.target.value } : draft,
                             )
                           }
                         >
@@ -2362,9 +2440,7 @@ export default function AdminOperationsPage() {
                           value={editDraft.warrantyLabel}
                           onChange={(event) =>
                             setEditDraft((draft) =>
-                              draft
-                                ? { ...draft, warrantyLabel: event.target.value }
-                                : draft,
+                              draft ? { ...draft, warrantyLabel: event.target.value } : draft,
                             )
                           }
                         />
@@ -2417,9 +2493,7 @@ export default function AdminOperationsPage() {
                           value={editDraft.deliveryMode}
                           onChange={(event) =>
                             setEditDraft((draft) =>
-                              draft
-                                ? { ...draft, deliveryMode: event.target.value }
-                                : draft,
+                              draft ? { ...draft, deliveryMode: event.target.value } : draft,
                             )
                           }
                         />
@@ -2431,9 +2505,7 @@ export default function AdminOperationsPage() {
                           value={editDraft.estimatedAt}
                           onChange={(event) =>
                             setEditDraft((draft) =>
-                              draft
-                                ? { ...draft, estimatedAt: event.target.value }
-                                : draft,
+                              draft ? { ...draft, estimatedAt: event.target.value } : draft,
                             )
                           }
                         />
@@ -2465,16 +2537,12 @@ export default function AdminOperationsPage() {
                   </div>
                   <div>
                     <small>Devis</small>
-                    <strong>
-                      {formatMoney(selectedCase.quote_cents, selectedCase.currency)}
-                    </strong>
+                    <strong>{formatMoney(selectedCase.quote_cents, selectedCase.currency)}</strong>
                     <span>Montant enregistré</span>
                   </div>
                   <div>
                     <small>Remboursement</small>
-                    <strong>
-                      {formatMoney(selectedCase.refund_cents, selectedCase.currency)}
-                    </strong>
+                    <strong>{formatMoney(selectedCase.refund_cents, selectedCase.currency)}</strong>
                     <span>{selectedCase.delivery_mode ?? 'Mode non renseigné'}</span>
                   </div>
                 </div>
@@ -2486,8 +2554,7 @@ export default function AdminOperationsPage() {
                       <div>
                         <strong>Faire évoluer le dossier</strong>
                         <small>
-                          Seules les transitions autorisées par le cycle métier sont
-                          proposées.
+                          Seules les transitions autorisées par le cycle métier sont proposées.
                         </small>
                       </div>
                     </header>
@@ -2522,9 +2589,7 @@ export default function AdminOperationsPage() {
                         <input
                           type="checkbox"
                           checked={transitionVisible}
-                          onChange={(event) =>
-                            setTransitionVisible(event.target.checked)
-                          }
+                          onChange={(event) => setTransitionVisible(event.target.checked)}
                         />
                         <span>
                           {transitionVisible
@@ -2559,9 +2624,7 @@ export default function AdminOperationsPage() {
                           onChange={(event) => setNoteVisible(event.target.checked)}
                         />
                         <span>
-                          {noteVisible
-                            ? 'Visible par le client'
-                            : 'Note interne uniquement'}
+                          {noteVisible ? 'Visible par le client' : 'Note interne uniquement'}
                         </span>
                       </label>
                       <button disabled={busy || note.trim().length < 3}>
@@ -2577,9 +2640,7 @@ export default function AdminOperationsPage() {
                       <ShieldCheck size={16} />
                       <div>
                         <strong>Actions sensibles</strong>
-                        <small>
-                          Confirmation explicite, MFA actif et journal d’audit.
-                        </small>
+                        <small>Confirmation explicite, MFA actif et journal d’audit.</small>
                       </div>
                     </header>
 
@@ -2589,8 +2650,7 @@ export default function AdminOperationsPage() {
                         <span>
                           <strong>Renouveler le code d’accès client</strong>
                           <small>
-                            Le code actuel et les sessions client ouvertes seront
-                            révoqués.
+                            Le code actuel et les sessions client ouvertes seront révoqués.
                           </small>
                         </span>
                       </div>
@@ -2628,8 +2688,7 @@ export default function AdminOperationsPage() {
                         <span>
                           <strong>Archiver le dossier</strong>
                           <small>
-                            Aucun effacement physique : historique conservé, accès
-                            client révoqué.
+                            Aucun effacement physique : historique conservé, accès client révoqué.
                           </small>
                         </span>
                       </div>
@@ -2658,21 +2717,15 @@ export default function AdminOperationsPage() {
                             <input
                               type="checkbox"
                               checked={archiveConfirmed}
-                              onChange={(event) =>
-                                setArchiveConfirmed(event.target.checked)
-                              }
+                              onChange={(event) => setArchiveConfirmed(event.target.checked)}
                             />
-                            <span>
-                              Je confirme la révocation immédiate des accès client.
-                            </span>
+                            <span>Je confirme la révocation immédiate des accès client.</span>
                           </label>
                           <div className="admin-ops-confirm-actions">
                             <button
                               className="danger"
                               disabled={
-                                busy ||
-                                !archiveConfirmed ||
-                                archiveReason.trim().length < 3
+                                busy || !archiveConfirmed || archiveReason.trim().length < 3
                               }
                             >
                               <Archive size={15} /> Confirmer l’archivage
@@ -2720,8 +2773,8 @@ export default function AdminOperationsPage() {
                 <FileText />
                 <strong>Aucun dossier sélectionné</strong>
                 <span>
-                  Choisissez une priorité ou un résultat de recherche pour consulter son
-                  historique et agir.
+                  Choisissez une priorité ou un résultat de recherche pour consulter son historique
+                  et agir.
                 </span>
               </div>
             )}
@@ -2798,9 +2851,7 @@ export default function AdminOperationsPage() {
               <div className="admin-ops-empty">
                 <ShieldCheck />
                 <strong>Accès restreint</strong>
-                <span>
-                  Le journal détaillé est réservé aux super-administrateurs et analystes.
-                </span>
+                <span>Le journal détaillé est réservé aux super-administrateurs et analystes.</span>
               </div>
             )}
           </article>
