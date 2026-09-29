@@ -6,6 +6,9 @@ export type ModelEnvironment = {
   LLM_BASE_URL?: string;
   LLM_API_KEY?: string;
   LLM_BUDGET_MODE?: string;
+  LLM_AUTO_FAILOVER?: string;
+  LLM_FALLBACK_PROVIDER?: string;
+  P1_RELEASE_MODE?: string;
   LLM_REQUEST_TIMEOUT_MS?: string;
 
   GEMINI_MODEL?: string;
@@ -14,6 +17,9 @@ export type ModelEnvironment = {
   OPENAI_MODEL?: string;
   OPENAI_REASONING_EFFORT?: string;
   OPENAI_API_KEY?: string;
+
+  GROQ_MODEL?: string;
+  GROQ_API_KEY?: string;
 
   OLLAMA_MODEL?: string;
   OLLAMA_BASE_URL?: string;
@@ -30,7 +36,8 @@ export const geminiModels = [
   'gemini-3.1-flash-lite',
   'gemini-3.5-flash-lite',
 ] as const;
-export const providerIds = ['demo', 'gemini', 'ollama', 'openai', 'compatible'] as const;
+export const providerIds = ['demo', 'gemini', 'groq', 'ollama', 'openai', 'compatible'] as const;
+export const groqModels = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'] as const;
 export type ProviderId = (typeof providerIds)[number];
 
 const geminiBase = 'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -70,6 +77,7 @@ export function configuredModel(env: ModelEnvironment, provider: ProviderId): st
   if (activeOverride) return activeOverride;
   if (provider === 'gemini') return env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite';
   if (provider === 'openai') return env.OPENAI_MODEL?.trim() || '';
+  if (provider === 'groq') return env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b';
   if (provider === 'ollama') return env.OLLAMA_MODEL?.trim() || localModel;
   if (provider === 'compatible') return env.COMPATIBLE_MODEL?.trim() || '';
   return '';
@@ -106,7 +114,14 @@ export function modelSettings(env: ModelEnvironment) {
     throw new Error('Politique de budget IA invalide.');
 
   if (provider === 'demo')
-    return { provider, budgetMode, model: null, base: null, key: null, timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000) };
+    return {
+      provider,
+      budgetMode,
+      model: null,
+      base: null,
+      key: null,
+      timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000),
+    };
 
   if (provider === 'ollama')
     return {
@@ -125,9 +140,7 @@ export function modelSettings(env: ModelEnvironment) {
       );
     const model = configuredModel(env, 'gemini');
     if (!(geminiModels as readonly string[]).includes(model))
-      throw new Error(
-        'Ce modèle Gemini n’est pas autorisé dans SAV SC Assistant AI.',
-      );
+      throw new Error('Ce modèle Gemini n’est pas autorisé dans SAV SC Assistant AI.');
     if (!env.GEMINI_API_KEY) throw new Error('Clé Gemini manquante.');
     return {
       provider,
@@ -135,6 +148,23 @@ export function modelSettings(env: ModelEnvironment) {
       model,
       base: geminiBase,
       key: env.GEMINI_API_KEY,
+      timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000),
+    };
+  }
+
+  if (provider === 'groq') {
+    if (!['free', 'approved'].includes(budgetMode))
+      throw new Error('Groq nécessite le mode free ou approved explicitement activé côté serveur.');
+    const model = configuredModel(env, 'groq');
+    if (!(groqModels as readonly string[]).includes(model))
+      throw new Error('Ce modèle Groq n’est pas autorisé dans SAV SC Assistant AI.');
+    if (!env.GROQ_API_KEY) throw new Error('Clé Groq manquante.');
+    return {
+      provider,
+      budgetMode,
+      model,
+      base: 'https://api.groq.com/openai/v1',
+      key: env.GROQ_API_KEY,
       timeoutMs: requestTimeout(env.LLM_REQUEST_TIMEOUT_MS, 20000),
     };
   }
@@ -188,7 +218,7 @@ export function publicModelConfig(env: ModelEnvironment) {
       model: s.model,
       ready: true,
       budgetMode: s.budgetMode,
-      externalCallsAllowed: s.budgetMode === 'approved' || s.provider === 'gemini',
+      externalCallsAllowed: s.budgetMode === 'approved' || ['gemini', 'groq'].includes(s.provider),
       blockedReason: null,
     };
   } catch (e) {

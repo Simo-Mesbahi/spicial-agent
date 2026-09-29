@@ -436,7 +436,7 @@ export async function generateNaturalDraft(
     if (settings.provider === 'demo' || !settings.base) throw new ProviderError('configuration');
     const format =
       env.LLM_STRUCTURED_OUTPUT?.trim() ||
-      (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
+      (['openai', 'gemini', 'groq'].includes(settings.provider) ? 'json_schema' : 'json_object');
     if (!['json_schema', 'json_object', 'prompt'].includes(format))
       throw new ProviderError('configuration');
     if (!(await reserveGeneration(env, pack.scope.organizationId))) {
@@ -513,7 +513,7 @@ export async function generateNaturalDraft(
       Date.parse(pack.expiresAt) - Date.now(),
     );
     if (timeoutMs < 100) throw new EvidencePackError('evidence_expired');
-    const result = await providerCompletion(env, payload, AbortSignal.timeout(timeoutMs), trace);
+    const result = await providerCompletion(env, payload, AbortSignal.timeout(timeoutMs), trace, { allowFailover: false });
     assertEvidenceContext(pack, input.context);
     const choice = result.choices[0];
     if (choice.message.tool_calls?.length || choice.finish_reason !== 'stop')

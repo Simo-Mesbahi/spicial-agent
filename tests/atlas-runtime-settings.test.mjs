@@ -59,7 +59,7 @@ function setup(t, role='super_admin', aal='aal2') {
 function call(env, body, suffix='settings', headers={}) {
  return handleAdminOperationsApi(new Request(`https://atlas.test/api/production/admin/operations/${suffix}?organizationId=${org}`,{method:body?'POST':'GET',headers:{cookie:'savsc_admin_access=test-token','content-type':'application/json',...headers},...(body?{body:JSON.stringify(body)}:{})}),env);
 }
-const config={provider:'demo',model:'',dailyLimit:0,ragResults:1,ragMinAnchors:2};
+const config={provider:'demo',model:'',dailyLimit:0,ragResults:1,ragMinAnchors:2,autoFailover:false,fallbackProvider:null};
 const payload={revision:0,config,confirmEnvironment:'LOCAL'};
 test('settings persist atomically with author, revision and conflict detection',async t=>{
  const env=setup(t); assert.equal((await call(env,payload)).status,200);
@@ -111,4 +111,65 @@ test('approved deployment exposes multiple configured providers without exposing
  assert.ok(!JSON.stringify(providers).includes('openai-private'));
  const response=await call(env,{...payload,config:{...config,provider:'openai',model:'approved-openai-model'}});
  assert.equal(response.status,200);
+});
+
+function multiProviderEnv(t) {
+ return {...setup(t),LLM_ENABLED_PROVIDERS:'gemini,groq,openai',LLM_BUDGET_MODE:'free',
+   GEMINI_API_KEY:'PRIVATE-gemini',GROQ_API_KEY:'PRIVATE-groq',OPENAI_API_KEY:'PRIVATE-openai',OPENAI_MODEL:'approved-model'};
+}
+const failoverConfig={...config,provider:'gemini',model:'gemini-3.1-flash-lite',autoFailover:true,fallbackProvider:'groq'};
+test('admin can persist Gemini/Groq failover and suspend it without modifying server policy',async t=>{
+ const env=multiProviderEnv(t);
+ assert.equal((await call(env,{...payload,config:failoverConfig})).status,200);
+ const state=await (await call(env)).json();
+ assert.equal(state.effectiveAutoFailover,true);
+ assert.ok(state.fallbackProviders.some(p=>p.provider==='groq'&&p.available));
+ assert.ok(state.fallbackProviders.some(p=>p.provider==='openai'&&!p.available));
+ assert.doesNotMatch(JSON.stringify(state),/PRIVATE-/);
+ const effective=await effectiveEnvironment(env,'https://atlas.test');
+ assert.equal(effective.LLM_AUTO_FAILOVER,'true');
+ assert.equal(effective.LLM_FALLBACK_PROVIDER,'groq');
+ assert.equal(effective.LLM_BUDGET_MODE,'free');
+ assert.equal((await call(env,{...payload,revision:1,config:{...failoverConfig,autoFailover:false}})).status,200);
+ assert.equal((await effectiveEnvironment(env,'https://atlas.test')).LLM_AUTO_FAILOVER,'false');
+});
+test('admin rejects self-fallback, absent secondary, paid bypass, arbitrary models and P1 routing changes',async t=>{
+ const env=multiProviderEnv(t);
+ for(const candidate of [
+  {...failoverConfig,fallbackProvider:'gemini'}, {...failoverConfig,fallbackProvider:null},
+  {...failoverConfig,fallbackProvider:'openai'}, {...failoverConfig,provider:'demo',model:''},
+  {...failoverConfig,provider:'groq',model:'not-approved',fallbackProvider:'gemini'},
+  {...failoverConfig,GROQ_API_KEY:'injected'},
+ ]) assert.equal((await call(env,{...payload,config:candidate})).status,400);
+ assert.equal((await call({...env,P1_RELEASE_MODE:'on'},{...payload,config:failoverConfig})).status,400);
+ assert.equal((await call({...env,LLM_BUDGET_MODE:'approved'},
+  {...payload,config:{...config,provider:'openai',model:'arbitrary-expensive-model'}})).status,400);
+});
+test('a revoked secondary disables only the failover and reports its reason',async t=>{
+ const env=multiProviderEnv(t);
+ assert.equal((await call(env,{...payload,config:failoverConfig})).status,200);
+ const revoked={...env,GROQ_API_KEY:undefined};
+ const effective=await effectiveEnvironment(revoked,'https://atlas.test');
+ assert.equal(effective.LLM_PROVIDER,'gemini');
+ assert.equal(effective.LLM_AUTO_FAILOVER,'false');
+ const state=await (await call(revoked)).json();
+ assert.equal(state.effectiveProvider,'gemini');
+ assert.equal(state.effectiveAutoFailover,false);
+ assert.match(state.failoverWarning,/Groq/);
+ assert.equal(state.providerWarning,null);
+});
+test('historical settings without routing fields load with failover disabled',async t=>{
+ const env=setup(t);
+ const oldConfig={...config}; delete oldConfig.autoFailover; delete oldConfig.fallbackProvider;
+ env.DB.sql.prepare('INSERT INTO runtime_settings (id,scope,revision,config,actor,created_at) VALUES (?,?,?,?,?,?)')
+   .run('legacy',`LOCAL:${org}`,1,JSON.stringify(oldConfig),'legacy-admin',Date.now());
+ const state=await (await call(env)).json();
+ assert.equal(state.config.autoFailover,false);
+ assert.equal(state.history[0].config.autoFailover,false);
+ assert.equal(state.config.fallbackProvider,null);
+});
+test('empty optional server fallback loads as disabled',async t=>{
+ const env={...setup(t),LLM_AUTO_FAILOVER:'false',LLM_FALLBACK_PROVIDER:''};
+ assert.equal((await call(env)).status,200);
+ assert.equal(defaults(env).fallbackProvider,null);
 });

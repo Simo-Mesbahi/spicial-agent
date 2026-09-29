@@ -6,6 +6,8 @@ import { productionRequest as request, ProductionRequestError } from '@/lib/atla
 import type { RuntimeConfig } from '@/lib/atlas/runtime-settings';
 
 type Settings = { effectiveProvider: string; providerWarning: string | null; environment: string; canEdit: boolean; revision: number; config: RuntimeConfig; budget: string; scope: string;
+  effectiveAutoFailover: boolean; failoverWarning: string | null;
+  fallbackProviders: {provider: NonNullable<RuntimeConfig['fallbackProvider']>; model: string; available: boolean; reason: string | null}[];
   providers: {provider: string; model: string; label: string; available: boolean; reason: string | null}[];
   history: {revision: number; actor: string; createdAt: number; config: RuntimeConfig}[] };
 type Overview = { generated_at: string; performance: {requests_24h: number; error_rate_24h: number | null; p95_latency_ms_24h: number | null; rate_limited_24h: number}; routes: {route: string; requests: number; errors: number; avg_ms: number | null}[] };
@@ -53,6 +55,11 @@ export default function PerformancePage() {
   const [query, setQuery] = useState('Comment fonctionne la garantie ?');
   const [documents, setDocuments] = useState<Document[] | null>(null);
   const dirty = !!settings && !!draft && JSON.stringify(draft) !== JSON.stringify(settings.config);
+  const canEnableFailover = !!draft && !!settings &&
+    !!draft.fallbackProvider && draft.fallbackProvider !== draft.provider &&
+    ['gemini', 'groq', 'openai'].includes(draft.provider) &&
+    settings.fallbackProviders.some(item => item.provider === draft.fallbackProvider && item.available) &&
+    (!releaseOverview || releaseOverview.configuration.mode === 'off');
   const handleError = useCallback((cause: unknown) => {
     if (cause instanceof ProductionRequestError && (cause.status === 401 || cause.code === 'mfa_required')) { setNeedsLogin(true); setSettings(null); setDraft(null); setOverview(null); setReleaseOverview(null); }
     setError(cause instanceof Error ? cause.message : 'Le service est indisponible. Réessayez.');
@@ -144,12 +151,48 @@ export default function PerformancePage() {
       <form onSubmit={save} className="admin-control-form">
         <fieldset disabled={!settings.canEdit || busy} className="admin-control-card"><legend>Modèle et consommation</legend>
           <p>Mode effectif : <strong>{settings.effectiveProvider}</strong>.{settings.providerWarning && ` Repli documentaire : ${settings.providerWarning}`}</p>
-          <label>Modèle connecté<select value={`${draft.provider}|${draft.model}`} onChange={event=>{const [provider,model]=event.target.value.split('|');setDraft({...draft,provider:provider as RuntimeConfig['provider'],model});setConfirmation(false);setSuccess('');}}>
+          <label>Modèle connecté<select value={`${draft.provider}|${draft.model}`} onChange={event=>{const [provider,model]=event.target.value.split('|');setDraft({...draft,provider:provider as RuntimeConfig['provider'],model,autoFailover:false});setConfirmation(false);setSuccess('');}}>
             {!settings.providers.some(item=>item.provider===draft.provider && item.model===draft.model) && <option value={`${draft.provider}|${draft.model}`}>{draft.provider} · réglage serveur actuel</option>}
             {settings.providers.map(item=><option key={`${item.provider}|${item.model}`} value={`${item.provider}|${item.model}`} disabled={!item.available}>{item.label}{!item.available ? ' · indisponible' : ''}</option>)}
           </select></label>
           <details><summary>Disponibilité des fournisseurs</summary>{settings.providers.filter(item=>!item.available).map(item=><p key={item.model}>{item.label} : {item.reason}</p>)}<p>Disponible signifie configuré, pas testé en direct avec le fournisseur.</p></details>
           <label>Conversations IA maximum par 24 heures<input type="number" min={0} max={10000} required value={draft.dailyLimit} onChange={event=>update('dailyLimit',event.target.valueAsNumber)}/></label><p>0 suspend les appels au modèle. Les réponses documentaires restent disponibles. Ce quota partagé n’est pas un plafond de facturation.</p>
+        </fieldset>
+        <fieldset disabled={!settings.canEdit || busy} className="admin-control-card">
+          <legend>Fournisseur de secours</legend>
+          <p>Basculement effectif : <strong>{settings.effectiveAutoFailover ? 'activé' : 'désactivé'}</strong>. {settings.failoverWarning}</p>
+          <label>Secours après une panne temporaire
+            <select value={draft.fallbackProvider ?? ''} onChange={event => {
+              setDraft({...draft, fallbackProvider: (event.target.value || null) as RuntimeConfig['fallbackProvider'], autoFailover: false});
+              setConfirmation(false); setSuccess('');
+            }}>
+              <option value="">Aucun fournisseur de secours</option>
+              {settings.fallbackProviders.map(item =>
+                <option key={item.provider} value={item.provider} disabled={!item.available || item.provider === draft.provider}>
+                  {item.provider} · {item.model || 'modèle à configurer'}
+                  {!item.available ? ' · indisponible' : item.provider === draft.provider ? ' · fournisseur principal' : ''}
+                </option>
+              )}
+            </select>
+          </label>
+          <label className="admin-control-confirm">
+            <input type="checkbox" checked={draft.autoFailover}
+              disabled={!draft.autoFailover && !canEnableFailover}
+              onChange={event => update('autoFailover', event.target.checked)}/>
+            Activer le basculement automatique
+          </label>
+          <p>Une seule bascule par message, après panne réseau, délai fournisseur dépassé ou erreur serveur 5xx, dans le délai total existant. Le fournisseur principal reste sélectionné pour le message suivant.</p>
+          <p>Les quotas, clés invalides et réponses rejetées déclenchent le repli documentaire habituel. La génération P1 qualifiée conserve son fournisseur validé.</p>
+          <p>{settings.budget === 'approved'
+            ? 'Budget approuvé : les appels au fournisseur principal et au secours peuvent être facturés.'
+            : 'Mode sans budget payant : OpenAI est bloqué. Utilisez des projets Gemini et Groq au niveau gratuit; ce réglage ne modifie pas leur facturation.'}</p>
+          <details>
+            <summary>Conditions du secours</summary>
+            {settings.fallbackProviders.filter(item => !item.available).map(item =>
+              <p key={item.provider}>{item.provider} : {item.reason}</p>
+            )}
+            <p>Le secours doit être configuré et autorisé côté serveur. Il reste désactivé pendant la libération P1, qui nécessite une qualification propre à chaque fournisseur. Les embeddings gardent leur configuration indépendante.</p>
+          </details>
         </fieldset>
         <fieldset disabled={!settings.canEdit || busy} className="admin-control-card"><legend>Recherche documentaire</legend>
           <label>Documents proposés au modèle<select value={draft.ragResults} onChange={event=>update('ragResults',Number(event.target.value))}><option value={1}>1 · contexte ciblé</option><option value={2}>2 · contexte intermédiaire</option><option value={3}>3 · contexte élargi</option></select></label>

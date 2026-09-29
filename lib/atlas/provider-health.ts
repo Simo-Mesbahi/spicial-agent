@@ -99,6 +99,7 @@ export async function syntheticProviderHealth(env: AtlasEnv, scope: string) {
         payload,
         AbortSignal.timeout(settings.timeoutMs),
         trace,
+        { allowFailover: false },
       );
       healthy =
         result.choices[0].message.content?.trim() === 'OK' &&
