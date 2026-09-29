@@ -381,7 +381,7 @@ export async function understandConversation(
   const settings = modelSettings(env);
   const format =
     env.LLM_STRUCTURED_OUTPUT?.trim() ||
-    (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
+    (['openai', 'gemini', 'groq'].includes(settings.provider) ? 'json_schema' : 'json_object');
   if (!['json_schema', 'json_object', 'prompt'].includes(format))
     throw new ProviderError('configuration');
   const providerSchema = structuredSchemaForProvider(settings.provider, understandingJsonSchema);
@@ -421,7 +421,7 @@ export async function understandConversation(
               : { type: 'json_object' },
         }),
   };
-  // One call, no hidden paid retries or secondary evaluator call.
+  // One call by default; an explicit admin policy permits one bounded transport failover.
   const response = await providerCompletion(
     env,
     payload,

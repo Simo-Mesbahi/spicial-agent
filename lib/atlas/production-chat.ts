@@ -31,7 +31,7 @@ import {
   safeConversationReply,
 } from './structured-conversation';
 import { detectConversationLanguage } from './conversation-intelligence';
-import { providerTrace, ProviderError } from './provider-runtime';
+import { providerTrace, routingMetadata, ProviderError } from './provider-runtime';
 import { publicModelConfig } from './model-policy';
 import { mutationOriginAllowed } from './request-security';
 import { effectiveEnvironment } from './runtime-settings';
@@ -495,12 +495,11 @@ export async function productionChat(
       release,
       orchestrator: 'structured',
       dataSource: 'supabase',
-      provider: config.provider,
-      model: config.model,
+      ...routingMetadata(trace, config),
       mode: release?.released
         ? 'grounded_generation'
         : conversation
-          ? config.provider
+          ? trace.activeProvider ?? config.provider
           : 'deterministic',
       fallback: fallbackReason ? 'provider_unavailable' : null,
       fallbackReason,
@@ -562,8 +561,7 @@ export async function productionChat(
       requestId,
       sessionId,
       dataSource: 'supabase',
-      provider: config.provider,
-      model: config.model,
+      ...routingMetadata(trace, config),
       evidence,
       generation,
       validation,
@@ -587,8 +585,7 @@ export async function productionChat(
       requestId,
       sessionId,
       dataSource: 'supabase',
-      provider: config.provider,
-      model: config.model,
+      ...routingMetadata(trace, config),
       outcome: 'error',
       generation,
       validation,

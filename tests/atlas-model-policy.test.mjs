@@ -105,6 +105,22 @@ test('Provider timeout override is bounded and server-owned', () => {
     );
 });
 
+test('Groq has a dedicated fixed endpoint, model allowlist, explicit budget and secret', () => {
+ const env={LLM_PROVIDER:'groq',LLM_BUDGET_MODE:'free',GROQ_API_KEY:'private-groq',
+   OPENAI_API_KEY:'private-openai',LLM_BASE_URL:'https://untrusted.test/v1'};
+ const settings=modelSettings(env);
+ assert.equal(settings.base,'https://api.groq.com/openai/v1');
+ assert.equal(settings.key,'private-groq');
+ assert.equal(settings.model,'openai/gpt-oss-120b');
+ assert.equal(modelSettings({...env,GROQ_MODEL:'openai/gpt-oss-20b'}).model,'openai/gpt-oss-20b');
+ assert.throws(()=>modelSettings({...env,LLM_BUDGET_MODE:'zero'}),/mode free ou approved/);
+ assert.throws(()=>modelSettings({...env,GROQ_API_KEY:undefined}),/Clé Groq/);
+ assert.throws(()=>modelSettings({...env,GROQ_MODEL:'unknown'}),/autorisé/);
+ const state=publicModelConfig(env);
+ assert.equal(state.externalCallsAllowed,true);
+ assert.doesNotMatch(JSON.stringify(state),/private-/);
+});
+
 test('Multiple providers can be configured together while remaining explicitly allowlisted', () => {
   const env = {
     LLM_PROVIDER: 'gemini',

@@ -2,7 +2,7 @@ import type { ValidationSettings } from './factual-validation';
 import type { ReleaseSettings } from './p1-release';
 import type { GenerationSettings } from './natural-generation';
 import type { HybridSettings } from './knowledge-hybrid';
-import { completionPayload, providerCompletion, providerTrace, ProviderError, type ProviderTrace, type ProviderFailureReason } from './provider-runtime';
+import { completionPayload, providerCompletion, providerTrace, routingMetadata, ProviderError, type ProviderTrace, type ProviderFailureReason } from './provider-runtime';
 import {
   articles,
   scenarios,
@@ -1303,7 +1303,7 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
             knowledge = conversation.knowledge;
             retrievalMs = conversation.retrievalMs;
             route = conversation.understanding.intent;
-            generated = { ...conversation.answer, mode: modelConfig.provider, inputTokens: telemetry.usageComplete ? telemetry.inputTokens : null, outputTokens: telemetry.usageComplete ? telemetry.outputTokens : null };
+            generated = { ...conversation.answer, mode: telemetry.activeProvider ?? modelConfig.provider, inputTokens: telemetry.usageComplete ? telemetry.inputTokens : null, outputTokens: telemetry.usageComplete ? telemetry.outputTokens : null };
           } else generated = await generate(env, message, c, history, knowledge, telemetry);
         } catch (e) {
           if (!(e instanceof ProviderError) && !(e instanceof ApiError && e.status === 503)) throw e;
@@ -1334,13 +1334,12 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         responsePolicy: conversation?.plan.kind === 'respond' ? 'guarded_conversation' : 'verified_content',
         knowledgeScope: knowledge.scope,
         tools: answer.tools,
-        mode: answer.mode,
+        mode: fallback ? answer.mode : telemetry.activeProvider ?? answer.mode,
         fallback,
         fallbackReason,
         requestId,
         traceId,
-        provider: modelConfig.provider,
-        model: modelConfig.model,
+        ...routingMetadata(telemetry, modelConfig),
         route,
         language: conversation?.language ?? detectConversationLanguage(message, previousUserMessages),
         ...(structured ? {
@@ -1377,8 +1376,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
       };
       const interaction = {
         schema: 1, requestId: traceId, sessionId: pendingInteraction.sessionId,
-        timestamp: new Date(timestamp).toISOString(), provider: modelConfig.provider,
-        model: modelConfig.model, route, language: metadata.language,
+        timestamp: new Date(timestamp).toISOString(), ...routingMetadata(telemetry, modelConfig),
+        route, language: metadata.language,
         mode: answer.mode, fallback, fallbackReason,
         retrievalMs, latencyMs: metadata.latencyMs,
         providerTrace: telemetry, escalation: answer.supportPath ?? null,

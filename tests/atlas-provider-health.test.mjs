@@ -180,3 +180,18 @@ test('liveness/readiness never run paid synthetic requests', async (t) => {
   assert.equal(ready.synthetic, false);
   assert.equal(ready.status, 'ready');
 });
+
+test('synthetic health exposes a failed primary even when automatic failover is enabled',async t=>{
+ const env={...setup(t),LLM_AUTO_FAILOVER:'true',LLM_FALLBACK_PROVIDER:'groq',
+   LLM_ENABLED_PROVIDERS:'openai,groq',GROQ_API_KEY:'groq-test'};
+ const calls=[];
+ globalThis.fetch=async url=>{
+  calls.push(url);
+  return url.includes('api.groq.com') ? success() : Response.json({}, {status:503});
+ };
+ const state=await syntheticProviderHealth(env,'primary-only');
+ assert.equal(state.status,'degraded');
+ assert.equal(state.reason,'upstream_unavailable');
+ assert.equal(calls.length,1);
+ assert.equal(state.trace.failoverUsed,false);
+});

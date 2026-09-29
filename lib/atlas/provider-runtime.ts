@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { redacted } from './domain';
 import type { KnowledgeSearchResult } from './knowledge-runtime';
 import { boundedJson } from './bounded-json';
-import { modelSettings, type ModelEnvironment } from './model-policy';
+import { enabledProviders, modelSettings, type ModelEnvironment } from './model-policy';
+import { structuredSchemaForProvider } from './structured-output';
 
 export type ProviderFailureReason =
   | 'network_or_timeout'
@@ -17,12 +18,7 @@ export type ProviderFailureReason =
   | 'tool_loop'
   | 'configuration'
   | 'unknown';
-export type ProviderRateLimitScope =
-  | 'minute'
-  | 'token_minute'
-  | 'day'
-  | 'spend'
-  | 'unknown';
+export type ProviderRateLimitScope = 'minute' | 'token_minute' | 'day' | 'spend' | 'unknown';
 export type ProviderDiagnostic = {
   reason: ProviderFailureReason;
   httpStatus: number | null;
@@ -87,7 +83,12 @@ export type ProviderTrace = {
   outputTokens: number;
   usageComplete: boolean;
   tools: string[];
-  retrievals: { durationMs: number; scope: string; evidence: KnowledgeSearchResult['evidence']; diagnostics?: KnowledgeSearchResult['retrieval'] }[];
+  retrievals: {
+    durationMs: number;
+    scope: string;
+    evidence: KnowledgeSearchResult['evidence'];
+    diagnostics?: KnowledgeSearchResult['retrieval'];
+  }[];
   attempts: {
     round: number;
     provider: ReturnType<typeof modelSettings>['provider'];
@@ -99,6 +100,10 @@ export type ProviderTrace = {
     outputTokens: number | null;
     error: ProviderFailureReason | null;
   }[];
+  activeProvider: ReturnType<typeof modelSettings>['provider'] | null;
+  failoverUsed: boolean;
+  failoverFrom: ReturnType<typeof modelSettings>['provider'] | null;
+  failoverTo: ReturnType<typeof modelSettings>['provider'] | null;
 };
 export function providerTrace(): ProviderTrace {
   return {
@@ -110,6 +115,10 @@ export function providerTrace(): ProviderTrace {
     tools: [],
     retrievals: [],
     attempts: [],
+    activeProvider: null,
+    failoverUsed: false,
+    failoverFrom: null,
+    failoverTo: null,
   };
 }
 // Explicit allowlists: arbitrary provider error text can contain prompts or secrets.
@@ -172,8 +181,7 @@ function boundedRetryDelay(ms: number) {
 export function parseRetryAfterMs(raw: string | null, now = Date.now()) {
   const value = raw?.trim();
   if (!value) return null;
-  if (/^\d{1,8}$/.test(value))
-    return boundedRetryDelay(Number(value) * 1000);
+  if (/^\d{1,8}$/.test(value)) return boundedRetryDelay(Number(value) * 1000);
   const at = Date.parse(value);
   return Number.isFinite(at) ? boundedRetryDelay(Math.max(0, at - now)) : null;
 }
@@ -191,8 +199,7 @@ function quotaScopeFromText(value: unknown): ProviderRateLimitScope | null {
   if (typeof value !== 'string') return null;
   const normalized = value.toLowerCase();
   if (/perday|daily|requestsperday|tokensperday|rpd|tpd/.test(normalized)) return 'day';
-  if (/input.?tokens?.*perminute|tokens?.*perminute|tpm/.test(normalized))
-    return 'token_minute';
+  if (/input.?tokens?.*perminute|tokens?.*perminute|tpm/.test(normalized)) return 'token_minute';
   if (/perminute|requestsperminute|rpm/.test(normalized)) return 'minute';
   if (/spend|billing.*window|cost/.test(normalized)) return 'spend';
   return null;
@@ -217,7 +224,7 @@ function safeRateLimitMetadata(
       }),
     })
     .safeParse(body);
-  for (const detail of parsed.success ? parsed.data.error.details ?? [] : []) {
+  for (const detail of parsed.success ? (parsed.data.error.details ?? []) : []) {
     if (!detail || typeof detail !== 'object' || Array.isArray(detail)) continue;
     const row = detail as Record<string, unknown>;
     const type = typeof row['@type'] === 'string' ? row['@type'] : '';
@@ -231,9 +238,7 @@ function safeRateLimitMetadata(
       for (const violation of violations) {
         if (!violation || typeof violation !== 'object' || Array.isArray(violation)) continue;
         const item = violation as Record<string, unknown>;
-        rateLimitScope ??=
-          quotaScopeFromText(item.quotaId) ??
-          quotaScopeFromText(item.quotaMetric);
+        rateLimitScope ??= quotaScopeFromText(item.quotaId) ?? quotaScopeFromText(item.quotaMetric);
       }
     }
   }
@@ -259,7 +264,7 @@ export function completionPayload(
           ...(mode === 'openai' ? { parallel_tool_calls: false } : {}),
         }
       : {}),
-    ...(mode === 'openai' || mode === 'gemini'
+    ...(mode === 'openai' || mode === 'gemini' || mode === 'groq'
       ? { max_completion_tokens: maxTokens }
       : { max_tokens: maxTokens }),
     // A server opt-in avoids imposing an unsupported effort on arbitrary OpenAI models.
@@ -268,15 +273,15 @@ export function completionPayload(
       ? { reasoning_effort: 'none', temperature: 0.2 }
       : mode === 'gemini'
         ? {
-            reasoning_effort: settings.model?.startsWith('gemini-3.')
-              ? 'minimal'
-              : 'none',
+            reasoning_effort: settings.model?.startsWith('gemini-3.') ? 'minimal' : 'none',
             temperature: 0.2,
           }
-        : {}),
+        : mode === 'groq'
+          ? { reasoning_effort: 'low', include_reasoning: false }
+          : {}),
   };
 }
-export async function providerCompletion(
+async function providerCompletionOnce(
   env: ModelEnvironment,
   payload: ReturnType<typeof completionPayload>,
   signal: AbortSignal,
@@ -290,7 +295,9 @@ export async function providerCompletion(
     provider: settings.provider,
     model: settings.model
       ? redacted(
-          settings.key ? settings.model.split(settings.key).join('[secret masked]') : settings.model,
+          settings.key
+            ? settings.model.split(settings.key).join('[secret masked]')
+            : settings.model,
         ).slice(0, 128)
       : null,
     diagnostic: null,
@@ -397,4 +404,125 @@ export async function providerCompletion(
     if (attempt.inputTokens === null || attempt.outputTokens === null) trace.usageComplete = false;
     trace.attempts.push(attempt);
   }
+}
+
+/** One bounded, request-local failover. Never retries quota, auth, request, or output failures. */
+export async function providerCompletion(
+  env: ModelEnvironment,
+  payload: ReturnType<typeof completionPayload>,
+  signal: AbortSignal,
+  trace: ProviderTrace,
+  options: { allowFailover?: boolean } = {},
+) {
+  const allowFailover =
+    options.allowFailover !== false && (!env.P1_RELEASE_MODE || env.P1_RELEASE_MODE === 'off');
+  const requestEnv =
+    allowFailover && trace.activeProvider
+      ? { ...env, LLM_PROVIDER: trace.activeProvider, LLM_MODEL: undefined }
+      : env;
+  const settings = modelSettings(requestEnv);
+  const fallback = env.LLM_FALLBACK_PROVIDER;
+  const requestedFailover =
+    allowFailover &&
+    !trace.failoverUsed &&
+    env.LLM_AUTO_FAILOVER === 'true' &&
+    ['gemini', 'groq', 'openai'].includes(settings.provider) &&
+    !!fallback &&
+    ['gemini', 'groq', 'openai'].includes(fallback) &&
+    fallback !== settings.provider;
+  let fallbackEnv: ModelEnvironment | null = null;
+  if (requestedFailover) {
+    try {
+      if (enabledProviders(env).some((provider) => provider === fallback)) {
+        const candidate = { ...env, LLM_PROVIDER: fallback, LLM_MODEL: undefined };
+        modelSettings(candidate);
+        fallbackEnv = candidate;
+      }
+    } catch {
+      /* A revoked secondary must not disable the primary. */
+    }
+  }
+  // Keep the caller's total deadline. Reserve half of the configured time for
+  // the fallback so a stalled primary cannot consume the entire request window.
+  const firstSignal = fallbackEnv
+    ? AbortSignal.any([signal, AbortSignal.timeout(Math.floor(settings.timeoutMs / 2))])
+    : signal;
+  try {
+    return await providerCompletionOnce(
+      requestEnv,
+      adaptedPayload(requestEnv, payload),
+      firstSignal,
+      trace,
+    );
+  } catch (error) {
+    if (
+      !fallbackEnv ||
+      signal.aborted ||
+      !(error instanceof ProviderError) ||
+      !['network_or_timeout', 'upstream_unavailable'].includes(error.reason)
+    )
+      throw error;
+    // A fallback must independently satisfy server-side key and budget policy.
+    const fallbackSettings = modelSettings(fallbackEnv);
+    trace.failoverUsed = true;
+    trace.failoverFrom = settings.provider;
+    trace.failoverTo = fallbackSettings.provider;
+    trace.activeProvider = fallbackSettings.provider;
+    return providerCompletionOnce(fallbackEnv, adaptedPayload(fallbackEnv, payload), signal, trace);
+  }
+}
+
+/** Rebuild transport options for the actual destination; never forward another
+ * provider's reasoning settings. Local validation remains authoritative. */
+function adaptedPayload(env: ModelEnvironment, payload: ReturnType<typeof completionPayload>) {
+  const rebuilt: Record<string, unknown> = { ...payload };
+  for (const key of [
+    'model',
+    'max_tokens',
+    'max_completion_tokens',
+    'reasoning_effort',
+    'include_reasoning',
+    'temperature',
+    'parallel_tool_calls',
+  ])
+    delete rebuilt[key];
+  const tokens =
+    'max_completion_tokens' in payload ? payload.max_completion_tokens : payload.max_tokens;
+  Object.assign(
+    rebuilt,
+    completionPayload(
+      env,
+      payload.messages,
+      payload.tools ?? [],
+      payload.tool_choice === 'none',
+      tokens,
+    ),
+  );
+  const format = rebuilt.response_format as
+    { type?: string; json_schema?: { schema?: Record<string, unknown> } } | undefined;
+  if (format?.type === 'json_schema' && format.json_schema?.schema) {
+    rebuilt.response_format = {
+      ...format,
+      json_schema: {
+        ...format.json_schema,
+        schema: structuredSchemaForProvider(modelSettings(env).provider, format.json_schema.schema),
+      },
+    };
+  }
+  return rebuilt as ReturnType<typeof completionPayload>;
+}
+
+export function routingMetadata(
+  trace: ProviderTrace,
+  configured: { provider: string; model: string | null },
+) {
+  const last = trace.attempts.at(-1);
+  return {
+    configuredProvider: configured.provider,
+    provider: last?.provider ?? configured.provider,
+    model: last?.model ?? configured.model,
+    providerFailover: trace.failoverUsed
+      ? { from: trace.failoverFrom, to: trace.failoverTo, recovered: last?.error === null }
+      : null,
+  };
 }

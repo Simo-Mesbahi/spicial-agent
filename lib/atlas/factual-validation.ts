@@ -430,7 +430,7 @@ export async function validateNaturalDraft(
     if (settings.provider === 'demo' || !settings.base) throw new ProviderError('configuration');
     const requestedFormat =
       env.LLM_STRUCTURED_OUTPUT?.trim() ||
-      (['openai', 'gemini'].includes(settings.provider) ? 'json_schema' : 'json_object');
+      (['openai', 'gemini', 'groq'].includes(settings.provider) ? 'json_schema' : 'json_object');
     if (!['json_schema', 'json_object', 'prompt'].includes(requestedFormat))
       throw new ProviderError('configuration');
     // Older Gemini compatibility models rejected the previous judge schema. The
@@ -490,7 +490,7 @@ export async function validateNaturalDraft(
                 : { type: 'json_object' },
           }),
     };
-    const result = await providerCompletion(env, payload, AbortSignal.timeout(timeoutMs), trace);
+    const result = await providerCompletion(env, payload, AbortSignal.timeout(timeoutMs), trace, { allowFailover: false });
     await assertValidationEvidence(pack, current, input.context);
     const choice = result.choices[0];
     if (choice.finish_reason !== 'stop' || choice.message.tool_calls?.length)

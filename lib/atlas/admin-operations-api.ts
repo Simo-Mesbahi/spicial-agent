@@ -3,7 +3,7 @@ import { effectiveEnvironment } from './runtime-settings';
 import { z } from 'zod';
 import { retrieve } from './domain';
 import { publicModelConfig } from './model-policy';
-import { applyConfig, availableProviders, defaults, environmentLabel, readSettings, runtimeConfigSchema, saveSettings, scopeKey, validateConfig, type Revision } from './runtime-settings';
+import { applyConfig, availableProviders, availableFallbackProviders, defaults, environmentLabel, readSettings, resolveConfig, runtimeConfigSchema, saveSettings, scopeKey, validateConfig, type Revision } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { mutationOriginAllowed } from './request-security';
 import { chunkKnowledge, knowledgeDocumentSchema, knowledgeDraftSchema, knowledgeListSchema } from './knowledge-control';
@@ -803,13 +803,14 @@ export async function handleAdminOperationsApi(
         const saved = await readSettings(env.DB, scope);
         const history = await env.DB.prepare('SELECT revision,config,actor,created_at FROM runtime_settings WHERE scope=? ORDER BY revision DESC LIMIT 10').bind(scope).all<Revision>();
         const config = saved ? runtimeConfigSchema.parse(JSON.parse(saved.config)) : defaults(env);
-        const state = publicModelConfig(applyConfig(env, config));
-        try { validateConfig(env, config); }
-        catch (cause) { state.ready = false; state.blockedReason = cause instanceof Error ? cause.message : 'Fournisseur désactivé côté serveur.'; }
+        const resolved = resolveConfig(env, config);
+        const state = publicModelConfig(applyConfig(env, resolved.config));
         return json({ environment, canEdit, revision: saved?.revision ?? 0,
-          config, effectiveProvider: state.ready ? state.provider : 'demo', providerWarning: state.blockedReason,
+          config, effectiveProvider: state.ready ? state.provider : 'demo', providerWarning: resolved.providerWarning ?? state.blockedReason,
+          effectiveAutoFailover: resolved.config.autoFailover, failoverWarning: resolved.failoverWarning,
+          fallbackProviders: availableFallbackProviders(env),
           providers: availableProviders(env), budget: env.LLM_BUDGET_MODE ?? 'zero',
-          scope: 'Chat de démonstration · dossiers D1 + base de connaissances Supabase publiée',
+          scope: 'Assistant de ce déploiement · organisation et environnement',
           history: history.results.map(item => ({ revision: item.revision, actor: item.actor, createdAt: item.created_at, config: runtimeConfigSchema.parse(JSON.parse(item.config)) })) }, 200, session.cookies);
       }
       if (req.method === 'POST') {

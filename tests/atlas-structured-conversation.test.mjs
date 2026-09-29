@@ -614,6 +614,7 @@ for (const [language, response] of [
 for (const [provider, format] of [
   ['openai', 'json_schema'],
   ['gemini', 'json_schema'],
+  ['groq', 'json_schema'],
   ['ollama', 'json_object'],
   ['compatible', 'prompt'],
 ]) {
@@ -621,8 +622,10 @@ for (const [provider, format] of [
     const { c, calls } = await fixture(t);
     Object.assign(c.env, {
       LLM_PROVIDER: provider,
+      ...(provider === 'groq' ? { LLM_MODEL: 'openai/gpt-oss-120b' } : {}),
       LLM_STRUCTURED_OUTPUT: provider === 'compatible' ? 'prompt' : '',
       GEMINI_API_KEY: 'test',
+      GROQ_API_KEY: 'test',
       OLLAMA_MODEL: 'qwen3:4b',
       COMPATIBLE_MODEL: 'test',
       COMPATIBLE_BASE_URL: 'https://provider.example/v1',
@@ -641,6 +644,41 @@ for (const [provider, format] of [
     }
   });
 }
+test('saved admin routing reaches structured chat, retains idempotency and obeys the shared quota',async t=>{
+ const {c,db,calls}=await fixture(t,(_payload,round)=>round===1 ? Response.json({}, {status:503}) : output());
+ const organization='00000000-0000-4000-8000-000000000001';
+ Object.assign(c.env,{APP_ENVIRONMENT:'LOCAL',SUPABASE_ORGANIZATION_ID:organization,
+  LLM_PROVIDER:'gemini',LLM_ENABLED_PROVIDERS:'gemini,groq',LLM_BUDGET_MODE:'free',
+  GROQ_API_KEY:'groq-test',GEMINI_API_KEY:'gemini-test'});
+ db.sql.prepare('INSERT INTO runtime_settings (id,scope,revision,config,actor,created_at) VALUES (?,?,?,?,?,?)')
+  .run('routing',`LOCAL:${organization}`,1,JSON.stringify({provider:'groq',model:'openai/gpt-oss-120b',
+   fallbackProvider:'gemini',autoFailover:true,dailyLimit:1,ragResults:3,ragMinAnchors:1}),'admin',Date.now());
+ const body={message:'hello there',requestId:'routing-test-001'};
+ const reply=await c.call('chat',body);
+ assert.equal(reply.status,200);
+ assert.equal(reply.body.metadata.provider,'gemini');
+ assert.equal(reply.body.metadata.configuredProvider,'groq');
+ assert.equal(reply.body.metadata.mode,'gemini');
+ assert.equal(reply.body.metadata.fallback,null);
+ assert.deepEqual(reply.body.metadata.providerFailover,{from:'groq',to:'gemini',recovered:true});
+ assert.equal(reply.body.metadata.providerCalls,2);
+ assert.deepEqual(calls.map(call=>new URL(call.url).hostname),['api.groq.com','generativelanguage.googleapis.com']);
+ assert.deepEqual((await c.call('chat',body)).body,reply.body);
+ assert.equal(calls.length,2);
+ const limited=await c.call('chat',{message:'how are you',requestId:'routing-test-002'});
+ assert.equal(limited.body.metadata.fallback,'daily_limit');
+ assert.equal(calls.length,2);
+});
+test('fallback output is still subject to local structured validation without another call',async t=>{
+ const {c,calls}=await fixture(t,(_payload,round)=>round===1 ? Response.json({}, {status:503}) : output({intent:'delete_all'}));
+ Object.assign(c.env,{LLM_AUTO_FAILOVER:'true',LLM_FALLBACK_PROVIDER:'groq',
+  LLM_ENABLED_PROVIDERS:'openai,groq',GROQ_API_KEY:'test-groq'});
+ const reply=await c.call('chat',{message:'hello there'});
+ assert.equal(reply.body.metadata.fallback,'provider_unavailable');
+ assert.equal(reply.body.metadata.fallbackReason,'invalid_upstream_response');
+ assert.equal(reply.body.metadata.providerFailover.recovered,false);
+ assert.equal(calls.length,2);
+});
 for (const [name, invalid] of [
   ['invalid JSON', '{'],
   ['extra key', output({ execute: 'delete' })],

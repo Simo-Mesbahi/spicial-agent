@@ -21,8 +21,10 @@ export function environmentLabel(env: { APP_ENVIRONMENT?: string }, url: string)
 
 export const runtimeConfigSchema = z
   .object({
-    provider: z.enum(['demo', 'gemini', 'ollama', 'openai', 'compatible']),
+    provider: z.enum(['demo', 'gemini', 'groq', 'ollama', 'openai', 'compatible']),
     model: z.string().max(100),
+    fallbackProvider: z.enum(['gemini', 'groq', 'openai']).nullable().default(null),
+    autoFailover: z.boolean().default(false),
     dailyLimit: z.number().int().min(0).max(10000),
     ragResults: z.number().int().min(1).max(3),
     ragMinAnchors: z.number().int().min(1).max(3),
@@ -42,6 +44,10 @@ export function defaults(env: RuntimeEnv): RuntimeConfig {
   return {
     provider,
     model: configuredModel(env, provider),
+    fallbackProvider: runtimeConfigSchema.shape.fallbackProvider.parse(
+      env.LLM_FALLBACK_PROVIDER?.trim() || null,
+    ),
+    autoFailover: env.LLM_AUTO_FAILOVER === 'true',
     dailyLimit: Math.max(
       0,
       Math.min(
@@ -63,6 +69,8 @@ export function applyConfig(env: RuntimeEnv, config: RuntimeConfig): RuntimeEnv 
     ...env,
     LLM_PROVIDER: config.provider,
     LLM_MODEL: config.model || undefined,
+    LLM_AUTO_FAILOVER: String(config.autoFailover),
+    LLM_FALLBACK_PROVIDER: config.fallbackProvider ?? undefined,
     LLM_DAILY_LIMIT: String(config.dailyLimit),
     RAG_RESULTS: config.ragResults,
     RAG_MIN_ANCHORS: config.ragMinAnchors,
@@ -75,7 +83,29 @@ export function validateConfig(env: RuntimeEnv, config: RuntimeConfig) {
   const allowed = enabledProviders(env);
   if (config.provider !== 'demo' && !allowed.includes(config.provider))
     throw new Error('Ce fournisseur doit être autorisé par le développeur côté serveur.');
+  if (
+    ['openai', 'compatible'].includes(config.provider) &&
+    config.model !== configuredModel(env, config.provider)
+  )
+    throw new Error('Ce modèle doit être autorisé côté serveur.');
   modelSettings(applyConfig(env, config));
+  if (config.autoFailover) {
+    if (!['gemini', 'groq', 'openai'].includes(config.provider))
+      throw new Error(
+        'Le basculement automatique nécessite Gemini, Groq ou OpenAI comme fournisseur principal.',
+      );
+    if (env.P1_RELEASE_MODE && env.P1_RELEASE_MODE !== 'off')
+      throw new Error(
+        'Le basculement automatique nécessite P1_RELEASE_MODE=off. Chaque fournisseur de production doit être qualifié séparément.',
+      );
+    if (!config.fallbackProvider || config.fallbackProvider === config.provider)
+      throw new Error(
+        'Choisissez un fournisseur de repli différent avant d’activer le basculement automatique.',
+      );
+    if (!allowed.includes(config.fallbackProvider))
+      throw new Error('Le fournisseur de repli doit être autorisé côté serveur.');
+    modelSettings({ ...env, LLM_PROVIDER: config.fallbackProvider, LLM_MODEL: undefined });
+  }
 }
 
 export async function readSettings(db: Database, scope: string) {
@@ -95,8 +125,10 @@ export async function saveSettings(
   actor: string,
 ) {
   const result = await db
-    .prepare(`INSERT INTO runtime_settings (id,scope,revision,config,actor,created_at)
-    SELECT ?,?,?,?,?,? WHERE COALESCE((SELECT MAX(revision) FROM runtime_settings WHERE scope=?),0)=?`)
+    .prepare(
+      `INSERT INTO runtime_settings (id,scope,revision,config,actor,created_at)
+    SELECT ?,?,?,?,?,? WHERE COALESCE((SELECT MAX(revision) FROM runtime_settings WHERE scope=?),0)=?`,
+    )
     .bind(
       crypto.randomUUID(),
       scope,
@@ -116,13 +148,49 @@ export async function effectiveEnvironment(env: RuntimeEnv, url: string): Promis
   const saved = await readSettings(env.DB, scopeKey(env, url));
   if (!saved) return env;
   const config = runtimeConfigSchema.parse(JSON.parse(saved.config));
-  // Deployment may have revoked a provider since this revision was saved.
+  return applyConfig(env, resolveConfig(env, config).config);
+}
+
+/** Revoking the secondary disables failover without disabling a healthy primary. */
+export function resolveConfig(env: RuntimeEnv, config: RuntimeConfig) {
+  try {
+    validateConfig(env, { ...config, autoFailover: false });
+  } catch (error) {
+    return {
+      config: { ...config, provider: 'demo' as const, model: '', autoFailover: false },
+      providerWarning: error instanceof Error ? error.message : 'Configuration IA invalide.',
+      failoverWarning: null,
+    };
+  }
   try {
     validateConfig(env, config);
-    return applyConfig(env, config);
-  } catch {
-    return applyConfig(env, { ...config, provider: 'demo', model: '' });
+    return { config, providerWarning: null, failoverWarning: null };
+  } catch (error) {
+    return {
+      config: { ...config, autoFailover: false },
+      providerWarning: null,
+      failoverWarning: error instanceof Error ? error.message : 'Secours indisponible.',
+    };
   }
+}
+
+export function availableFallbackProviders(env: RuntimeEnv) {
+  return (['gemini', 'groq', 'openai'] as const).map((provider) => {
+    const candidate = { ...env, LLM_PROVIDER: provider, LLM_MODEL: undefined };
+    const state = publicModelConfig(candidate);
+    let allowed = false;
+    try {
+      allowed = enabledProviders(env).includes(provider);
+    } catch {
+      /* Fail closed. */
+    }
+    return {
+      provider,
+      model: configuredModel(candidate, provider),
+      available: allowed && state.ready,
+      reason: allowed ? state.blockedReason : 'Fournisseur non autorisé côté serveur.',
+    };
+  });
 }
 
 function providerCandidate(env: RuntimeEnv, provider: ProviderId) {
@@ -133,6 +201,12 @@ function providerCandidate(env: RuntimeEnv, provider: ProviderId) {
       label: configuredModel(env, provider)
         ? `OpenAI · ${configuredModel(env, provider)}`
         : 'OpenAI · modèle à configurer',
+    };
+  if (provider === 'groq')
+    return {
+      provider,
+      model: configuredModel(env, provider),
+      label: `Groq · ${configuredModel(env, provider)}`,
     };
   if (provider === 'ollama')
     return {
@@ -188,7 +262,7 @@ export function availableProviders(env: RuntimeEnv) {
     );
   }
 
-  for (const provider of ['ollama', 'openai', 'compatible'] as const) {
+  for (const provider of ['groq', 'ollama', 'openai', 'compatible'] as const) {
     if (!allowed.includes(provider)) continue;
     const candidate = providerCandidate(env, provider);
     if (candidate) candidates.push(candidate);
