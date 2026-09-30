@@ -26,6 +26,13 @@ const { createReleaseAttestation, verifyReleaseAttestation } = await import(
 const organizationId = '00000000-0000-4000-8000-000000000001';
 const sourceTreeSha = 'a'.repeat(40);
 const secret = 'release-attestation-test-key-with-strong-length-2026';
+const qualifiedConfiguration = {
+  llmProvider: 'gemini',
+  llmModel: 'gemini-3.1-flash-lite',
+  embeddingProvider: 'gemini',
+  embeddingModel: 'gemini-embedding-2',
+  embeddingRevision: '1',
+};
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -33,19 +40,20 @@ function sha256(value) {
 
 function payload(now) {
   return {
-    schema: 1,
+    schema: 2,
     qualificationId: 'b'.repeat(64),
     sourceTreeSha,
     organizationId,
+    ...qualifiedConfiguration,
     approvedAt: new Date(now - 60_000).toISOString(),
     expiresAt: new Date(now + 60 * 60_000).toISOString(),
   };
 }
 
-test('signed P1.7 release attestation verifies only for its exact source tree and organization', async () => {
+test('signed P1.7 attestation binds source, organization, provider, model and embedding space', async () => {
   const now = Date.now();
   const token = await createReleaseAttestation(payload(now), secret, now);
-  assert.match(token, /^p1a1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  assert.match(token, /^p1a2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 
   const valid = await verifyReleaseAttestation(
     {
@@ -53,6 +61,7 @@ test('signed P1.7 release attestation verifies only for its exact source tree an
       secret,
       deployedSourceTreeSha: sourceTreeSha,
       organizationId,
+      ...qualifiedConfiguration,
     },
     now,
   );
@@ -65,6 +74,7 @@ test('signed P1.7 release attestation verifies only for its exact source tree an
       secret,
       deployedSourceTreeSha: 'c'.repeat(40),
       organizationId,
+      ...qualifiedConfiguration,
     },
     now,
   );
@@ -80,6 +90,7 @@ test('signed P1.7 release attestation verifies only for its exact source tree an
       secret,
       deployedSourceTreeSha: sourceTreeSha,
       organizationId: '00000000-0000-4000-8000-000000000002',
+      ...qualifiedConfiguration,
     },
     now,
   );
@@ -88,6 +99,27 @@ test('signed P1.7 release attestation verifies only for its exact source tree an
     payload: null,
     reason: 'organization_mismatch',
   });
+
+  for (const change of [
+    { llmProvider: 'groq', llmModel: 'openai/gpt-oss-120b' },
+    { llmModel: 'gemini-3.5-flash-lite' },
+    { embeddingProvider: 'openai', embeddingModel: 'text-embedding-3-small' },
+    { embeddingRevision: '2' },
+  ]) {
+    const mismatch = await verifyReleaseAttestation(
+      {
+        token,
+        secret,
+        deployedSourceTreeSha: sourceTreeSha,
+        organizationId,
+        ...qualifiedConfiguration,
+        ...change,
+      },
+      now,
+    );
+    assert.equal(mismatch.valid, false);
+    assert.equal(mismatch.reason, 'provider_mismatch');
+  }
 });
 
 test('release attestation rejects signature tampering, expiry and weak keys', async () => {
@@ -103,6 +135,7 @@ test('release attestation rejects signature tampering, expiry and weak keys', as
       secret,
       deployedSourceTreeSha: sourceTreeSha,
       organizationId,
+      ...qualifiedConfiguration,
     },
     now,
   );
@@ -115,6 +148,7 @@ test('release attestation rejects signature tampering, expiry and weak keys', as
       secret,
       deployedSourceTreeSha: sourceTreeSha,
       organizationId,
+      ...qualifiedConfiguration,
     },
     now + 2 * 60 * 60_000,
   );
@@ -158,6 +192,8 @@ test('attestation generator signs only a fully approved final qualification and 
     parentQualificationId: qualificationId,
     releaseAllowed: true,
     automatedPassed: true,
+    qualifiedConfiguration,
+    metrics: { structured: { provider: qualifiedConfiguration.llmProvider, model: qualifiedConfiguration.llmModel } },
     scope,
     source: { treeSha: sourceTreeSha },
     artifacts,
@@ -169,6 +205,7 @@ test('attestation generator signs only a fully approved final qualification and 
       subprocesses: true,
       reportsReadable: true,
       qualificationArtifactIntegrity: true,
+      providerConfiguration: true,
       structured: true,
       retrieval: true,
       generation: true,
@@ -206,6 +243,8 @@ test('attestation generator signs only a fully approved final qualification and 
   assert.equal(artifact.payload.qualificationId, qualificationId);
   assert.equal(artifact.payload.organizationId, organizationId);
   assert.equal(artifact.payload.sourceTreeSha, sourceTreeSha);
+  assert.equal(artifact.payload.llmProvider, 'gemini');
+  assert.equal(artifact.payload.embeddingModel, 'gemini-embedding-2');
   assert.equal(artifact.deployment.P1_DEPLOYED_SOURCE_TREE_SHA, sourceTreeSha);
   assert.equal(artifact.deployment.P1_RELEASE_ATTESTATION, artifact.token);
   assert.doesNotMatch(JSON.stringify(artifact), new RegExp(secret));
@@ -216,10 +255,24 @@ test('attestation generator signs only a fully approved final qualification and 
       secret,
       deployedSourceTreeSha: sourceTreeSha,
       organizationId,
+      ...qualifiedConfiguration,
     },
     Date.now(),
   );
   assert.equal(verified.valid, true);
+
+  report.gates.providerConfiguration = false;
+  await writeFile(reportPath, JSON.stringify(report));
+  const denied = spawnSync(
+    process.execPath,
+    ['scripts/create-p1-release-attestation.mjs', '--final-report', reportPath, '--output', outputPath],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, P1_RELEASE_ATTESTATION_KEY: secret },
+    },
+  );
+  assert.notEqual(denied.status, 0, 'provider configuration gate is mandatory');
 });
 
 test('attestation generator fails closed for incomplete human approval', async (t) => {

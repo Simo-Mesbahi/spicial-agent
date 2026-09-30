@@ -34,6 +34,7 @@ const requiredGates = [
   'subprocesses',
   'reportsReadable',
   'qualificationArtifactIntegrity',
+  'providerConfiguration',
   'structured',
   'retrieval',
   'generation',
@@ -58,6 +59,16 @@ if (
   typeof report?.artifacts?.sourceTreeSha !== 'string' ||
   !/^[a-f0-9]{40,64}$/.test(report.artifacts.sourceTreeSha) ||
   report?.source?.treeSha !== report.artifacts.sourceTreeSha ||
+  !['gemini', 'openai', 'groq'].includes(report?.qualifiedConfiguration?.llmProvider) ||
+  typeof report?.qualifiedConfiguration?.llmModel !== 'string' ||
+  !report.qualifiedConfiguration.llmModel ||
+  report?.metrics?.structured?.provider !== report.qualifiedConfiguration.llmProvider ||
+  report?.metrics?.structured?.model !== report.qualifiedConfiguration.llmModel ||
+  !['gemini', 'openai'].includes(report?.qualifiedConfiguration?.embeddingProvider) ||
+  typeof report?.qualifiedConfiguration?.embeddingModel !== 'string' ||
+  !report.qualifiedConfiguration.embeddingModel ||
+  typeof report?.qualifiedConfiguration?.embeddingRevision !== 'string' ||
+  !report.qualifiedConfiguration.embeddingRevision ||
   typeof report?.scope?.organizationId !== 'string' ||
   !uuid.test(report.scope.organizationId) ||
   valueSha256({ scope: report.scope, artifacts: report.artifacts }) !== report.qualificationId
@@ -72,10 +83,11 @@ if (!Number.isFinite(approvedAtMs) || approvedAtMs > Date.now() + 5 * 60_000)
 
 const expiresAtMs = approvedAtMs + expiresHours * 60 * 60 * 1000;
 const payload = {
-  schema: 1,
+  schema: 2,
   qualificationId: report.qualificationId,
   sourceTreeSha: report.artifacts.sourceTreeSha,
   organizationId: report.scope.organizationId,
+  ...report.qualifiedConfiguration,
   approvedAt: new Date(approvedAtMs).toISOString(),
   expiresAt: new Date(expiresAtMs).toISOString(),
 };
@@ -103,7 +115,7 @@ await writeFile(
   outputPath,
   JSON.stringify(
     {
-      schema: 1,
+      schema: 2,
       kind: 'p1-release-attestation',
       token,
       payload,

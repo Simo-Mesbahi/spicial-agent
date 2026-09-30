@@ -1041,11 +1041,42 @@ if (humanReviewPath) {
   }
 }
 
+const qualifiedConfiguration = {
+  llmProvider: structured?.provider ?? null,
+  llmModel: structured?.model ?? null,
+  embeddingProvider: retrieval?.configuration?.embeddingProvider ?? null,
+  embeddingModel: retrieval?.configuration?.embeddingModel ?? null,
+  embeddingRevision: retrieval?.configuration?.embeddingRevision ?? null,
+};
+const attempts = [
+  ...generationRows.flatMap((row) => [
+    ...(row.providerAttempts ?? []),
+    ...(row.factualValidationAttempts ?? []),
+  ]),
+  ...groundingRows.flatMap((row) => row.providerAttempts ?? []),
+];
+const providerConfigurationGate =
+  ['gemini', 'openai', 'groq'].includes(qualifiedConfiguration.llmProvider) &&
+  qualifiedConfiguration.llmProvider === process.env.LLM_PROVIDER &&
+  qualifiedConfiguration.llmModel === process.env.LLM_MODEL &&
+  ['gemini', 'openai'].includes(qualifiedConfiguration.embeddingProvider) &&
+  qualifiedConfiguration.embeddingProvider === process.env.EMBEDDING_PROVIDER &&
+  qualifiedConfiguration.embeddingModel === process.env.EMBEDDING_MODEL &&
+  qualifiedConfiguration.embeddingRevision === (process.env.EMBEDDING_REVISION ?? '1') &&
+  process.env.LLM_AUTO_FAILOVER !== 'true' &&
+  attempts.length > 0 &&
+  attempts.every(
+    (attempt) =>
+      attempt.provider === qualifiedConfiguration.llmProvider &&
+      attempt.model === qualifiedConfiguration.llmModel,
+  );
+
 const automatedGates = {
   historicalRegressions: historicalRegressionGate.valid,
   subprocesses: subprocessFailures.length === 0,
   reportsReadable: readFailures.length === 0,
   qualificationArtifactIntegrity: qualificationAnchor.valid,
+  providerConfiguration: providerConfigurationGate,
   structured: structuredGate,
   retrieval: retrievalGate,
   generation: generationGate,
@@ -1087,6 +1118,7 @@ const report = {
   },
   contract,
   scope: qualificationScope,
+  qualifiedConfiguration,
   source,
   artifacts,
   qualificationAnchor,

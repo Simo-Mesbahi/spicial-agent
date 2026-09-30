@@ -1,15 +1,20 @@
 import { z } from 'zod';
 
-const TOKEN_PREFIX = 'p1a1';
+const TOKEN_PREFIX = 'p1a2';
 const MAX_ATTESTATION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 const payloadSchema = z
   .object({
-    schema: z.literal(1),
+    schema: z.literal(2),
     qualificationId: z.string().regex(/^[a-f0-9]{64}$/),
     sourceTreeSha: z.string().regex(/^[a-f0-9]{40,64}$/),
     organizationId: z.string().uuid(),
+    llmProvider: z.enum(['gemini', 'openai', 'groq']),
+    llmModel: z.string().min(1).max(120),
+    embeddingProvider: z.enum(['gemini', 'openai']),
+    embeddingModel: z.string().min(1).max(120),
+    embeddingRevision: z.string().min(1).max(80),
     approvedAt: z.string().min(20).max(40),
     expiresAt: z.string().min(20).max(40),
   })
@@ -35,7 +40,8 @@ export type ReleaseAttestationVerification =
         | 'invalid_time_window'
         | 'expired'
         | 'source_mismatch'
-        | 'organization_mismatch';
+        | 'organization_mismatch'
+        | 'provider_mismatch';
     };
 
 function encodeBase64Url(bytes: Uint8Array) {
@@ -124,6 +130,11 @@ export async function verifyReleaseAttestation(
     secret?: string;
     deployedSourceTreeSha?: string;
     organizationId?: string;
+    llmProvider?: string;
+    llmModel?: string;
+    embeddingProvider?: string;
+    embeddingModel?: string;
+    embeddingRevision?: string;
   },
   now = Date.now(),
 ): Promise<ReleaseAttestationVerification> {
@@ -194,6 +205,14 @@ export async function verifyReleaseAttestation(
     return { valid: false, payload: null, reason: 'source_mismatch' };
   if (payload.organizationId !== organizationId)
     return { valid: false, payload: null, reason: 'organization_mismatch' };
+  if (
+    payload.llmProvider !== input.llmProvider ||
+    payload.llmModel !== input.llmModel ||
+    payload.embeddingProvider !== input.embeddingProvider ||
+    payload.embeddingModel !== input.embeddingModel ||
+    payload.embeddingRevision !== input.embeddingRevision
+  )
+    return { valid: false, payload: null, reason: 'provider_mismatch' };
 
   return { valid: true, payload, reason: null };
 }
