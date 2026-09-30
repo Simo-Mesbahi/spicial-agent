@@ -302,6 +302,43 @@
 }
 
 .admin-ops-list,
+.admin-ops-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.admin-ops-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-ops-pagination button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.admin-ops-pagination button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-ops-pagination button:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
 .admin-ops-case-results,
 .admin-ops-routes,
 .admin-ops-audit {
@@ -1215,7 +1252,18 @@ body:has(.admin-ops-page) .admin-operations-launcher {
 }
 
 .admin-ops-search-advanced {
-  grid-template-columns: auto minmax(140px, 1fr) minmax(130px, auto) minmax(105px, auto) auto;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.admin-ops-search-advanced input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.admin-ops-search-advanced select {
+  flex: 1 1 120px;
+  min-width: 0;
 }
 
 .admin-ops-search select {
