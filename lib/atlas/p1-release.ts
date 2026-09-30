@@ -144,16 +144,19 @@ export async function releaseConfigurationState(
 
   const canarySaltConfigured = (env.P1_CANARY_SALT?.trim().length ?? 0) >= 16;
   let modelConfigured = false;
+  let modelConfiguration: ReturnType<typeof modelSettings> | null = null;
   try {
     const model = modelSettings(env);
+    modelConfiguration = model;
     modelConfigured = model.provider !== 'demo' && Boolean(model.model) && Boolean(model.base);
   } catch {
     modelConfigured = false;
   }
 
   let embeddingConfigured = false;
+  let embeddingConfiguration: ReturnType<typeof embeddingSettings> | null = null;
   try {
-    embeddingSettings(env);
+    embeddingConfiguration = embeddingSettings(env);
     embeddingConfigured = true;
   } catch {
     embeddingConfigured = false;
@@ -177,6 +180,11 @@ export async function releaseConfigurationState(
         secret: env.P1_RELEASE_ATTESTATION_KEY,
         deployedSourceTreeSha: env.P1_DEPLOYED_SOURCE_TREE_SHA,
         organizationId: env.SUPABASE_ORGANIZATION_ID,
+        llmProvider: modelConfiguration?.provider,
+        llmModel: modelConfiguration?.model ?? undefined,
+        embeddingProvider: embeddingConfiguration?.provider,
+        embeddingModel: embeddingConfiguration?.model,
+        embeddingRevision: embeddingConfiguration?.revision,
       });
       if (!attestation.valid) {
         issues.push('release_attestation_invalid');

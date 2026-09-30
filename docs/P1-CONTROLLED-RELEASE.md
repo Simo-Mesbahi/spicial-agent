@@ -101,11 +101,20 @@ The selected environment must provide these GitHub Actions secrets:
 - `SUPABASE_PUBLISHABLE_KEY`;
 - `SUPABASE_SECRET_KEY`;
 - `SUPABASE_ORGANIZATION_ID`;
-- `GEMINI_API_KEY` and/or `OPENAI_API_KEY` for the selected model provider;
+- `GEMINI_API_KEY`, `OPENAI_API_KEY` or `GROQ_API_KEY` for the selected model provider;
 - optional `EMBEDDING_API_KEY` when embeddings use a separate credential.
 
 When `EMBEDDING_API_KEY` is intentionally omitted, the workflow can reuse the
-selected Gemini/OpenAI provider key for embeddings without printing it. The workflow
+Gemini/OpenAI key matching the selected **embedding** provider without printing it.
+Groq is a completion provider here, not an embedding provider. A Groq qualification
+with Gemini embeddings therefore needs `GROQ_API_KEY` and a Gemini embedding key
+(`EMBEDDING_API_KEY` or `GEMINI_API_KEY`) in the protected environment. Select
+`llm_provider=groq`, `llm_model=openai/gpt-oss-120b` or `openai/gpt-oss-20b`,
+`embedding_provider=gemini`, and `embedding_model=gemini-embedding-2`. The default
+LLM model in the dispatch form is Gemini; change it explicitly for Groq. The
+workflow validates the model and both credentials before spending provider budget.
+Free tier capacity is account-specific; a rate limit or insufficient quota blocks
+qualification and never relaxes a quality gate. The workflow
 never enables `P1_RELEASE_MODE=canary` or `on`. A successful automated run produces
 a seven-day GitHub artifact containing the qualification reports and a fail-closed
 `human-review.json` template whose approvals all start disabled.
@@ -117,9 +126,9 @@ The governed live plan currently measures:
 - all 10 natural-generation scenarios;
 - all 70 factual-grounding scenarios.
 
-The manual workflow performs the 20-query hybrid retrieval qualification **before** the completion-heavy stages. Each scenario starts from an authored FR/EN/DE/ES/AR customer utterance but exercises the reviewed French retrieval query used at the actual structured-orchestrator → `fr-FR` corpus boundary. A fresh report is bound to the `canonical_fr_from_multilingual_source` query contract, provider/model/revision, locale, market and relevance thresholds; an older raw-query report is rejected. Every per-query recall/precision requirement must pass before the report can be reused by the full qualification. This prevents spending the completion-heavy qualification budget when the production retrieval path is not release-ready. Live retrieval embeddings are now paced independently at 3000 ms start-to-start, including an initial delay after corpus indexing, so qualification does not burst the embedding provider. Retrieval itself still performs exactly one embedding request per query and never retries a 429.
+The manual workflow performs the 20-query hybrid retrieval qualification **before** the completion-heavy stages. Each scenario starts from an authored FR/EN/DE/ES/AR customer utterance but exercises the reviewed French retrieval query used at the actual structured-orchestrator → `fr-FR` corpus boundary. A fresh report is bound to the `canonical_fr_from_multilingual_source` query contract, provider/model/revision, locale, market and relevance thresholds; an older raw-query report is rejected. Every per-query recall/precision requirement must pass before the report can be reused by the full qualification. This prevents spending the completion-heavy qualification budget when the production retrieval path is not release-ready. Live retrieval embeddings are now paced independently at 4000 ms start-to-start, including an initial delay after corpus indexing, so qualification does not burst the embedding provider. Retrieval itself still performs exactly one embedding request per query and never retries a 429.
 
-For the Gemini free-tier qualification baseline, completion calls are paced start-to-start with a 7500 ms minimum interval. The live qualification workflow defaults to `gemini-3.5-flash-lite`; earlier approved Gemini model identifiers remain allowlisted for explicit compatibility runs. The pacing helper itself never retries. Structured understanding, natural generation and the Gemini 3.5 factual judge use strict `json_schema` output. The factual transport is intentionally minimal: the provider returns only the detected language plus ordered semantic verdict/issue pairs; sentence indexes, factual/courtesy classification, evidence identity and citations are reconstructed by the server from the validated draft. Older allowlisted Gemini models retain the prompt-constrained fallback because earlier hosted qualification observed HTTP 400 for the larger judge schema. All factual outputs still pass strict local Zod validation.
+For the free-tier qualification baseline, completion calls are paced start-to-start with a 10000 ms minimum interval. The live qualification workflow defaults to `gemini-3.5-flash-lite`; earlier approved Gemini model identifiers remain allowlisted for explicit compatibility runs. The pacing helper itself never retries. Structured understanding, natural generation and the Gemini 3.5 factual judge use strict `json_schema` output. The factual transport is intentionally minimal: the provider returns only the detected language plus ordered semantic verdict/issue pairs; sentence indexes, factual/courtesy classification, evidence identity and citations are reconstructed by the server from the validated draft. Older allowlisted Gemini models retain the prompt-constrained fallback because earlier hosted qualification observed HTTP 400 for the larger judge schema. All factual outputs still pass strict local Zod validation.
 
 The hosted runs on 2026-09-23 measured repeated deadline exhaustion at the former 20s/5s/4s ceilings. Run #9 then measured structured p95 ≈43.25s and p99 ≈45.02s, with multiple otherwise-recoverable requests hitting the 45s boundary exactly. The preproduction qualification profile therefore uses the provider policy's maximum bounded 60-second deadline for structured requests and the maximum bounded 20-second deadline for natural generation and factual validation. These values do not change normal production defaults when the overrides are unset or extend evidence/session expiry. Recoverable structured retries also wait for a bounded 15-second cooldown before rebuilding the scenario, preventing an immediate retry storm during a short provider brownout.
 
@@ -141,9 +150,9 @@ A subsequent correctness audit tightened the qualification boundary before the n
 
 The grounding shard plan is defined once and reused by both the release evaluator and human-review artifact validation. The current 70-scenario plan produces five reports (the one-scenario factual smoke plus four remaining shards), eliminating the former duplicated 4-vs-5 report-count constant.
 
-The runner caps the qualification budget before executing: 100 required structured completions plus at most 30 structured retry calls, 10 generation completions plus at most 2 transport-only generation retries and at most 2 language-only corrective generations, 10 factual-validation completions for those exact generated candidates plus at most 2 validation retries and at most 2 validations of corrected-language candidates, 70 grounding completions plus at most 8 grounding retries, and exactly 20 retrieval embedding calls. The maximum completion ceiling is therefore 236. Retries are qualification-only, globally bounded, observable and restricted to `network_or_timeout` or `upstream_unavailable`. Generation never retries a semantic failure, and factual validation always retries the same generated draft rather than regenerating until a favorable verdict appears. Grounding retries the same authored scenario. All such retries use a 15-second cooldown.
+The runner caps the qualification budget before executing: 100 required structured completions plus at most 30 structured retry calls, 10 generation completions plus at most 2 transport-only generation retries and at most 2 language-only corrective generations, 10 factual-validation completions for those exact generated candidates plus at most 2 validation retries and at most 2 validations of corrected-language candidates, 70 grounding completions plus at most 8 grounding retries, and 20 required retrieval embedding calls with at most 4 bounded retry calls. The governed maximum is 240 completion calls and 24 embedding calls (including bounded retries). Retries are qualification-only, globally bounded and observable. Transport failures may be retried; a short-window 429 may receive a bounded 60-second wait, while daily or long-window exhaustion blocks the run. Generation never retries a semantic failure, and factual validation always retries the same generated draft rather than regenerating until a favorable verdict appears. Grounding retries the same authored scenario. Transport retries use a 15-second cooldown.
 
-HTTP 429 is deliberately **not** retried anywhere in completion qualification: rate limiting remains a fail-closed signal rather than a reason to consume retry budget. HTTP 400/request rejection, authentication/configuration errors, invalid verdicts and unsupported/uncertain factual claims are likewise never retried. A response-language mismatch is treated separately from factual semantics: qualification may perform at most one server-directed language correction for a scenario, with a global maximum of two corrections across the ten generation scenarios. The corrected candidate is re-audited factually from scratch against the same server-owned evidence; unsupported or uncertain factual verdicts can never trigger regeneration. Missing metrics, exhausted retry budgets and malformed verdicts never count as passing.
+HTTP 429 is never retried within a single production request. During qualification, only an explicitly classified short-window rate limit may consume a bounded scenario retry after the 60-second wait; persistent or daily quota exhaustion fails closed. HTTP 400/request rejection, authentication/configuration errors, invalid verdicts and unsupported/uncertain factual claims are likewise never retried. A response-language mismatch is treated separately from factual semantics: qualification may perform at most one server-directed language correction for a scenario, with a global maximum of two corrections across the ten generation scenarios. The corrected candidate is re-audited factually from scratch against the same server-owned evidence; unsupported or uncertain factual verdicts can never trigger regeneration. Missing metrics, exhausted retry budgets and malformed verdicts never count as passing.
 
 Natural-generation qualification additionally requires explicit human review of:
 
@@ -207,13 +216,21 @@ npm run eval:p1:attest -- \
 
 The signing command independently rechecks the final report, every named automated
 gate, human approval, qualification identity, organization scope and source-tree
-identity. It writes `outputs/p1-live/release-attestation.json` containing the
+identity. The provider-configuration gate requires the exact hosted LLM provider and
+model used by structured, generation and grounding evaluations, the exact embedding
+provider/model/revision used by retrieval, and no automatic model failover. It writes
+`outputs/p1-live/release-attestation.json` containing the
 non-secret attestation token and the exact qualified source-tree SHA. The HMAC key is
 never written to the artifact.
 
 At runtime, `canary` and `on` are rejected unless the HMAC signature is valid, the
 attestation is unexpired, its organization matches `SUPABASE_ORGANIZATION_ID`, and
-its qualified source tree exactly matches `P1_DEPLOYED_SOURCE_TREE_SHA`. This makes
+its qualified source tree exactly matches `P1_DEPLOYED_SOURCE_TREE_SHA`, and the
+configured generation and embedding models match the signed qualification. The
+new `p1a2` attestation format rejects older `p1a1` tokens; renew qualification and
+human review on the new source tree before canary or release. Switching from Gemini
+or OpenAI to Groq needs its **own** live P1.7 qualification, human review and signed
+attestation. Admin routing cannot inherit another model's approval. This makes
 qualification/human review a technical release prerequisite rather than documentation
 alone.
 

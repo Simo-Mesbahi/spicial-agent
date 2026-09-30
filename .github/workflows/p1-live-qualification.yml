@@ -19,6 +19,7 @@ on:
         options:
           - gemini
           - openai
+          - groq
       llm_model:
         description: 'Exact approved model identifier'
         required: true
@@ -69,6 +70,7 @@ jobs:
       LLM_PROVIDER: ${{ inputs.llm_provider }}
       LLM_MODEL: ${{ inputs.llm_model }}
       LLM_BUDGET_MODE: ${{ inputs.budget_mode }}
+      LLM_AUTO_FAILOVER: 'false'
       LLM_DAILY_LIMIT: '100'
       LLM_STRUCTURED_OUTPUT: json_schema
       LLM_REQUEST_TIMEOUT_MS: '60000'
@@ -83,6 +85,7 @@ jobs:
       P1_STRUCTURED_RETRY_BACKOFF_MS: '15000'
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       EMBEDDING_PROVIDER: ${{ inputs.embedding_provider }}
       EMBEDDING_MODEL: ${{ inputs.embedding_model }}
       EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
@@ -148,6 +151,13 @@ jobs:
                 exit 2
               }
               [[ -n "${OPENAI_API_KEY:-}" ]] || { echo "Missing OPENAI_API_KEY." >&2; exit 2; }
+              ;;
+            groq)
+              [[ "${LLM_MODEL}" == "openai/gpt-oss-120b" || "${LLM_MODEL}" == "openai/gpt-oss-20b" ]] || {
+                echo "Groq P1.7 qualification requires an allowlisted GPT-OSS model." >&2
+                exit 2
+              }
+              [[ -n "${GROQ_API_KEY:-}" ]] || { echo "Missing GROQ_API_KEY." >&2; exit 2; }
               ;;
             *)
               echo "Unsupported live qualification provider." >&2

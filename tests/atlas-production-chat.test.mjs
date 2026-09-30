@@ -891,10 +891,15 @@ async function approvedReleaseSettings() {
   const now = Date.now();
   const token = await createReleaseAttestation(
     {
-      schema: 1,
+      schema: 2,
       qualificationId: 'b'.repeat(64),
       sourceTreeSha: RELEASE_TREE,
       organizationId: org,
+      llmProvider: 'openai',
+      llmModel: 'test-model',
+      embeddingProvider: 'gemini',
+      embeddingModel: 'gemini-embedding-001',
+      embeddingRevision: '1',
       approvedAt: new Date(now - 60_000).toISOString(),
       expiresAt: new Date(now + 24 * 60 * 60_000).toISOString(),
     },

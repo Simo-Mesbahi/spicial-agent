@@ -34,10 +34,15 @@ async function approvedReleaseEnv(overrides = {}) {
   const now = Date.now();
   const token = await createReleaseAttestation(
     {
-      schema: 1,
+      schema: 2,
       qualificationId: 'b'.repeat(64),
       sourceTreeSha: RELEASE_TREE,
       organizationId: RELEASE_ORG,
+      llmProvider: 'gemini',
+      llmModel: 'gemini-3.1-flash-lite',
+      embeddingProvider: 'gemini',
+      embeddingModel: 'gemini-embedding-2',
+      embeddingRevision: '1',
       approvedAt: new Date(now - 60_000).toISOString(),
       expiresAt: new Date(now + 24 * 60 * 60_000).toISOString(),
     },
@@ -397,6 +402,17 @@ test('release readiness fails closed unless structured, hybrid, generation, vali
     EMBEDDING_API_KEY: 'test-embedding-key',
   });
   assert.equal((await releaseConfigurationState(base)).releaseReady, true);
+
+  for (const changed of [
+    { LLM_PROVIDER: 'groq', LLM_MODEL: 'openai/gpt-oss-120b', GROQ_API_KEY: 'test-groq-key' },
+    { LLM_MODEL: 'gemini-3.5-flash-lite' },
+    { EMBEDDING_MODEL: 'gemini-embedding-001' },
+    { EMBEDDING_REVISION: '2' },
+  ]) {
+    const state = await releaseConfigurationState({ ...base, ...changed });
+    assert.equal(state.releaseReady, false, JSON.stringify(changed));
+    assert.ok(state.issues.includes('release_attestation_invalid'));
+  }
 
   for (const [key, value] of [
     ['LLM_ORCHESTRATOR', 'legacy'],

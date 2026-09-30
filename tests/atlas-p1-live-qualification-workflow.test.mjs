@@ -33,6 +33,21 @@ test('P1.7 live qualification workflow is manual-only and explicitly acknowledge
   assert.match(source, /cancel-in-progress: false/);
 });
 
+test('Groq P1.7 qualification requires its own allowlisted model and key while embeddings remain independently configured', async () => {
+  const source = await readFile(workflowPath, 'utf8');
+  const llmChoices = source.slice(source.indexOf('llm_provider:'), source.indexOf('llm_model:'));
+  const embeddingChoices = source.slice(source.indexOf('embedding_provider:'), source.indexOf('embedding_model:'));
+  assert.match(llmChoices, /- groq/);
+  assert.doesNotMatch(embeddingChoices, /- groq/);
+  assert.match(source, /GROQ_API_KEY: \$\{\{ secrets\.GROQ_API_KEY \}\}/);
+  assert.match(source, /openai\/gpt-oss-120b/);
+  assert.match(source, /openai\/gpt-oss-20b/);
+  assert.match(source, /Missing GROQ_API_KEY/);
+  assert.match(source, /LLM_AUTO_FAILOVER: 'false'/);
+  assert.match(source, /Missing embedding\/Gemini API key/);
+  assert.match(source, /P1_RELEASE_MODE: off/);
+});
+
 test('dependency install policy is version-pinned and enforced in every CI path', async () => {
   const [workflow, ci, installScript, pkgSource] = await Promise.all([
     readFile(workflowPath, 'utf8'),
