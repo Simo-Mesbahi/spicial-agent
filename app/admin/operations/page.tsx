@@ -491,16 +491,19 @@ export default function AdminOperationsPage() {
     membership?.role === 'sc_manager';
   const canManageSelected = Boolean(
     selectedCase &&
-      !selectedCase.archived_at &&
-      canManageCase(membership?.role, selectedCase.service_type),
+    !selectedCase.archived_at &&
+    canManageCase(membership?.role, selectedCase.service_type),
   );
   const nextStatuses = selectedCase
     ? allowedNextStatuses(selectedCase.service_type, selectedCase.status)
     : [];
   const unsavedCase = Boolean(
-    (editing && selectedCase && editDraft &&
+    (editing &&
+      selectedCase &&
+      editDraft &&
       JSON.stringify(editDraft) !== JSON.stringify(editDraftFromCase(selectedCase))) ||
-    note.trim() || transitionNote.trim(),
+    note.trim() ||
+    transitionNote.trim(),
   );
   useEffect(() => {
     if (!unsavedCase) return;
@@ -512,7 +515,10 @@ export default function AdminOperationsPage() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsavedCase]);
   function confirmCaseNavigation() {
-    return !unsavedCase || window.confirm('Des modifications du dossier ne sont pas enregistrées. Les abandonner ?');
+    return (
+      !unsavedCase ||
+      window.confirm('Des modifications du dossier ne sont pas enregistrées. Les abandonner ?')
+    );
   }
   function clearCaseDraft() {
     detailReads.current.cancel();
@@ -678,13 +684,13 @@ export default function AdminOperationsPage() {
   const loadCaseList = useCallback(async (orgId: string, filters: CaseListFilters, offset = 0) => {
     const result = await listReads.current.run((signal) =>
       loadAdminCasePage<AdminCase>(request, orgId, filters, offset, signal),
-      );
+    );
     if (!result) return null;
-      setCases(result.items);
-      setCaseTotal(result.total);
+    setCases(result.items);
+    setCaseTotal(result.total);
     setCaseOffset(result.offset);
     setAppliedFilters(result.filters);
-      return result;
+    return result;
   }, []);
 
   const loadAll = useCallback(
@@ -695,21 +701,21 @@ export default function AdminOperationsPage() {
       try {
         const params = new URLSearchParams({ organizationId: orgId });
         const result = await listReads.current.run(async (signal) => {
-        const overviewPromise = request<{ overview: Overview }>(
-          `/api/production/admin/operations/overview?${params}`,
+          const overviewPromise = request<{ overview: Overview }>(
+            `/api/production/admin/operations/overview?${params}`,
             { signal },
-        );
-        const queuePromise = request<{ queue: Queue }>(
-          `/api/production/admin/operations/queue?${params}`,
+          );
+          const queuePromise = request<{ queue: Queue }>(
+            `/api/production/admin/operations/queue?${params}`,
             { signal },
-        );
+          );
           const listPromise = loadAdminCasePage<AdminCase>(request, orgId, filters, 0, signal);
-        const auditPromise =
-          role === 'super_admin' || role === 'analyst'
+          const auditPromise =
+            role === 'super_admin' || role === 'analyst'
               ? request<{ audit: Audit }>(`/api/production/admin/operations/audit?${params}`, {
                   signal,
                 })
-            : Promise.resolve(null);
+              : Promise.resolve(null);
 
           return Promise.all([overviewPromise, queuePromise, listPromise, auditPromise]);
         });
@@ -930,9 +936,9 @@ export default function AdminOperationsPage() {
       const customer =
         !selectedCustomer &&
         (createDraft.customerExternalId ||
-        createDraft.customerFirstName ||
-        createDraft.customerLastName ||
-        createDraft.customerEmail ||
+          createDraft.customerFirstName ||
+          createDraft.customerLastName ||
+          createDraft.customerEmail ||
           createDraft.customerPhone)
           ? {
               externalId: createDraft.customerExternalId || null,
@@ -944,14 +950,14 @@ export default function AdminOperationsPage() {
           : null;
       const product =
         !selectedProduct && createDraft.productName
-        ? {
-            externalId: createDraft.productExternalId || null,
-            sku: createDraft.productSku || null,
-            name: createDraft.productName,
-            category: createDraft.productCategory || null,
-            serialNumber: createDraft.productSerialNumber || null,
-          }
-        : null;
+          ? {
+              externalId: createDraft.productExternalId || null,
+              sku: createDraft.productSku || null,
+              name: createDraft.productName,
+              category: createDraft.productCategory || null,
+              serialNumber: createDraft.productSerialNumber || null,
+            }
+          : null;
       const result = await request<AccessCodeResult>(
         '/api/production/admin/operations/case/create',
         {
@@ -1022,25 +1028,25 @@ export default function AdminOperationsPage() {
     try {
       const caseId = selectedCase.id;
       const result = await request<MutationResult>('/api/production/admin/operations/case/update', {
-          method: 'POST',
-          body: JSON.stringify({
-            organizationId,
-            caseId,
-            expectedVersion: selectedCase.version,
-            title: editDraft.title,
-            description: editDraft.description,
-            customerId: selectedCase.customer_id,
-            productId: selectedCase.product_id,
-            storeId: editDraft.storeId || null,
-            warrantyStatus: editDraft.warrantyStatus,
-            warrantyLabel: editDraft.warrantyLabel || null,
-            quoteCents: eurosToCents(editDraft.quoteEuros),
-            refundCents: eurosToCents(editDraft.refundEuros),
-            currency: editDraft.currency.toUpperCase(),
-            deliveryMode: editDraft.deliveryMode || null,
-            estimatedAt: toIsoDateTime(editDraft.estimatedAt),
-            requestId: crypto.randomUUID(),
-          }),
+        method: 'POST',
+        body: JSON.stringify({
+          organizationId,
+          caseId,
+          expectedVersion: selectedCase.version,
+          title: editDraft.title,
+          description: editDraft.description,
+          customerId: selectedCase.customer_id,
+          productId: selectedCase.product_id,
+          storeId: editDraft.storeId || null,
+          warrantyStatus: editDraft.warrantyStatus,
+          warrantyLabel: editDraft.warrantyLabel || null,
+          quoteCents: eurosToCents(editDraft.quoteEuros),
+          refundCents: eurosToCents(editDraft.refundEuros),
+          currency: editDraft.currency.toUpperCase(),
+          deliveryMode: editDraft.deliveryMode || null,
+          estimatedAt: toIsoDateTime(editDraft.estimatedAt),
+          requestId: crypto.randomUUID(),
+        }),
       });
       setSuccess(`Dossier ${result.reference} mis à jour et audité.`);
       setEditing(false);
