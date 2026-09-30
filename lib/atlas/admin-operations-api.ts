@@ -1,7 +1,7 @@
 import { syntheticProviderHealth } from './provider-health';
 import { effectiveEnvironment } from './runtime-settings';
 import { z } from 'zod';
-import { retrieve } from './domain';
+import { previewKnowledge, ragConfiguration, ragPreviewInputSchema } from './admin-rag-preview';
 import { publicModelConfig } from './model-policy';
 import { applyConfig, availableProviders, availableFallbackProviders, defaults, environmentLabel, readSettings, resolveConfig, runtimeConfigSchema, saveSettings, scopeKey, validateConfig, type Revision } from './runtime-settings';
 import { boundedJson, JsonLimitError } from './bounded-json';
@@ -810,6 +810,7 @@ export async function handleAdminOperationsApi(
           effectiveAutoFailover: resolved.config.autoFailover, failoverWarning: resolved.failoverWarning,
           fallbackProviders: availableFallbackProviders(env),
           providers: availableProviders(env), budget: env.LLM_BUDGET_MODE ?? 'zero',
+          rag: ragConfiguration(env),
           scope: 'Assistant de ce déploiement · organisation et environnement',
           history: history.results.map(item => ({ revision: item.revision, actor: item.actor, createdAt: item.created_at, config: runtimeConfigSchema.parse(JSON.parse(item.config)) })) }, 200, session.cookies);
       }
@@ -817,9 +818,14 @@ export async function handleAdminOperationsApi(
         guardMutation(req, env);
         if (!canEdit) fail(403, 'Seul le super-administrateur peut modifier les réglages.', 'settings_role_denied');
         if (path.endsWith('/preview')) {
-          const input = z.object({ query: z.string().trim().min(3).max(1000), ragResults: z.number().int().min(1).max(3), ragMinAnchors: z.number().int().min(1).max(3) }).strict().safeParse(await requestBody(req));
+          const input = ragPreviewInputSchema.safeParse(await requestBody(req));
           if (!input.success) fail(400, 'Paramètres de recherche invalides.', 'invalid_preview');
-          return json({ documents: retrieve(input.data.query, input.data.ragResults, input.data.ragMinAnchors) }, 200, session.cookies);
+          if (ragConfiguration(env).previewMayUseEmbedding && !input.data.allowEmbedding)
+            fail(409, 'Confirmez le test hybride : il peut consommer un appel d’embedding du quota partagé.', 'embedding_preview_confirmation_required');
+          const result = await previewKnowledge(env, input.data);
+          if (result.diagnostics.scope === 'supabase_unavailable')
+            return json({ error: 'La recherche documentaire configurée est indisponible. Aucun résultat de démonstration ne la remplace.', code: 'rag_preview_unavailable', diagnostics: result.diagnostics }, 503, session.cookies);
+          return json(result, 200, session.cookies);
         }
         const input = z.object({ revision: z.number().int().min(0), config: runtimeConfigSchema, confirmEnvironment: z.string() }).strict().safeParse(await requestBody(req));
         if (!input.success) fail(400, 'Réglages invalides.', 'invalid_settings');

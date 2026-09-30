@@ -92,7 +92,14 @@ test('environment must be confirmed and revisions are isolated by environment',a
  assert.equal(environmentLabel({},'https://unfamiliar.test'),'NON CONFIGURÉ');assert.equal(environmentLabel({},'http://localhost:5173'),'LOCAL');
 });
 test('RAG preview uses draft settings without saving or calling the model',async t=>{
- const env=setup(t);const result=await (await call(env,{query:'garantie',ragResults:1,ragMinAnchors:1},'settings/preview')).json();assert.equal(result.documents.length,1);
+ const env=setup(t); const identity=globalThis.fetch; const requests=[];
+ globalThis.fetch=async (url,init)=>{
+  if(String(url).endsWith('/knowledge_search')) { requests.push(JSON.parse(init.body)); return Response.json([publishedRow()]); }
+  return identity(url,init);
+ };
+ const result=await (await call(env,{query:'garantie',ragResults:1,ragMinAnchors:1},'settings/preview')).json();assert.equal(result.documents.length,1);
+ assert.equal(result.documents[0].title,'Procédure publiée test');assert.equal(result.diagnostics.scope,'supabase_published');assert.equal(result.diagnostics.embeddingCalls,0);
+ assert.equal(requests[0].p_limit,1);assert.equal(requests[0].p_organization_id,org);
  assert.equal((await (await call(env)).json()).revision,0);assert.equal((await call(env,{query:'garantie',ragResults:99,ragMinAnchors:0},'settings/preview')).status,400);
 });
 test('zero server quota is preserved and revoked providers fall back safely',async t=>{
@@ -172,4 +179,67 @@ test('empty optional server fallback loads as disabled',async t=>{
  const env={...setup(t),LLM_AUTO_FAILOVER:'false',LLM_FALLBACK_PROVIDER:''};
  assert.equal((await call(env)).status,200);
  assert.equal(defaults(env).fallbackProvider,null);
+});
+
+function publishedRow(changes={}) {
+ return {document_id:'00000000-0000-4000-8000-000000000101',chunk_id:'00000000-0000-4000-8000-000000000201',title:'Procédure publiée test',category:'SAV',version:'2',locale:'fr-FR',market:'GLOBAL',effective_from:null,effective_until:null,chunk_ordinal:0,content:'Vérifiez les éléments de garantie du dossier.',rank:4,...changes};
+}
+const previewInput={query:'garantie produit',ragResults:2,ragMinAnchors:2};
+
+test('RAG settings identify the actual source and never expose provider credentials',async t=>{
+ const env=setup(t);
+ const lexical=await (await call(env)).json();
+ assert.deepEqual(lexical.rag,{mode:'lexical',minAnchorsApplies:false,previewMayUseEmbedding:false,locale:'fr-FR',market:null});
+ const hybrid=await (await call({...env,RAG_MODE:'hybrid',RAG_CORPUS_LOCALE:'de-DE',RAG_MARKET:'DE',EMBEDDING_API_KEY:'PRIVATE-EMBEDDING'})).json();
+ assert.equal(hybrid.rag.mode,'hybrid');assert.equal(hybrid.rag.previewMayUseEmbedding,true);assert.equal(hybrid.rag.locale,'de-DE');
+ assert.doesNotMatch(JSON.stringify(hybrid),/PRIVATE-EMBEDDING|secret-never-expose/);
+ const {ragConfiguration}=await moduleFrom('lib/atlas/admin-rag-preview.ts');
+ const demo=ragConfiguration({...env,SUPABASE_SECRET_KEY:''});assert.equal(demo.minAnchorsApplies,true);
+});
+
+test('published preview distinguishes an empty search from a backend failure without demo substitution',async t=>{
+ const env=setup(t),identity=globalThis.fetch;let unavailable=false;
+ globalThis.fetch=async(url,init)=>String(url).endsWith('/knowledge_search') ? unavailable ? Response.json({message:'unavailable'},{status:503}) : Response.json([]) : identity(url,init);
+ const empty=await call(env,previewInput,'settings/preview');assert.equal(empty.status,200);const result=await empty.json();assert.deepEqual(result.documents,[]);assert.equal(result.diagnostics.outcome,'no_match');
+ unavailable=true;
+ const failed=await call(env,previewInput,'settings/preview');assert.equal(failed.status,503);assert.equal((await failed.json()).code,'rag_preview_unavailable');
+});
+
+test('hybrid preview requires explicit embedding acknowledgement before any retrieval or quota reservation',async t=>{
+ const env={...setup(t),RAG_MODE:'hybrid'},identity=globalThis.fetch;let calls=0;
+ globalThis.fetch=async(url,init)=>{assert.ok(String(url).endsWith('/admin_me'));calls++;return identity(url,init);};
+ const response=await call(env,previewInput,'settings/preview');assert.equal(response.status,409);assert.equal((await response.json()).code,'embedding_preview_confirmation_required');assert.equal(calls,1);
+ assert.equal(env.DB.sql.prepare("select count(*) as n from rate_buckets where id='embedding-global'").get().n,0);
+});
+
+test('acknowledged hybrid preview uses one shared-budget embedding, current locale and published provenance',async t=>{
+ const env={...setup(t),RAG_MODE:'hybrid',RAG_CORPUS_LOCALE:'de-DE',RAG_MARKET:'DE',LLM_BUDGET_MODE:'approved',EMBEDDING_PROVIDER:'openai',EMBEDDING_MODEL:'text-embedding-3-small',EMBEDDING_API_KEY:'synthetic-only',EMBEDDING_DAILY_LIMIT:'1'};
+ const identity=globalThis.fetch;let embeddings=0, searches=0;
+ const content='Prüfen Sie die Garantieunterlagen.';
+ const hash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(content))).toString('hex');
+ globalThis.fetch=async(url,init)=>{
+  if(String(url).endsWith('/embeddings')) {embeddings++;return Response.json({data:[{index:0,embedding:[1,...Array(767).fill(0)]}],usage:{prompt_tokens:5}});}
+  if(String(url).endsWith('/knowledge_hybrid_candidates')) {
+   searches++;const body=JSON.parse(init.body);assert.equal(body.p_locale,'de-DE');assert.equal(body.p_market,'DE');assert.equal(body.p_organization_id,org);
+   return Response.json([{...publishedRow({locale:'de-DE',market:'DE',content}),organization_id:org,series_id:'00000000-0000-4000-8000-000000000101',revision:2,status:'published',content_hash:hash,channel:'lexical'}]);
+  }
+  assert.ok(String(url).endsWith('/admin_me'),'no chat completion call is allowed');return identity(url,init);
+ };
+ const first=await call(env,{...previewInput,allowEmbedding:true},'settings/preview');assert.equal(first.status,200);const result=await first.json();
+ assert.equal(embeddings,1);assert.equal(searches,1);assert.equal(result.diagnostics.embeddingCalls,1);assert.equal(result.documents[0].evidence.locale,'de-DE');assert.equal(result.documents[0].evidence.version,'2');
+ const second=await (await call(env,{...previewInput,allowEmbedding:true},'settings/preview')).json();
+ assert.equal(embeddings,1);assert.equal(second.diagnostics.embeddingCalls,0);assert.equal(second.diagnostics.fallbackReason,'budget_exhausted');
+ assert.equal((await (await call(env)).json()).revision,0);
+});
+
+test('preview still refuses invalid fields, foreign configuration, missing MFA and cross-site writes',async t=>{
+ const env=setup(t);
+ for(const input of [{...previewInput,query:'a'.repeat(501)},{...previewInput,organizationId:'other'},{...previewInput,RAG_MODE:'demo'},{...previewInput,allowEmbedding:'true'}]) assert.equal((await call(env,input,'settings/preview')).status,400);
+ assert.equal((await call(env,previewInput,'settings/preview',{origin:'https://evil.test','sec-fetch-site':'cross-site'})).status,403);
+ assert.equal((await call({...env,SUPABASE_ORGANIZATION_ID:'00000000-0000-4000-8000-000000000002'},previewInput,'settings/preview')).status,403);
+});
+
+test('preview cannot run without MFA',async t=>{
+ const env=setup(t,'super_admin','aal1');
+ assert.equal((await call(env,previewInput,'settings/preview')).status,403);
 });

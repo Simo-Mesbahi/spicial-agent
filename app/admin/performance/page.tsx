@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { Activity, AlertTriangle, CheckCircle2, History, RefreshCw, Save, Search, ShieldCheck } from 'lucide-react';
 import { productionRequest as request, ProductionRequestError } from '@/lib/atlas/production-client';
 import type { RuntimeConfig } from '@/lib/atlas/runtime-settings';
+import type { RagConfiguration, RagPreview } from '@/lib/atlas/admin-rag-preview';
 
-type Settings = { effectiveProvider: string; providerWarning: string | null; environment: string; canEdit: boolean; revision: number; config: RuntimeConfig; budget: string; scope: string;
+type Settings = { rag: RagConfiguration; effectiveProvider: string; providerWarning: string | null; environment: string; canEdit: boolean; revision: number; config: RuntimeConfig; budget: string; scope: string;
   effectiveAutoFailover: boolean; failoverWarning: string | null;
   fallbackProviders: {provider: NonNullable<RuntimeConfig['fallbackProvider']>; model: string; available: boolean; reason: string | null}[];
   providers: {provider: string; model: string; label: string; available: boolean; reason: string | null}[];
@@ -37,7 +38,6 @@ type ReleaseOverview = {
     issues: string[];
   };
 };
-type Document = { id: string; title: string; body: string; version: string; effective: string };
 
 export default function PerformancePage() {
   const [organization, setOrganization] = useState('');
@@ -53,7 +53,9 @@ export default function PerformancePage() {
   const [tab, setTab] = useState<'metrics' | 'settings'>('metrics');
   const [confirmation, setConfirmation] = useState(false);
   const [query, setQuery] = useState('Comment fonctionne la garantie ?');
-  const [documents, setDocuments] = useState<Document[] | null>(null);
+  const [documents, setDocuments] = useState<RagPreview['documents'] | null>(null);
+  const [diagnostics, setDiagnostics] = useState<RagPreview['diagnostics'] | null>(null);
+  const [embeddingConfirmed, setEmbeddingConfirmed] = useState(false);
   const dirty = !!settings && !!draft && JSON.stringify(draft) !== JSON.stringify(settings.config);
   const canEnableFailover = !!draft && !!settings &&
     !!draft.fallbackProvider && draft.fallbackProvider !== draft.provider &&
@@ -61,7 +63,7 @@ export default function PerformancePage() {
     settings.fallbackProviders.some(item => item.provider === draft.fallbackProvider && item.available) &&
     (!releaseOverview || releaseOverview.configuration.mode === 'off');
   const handleError = useCallback((cause: unknown) => {
-    if (cause instanceof ProductionRequestError && (cause.status === 401 || cause.code === 'mfa_required')) { setNeedsLogin(true); setSettings(null); setDraft(null); setOverview(null); setReleaseOverview(null); }
+    if (cause instanceof ProductionRequestError && (cause.status === 401 || cause.code === 'mfa_required')) { setNeedsLogin(true); setSettings(null); setDraft(null); setOverview(null); setReleaseOverview(null); setDocuments(null); setDiagnostics(null); setEmbeddingConfirmed(false); }
     setError(cause instanceof Error ? cause.message : 'Le service est indisponible. Réessayez.');
   }, []);
   const load = useCallback(async (org: string) => {
@@ -74,7 +76,7 @@ export default function PerformancePage() {
     // An authentication failure must clear all data, including fulfilled siblings.
     const denied = [configResult, metricsResult, releaseResult].find(result => result.status === 'rejected' && result.reason instanceof ProductionRequestError && (result.reason.status === 401 || result.reason.code === 'mfa_required'));
     if (denied?.status === 'rejected') throw denied.reason;
-    if (configResult.status === 'fulfilled') { setSettings(configResult.value); setDraft(configResult.value.config); setConfirmation(false); } else handleError(configResult.reason);
+    if (configResult.status === 'fulfilled') { setSettings(configResult.value); setDraft(configResult.value.config); setConfirmation(false); setDocuments(null); setDiagnostics(null); setEmbeddingConfirmed(false); } else handleError(configResult.reason);
     if (metricsResult.status === 'fulfilled') setOverview(metricsResult.value.overview); else handleError(metricsResult.reason);
     if (releaseResult.status === 'fulfilled') setReleaseOverview(releaseResult.value); else handleError(releaseResult.reason);
   }, [handleError]);
@@ -101,11 +103,11 @@ export default function PerformancePage() {
     } catch (cause) { handleError(cause); } finally { setBusy(false); }
   }
   async function preview() {
-    if (!draft) return; setBusy(true); setError(''); setDocuments(null);
-    try { const result = await request<{documents: Document[]}>(`/admin/operations/settings/preview?organizationId=${encodeURIComponent(organization)}`, {method:'POST',body:JSON.stringify({query,ragResults:draft.ragResults,ragMinAnchors:draft.ragMinAnchors})}); setDocuments(result.documents); }
-    catch (cause) { handleError(cause); } finally { setBusy(false); }
+    if (!draft || !settings?.rag || (settings.rag.previewMayUseEmbedding && !embeddingConfirmed)) return; setBusy(true); setError(''); setDocuments(null); setDiagnostics(null);
+    try { const result = await request<RagPreview>(`/admin/operations/settings/preview?organizationId=${encodeURIComponent(organization)}`, {method:'POST',body:JSON.stringify({query,ragResults:draft.ragResults,ragMinAnchors:draft.ragMinAnchors,allowEmbedding:embeddingConfirmed})}); setDocuments(result.documents); setDiagnostics(result.diagnostics); }
+    catch (cause) { handleError(cause); } finally { setBusy(false); setEmbeddingConfirmed(false); }
   }
-  function update<K extends keyof RuntimeConfig>(key: K, value: RuntimeConfig[K]) { setDraft(current => current ? {...current,[key]:value} : current); setConfirmation(false); setSuccess(''); setDocuments(null); }
+  function update<K extends keyof RuntimeConfig>(key: K, value: RuntimeConfig[K]) { setDraft(current => current ? {...current,[key]:value} : current); setConfirmation(false); setSuccess(''); setDocuments(null); setDiagnostics(null); setEmbeddingConfirmed(false); }
   if (loading) return <main className="admin-loading"><RefreshCw className="spin"/>Chargement du pilotage…</main>;
   if (needsLogin) return <main className="admin-control-page"><section className="admin-control-card"><ShieldCheck/><h1>Connectez-vous à l’administration</h1><p>Votre compte et la double authentification protègent les réglages.</p><Link href="/admin">Ouvrir la connexion sécurisée</Link></section></main>;
   return <main className="admin-control-page">
@@ -195,14 +197,27 @@ export default function PerformancePage() {
           </details>
         </fieldset>
         <fieldset disabled={!settings.canEdit || busy} className="admin-control-card"><legend>Recherche documentaire</legend>
+          <p>Source utilisée : <strong>{settings.rag?.mode === 'hybrid' ? 'Base publiée · recherche hybride' : settings.rag?.mode === 'lexical' ? 'Base publiée · recherche lexicale' : settings.rag?.mode === 'demo' ? 'Corpus de démonstration' : 'Configuration à actualiser'}</strong>.
+            {settings.rag && <> Langue documentaire : {settings.rag.locale}{settings.rag.market && ` · Marché : ${settings.rag.market}`}.</>}</p>
           <label>Documents proposés au modèle<select value={draft.ragResults} onChange={event=>update('ragResults',Number(event.target.value))}><option value={1}>1 · contexte ciblé</option><option value={2}>2 · contexte intermédiaire</option><option value={3}>3 · contexte élargi</option></select></label>
-          <label>Précision de la recherche<select value={draft.ragMinAnchors} onChange={event=>update('ragMinAnchors',Number(event.target.value))}><option value={1}>Standard · au moins un mot pertinent</option><option value={2}>Stricte · au moins deux mots pertinents</option><option value={3}>Très stricte · au moins trois mots pertinents</option></select></label><p>Une recherche plus stricte peut écarter les questions courtes. Les réponses restent limitées aux informations vérifiées.</p>
-          <label>Question d’essai<input maxLength={1000} value={query} onChange={event=>{setQuery(event.target.value);setDocuments(null);}}/></label><button type="button" disabled={query.trim().length<3} onClick={()=>void preview()}><Search size={16}/>Tester la recherche</button>
-          {documents && <div aria-live="polite">{documents.length ? documents.map(document=><details key={document.id}><summary>{document.title} · v{document.version}</summary><p>{document.body}</p><small>Application : {document.effective}</small></details>) : <p>Aucune source retenue. Essayez une formulation plus précise ou une recherche moins stricte.</p>}</div>}
+          <label>Précision du corpus de démonstration<select disabled={!settings.rag?.minAnchorsApplies} value={draft.ragMinAnchors} onChange={event=>update('ragMinAnchors',Number(event.target.value))}><option value={1}>Standard · au moins un mot pertinent</option><option value={2}>Stricte · au moins deux mots pertinents</option><option value={3}>Très stricte · au moins trois mots pertinents</option></select></label>
+          <p>{settings.rag?.minAnchorsApplies ? 'Une recherche plus stricte peut écarter les questions courtes.' : 'Ce réglage ne s’applique pas à la base publiée. Ses seuils de pertinence restent contrôlés par la configuration du serveur.'}</p>
+          <label>Question d’essai<input maxLength={500} value={query} onChange={event=>{setQuery(event.target.value);setDocuments(null);setDiagnostics(null);setEmbeddingConfirmed(false);}}/></label>
+          <p>Le test utilise les valeurs du formulaire et le moteur de recherche du chat. Il n’enregistre aucun réglage et ne génère aucune réponse LLM.</p>
+          {settings.rag?.previewMayUseEmbedding && <label className="admin-control-confirm"><input type="checkbox" checked={embeddingConfirmed} onChange={event=>setEmbeddingConfirmed(event.target.checked)}/>J’autorise ce test à utiliser au maximum un appel d’embedding du quota partagé, avec le budget serveur existant.</label>}
+          <button type="button" disabled={!settings.rag || query.trim().length<3 || (settings.rag.previewMayUseEmbedding && !embeddingConfirmed)} onClick={()=>void preview()}><Search size={16}/>Tester la recherche</button>
+          {documents && diagnostics && <div aria-live="polite">
+            <p>{documents.length} source(s) retenue(s) · {diagnostics.latencyMs} ms · {diagnostics.embeddingCalls} appel(s) d’embedding.</p>
+            {diagnostics.fallbackReason && <p>La recherche a fonctionné en mode dégradé ({diagnostics.fallbackReason}). Ce résultat ne valide pas la disponibilité complète du moteur hybride.</p>}
+            {documents.length ? documents.map(document=><details key={`${document.id}:${document.evidence?.chunkId ?? ''}`}><summary>{document.title} · v{document.version}</summary><p>{document.body}</p>
+              <small>Application : {document.effective || 'Sans date de début'}{document.evidence?.effectiveUntil && ` · Fin : ${document.evidence.effectiveUntil}`}</small>
+              {document.evidence && <p><small>{document.evidence.locale} · {document.evidence.market} · score {document.evidence.score.toFixed(3)}{document.evidence.channels?.length ? ` · ${document.evidence.channels.join(' + ')}` : ''}</small></p>}
+            </details>) : <p>Aucune source retenue pour cette question. Vérifiez les procédures publiées, leur validité et la formulation.</p>}
+          </div>}
         </fieldset>
-        {settings.canEdit && <section className="admin-control-save"><div><strong>{dirty ? 'Modifications à enregistrer' : `Configuration enregistrée · version ${settings.revision}`}</strong><label className="admin-control-confirm"><input type="checkbox" checked={confirmation} disabled={!dirty || busy || settings.environment==='NON CONFIGURÉ'} onChange={event=>setConfirmation(event.target.checked)}/>Je confirme l’application sur {settings.environment}.</label></div><button type="button" disabled={!dirty || busy} onClick={()=>{setDraft(settings.config);setConfirmation(false);setDocuments(null);}}>Annuler les modifications</button><button type="submit" disabled={!dirty || !confirmation || busy}><Save size={16}/>{busy ? 'Enregistrement…' : 'Enregistrer'}</button></section>}
+        {settings.canEdit && <section className="admin-control-save"><div><strong>{dirty ? 'Modifications à enregistrer' : `Configuration enregistrée · version ${settings.revision}`}</strong><label className="admin-control-confirm"><input type="checkbox" checked={confirmation} disabled={!dirty || busy || settings.environment==='NON CONFIGURÉ'} onChange={event=>setConfirmation(event.target.checked)}/>Je confirme l’application sur {settings.environment}.</label></div><button type="button" disabled={!dirty || busy} onClick={()=>{setDraft(settings.config);setConfirmation(false);setDocuments(null); setDiagnostics(null); setEmbeddingConfirmed(false);}}>Annuler les modifications</button><button type="submit" disabled={!dirty || !confirmation || busy}><Save size={16}/>{busy ? 'Enregistrement…' : 'Enregistrer'}</button></section>}
       </form>
-      <section className="admin-control-card"><h2><History size={19}/>Historique des réglages</h2><p>Les 10 dernières versions de cet environnement. Reprendre une version prépare les valeurs sans les appliquer.</p>{settings.history.length ? <ol className="admin-control-history">{settings.history.map(item=><li key={item.revision}><div><strong>Version {item.revision} · {item.config.provider}</strong><span>{new Date(item.createdAt).toLocaleString('fr-FR')}</span><small>Administrateur : {item.actor}</small></div>{settings.canEdit && <button disabled={busy || item.revision===settings.revision} onClick={()=>{setDraft(item.config);setConfirmation(false);setDocuments(null);setSuccess('Version reprise dans le formulaire. Vérifiez puis confirmez son enregistrement.');}}>Reprendre</button>}</li>)}</ol> : <p>Aucune modification. Les paramètres du serveur sont utilisés.</p>}</section>
+      <section className="admin-control-card"><h2><History size={19}/>Historique des réglages</h2><p>Les 10 dernières versions de cet environnement. Reprendre une version prépare les valeurs sans les appliquer.</p>{settings.history.length ? <ol className="admin-control-history">{settings.history.map(item=><li key={item.revision}><div><strong>Version {item.revision} · {item.config.provider}</strong><span>{new Date(item.createdAt).toLocaleString('fr-FR')}</span><small>Administrateur : {item.actor}</small></div>{settings.canEdit && <button disabled={busy || item.revision===settings.revision} onClick={()=>{setDraft(item.config);setConfirmation(false);setDocuments(null); setDiagnostics(null); setEmbeddingConfirmed(false);setSuccess('Version reprise dans le formulaire. Vérifiez puis confirmez son enregistrement.');}}>Reprendre</button>}</li>)}</ol> : <p>Aucune modification. Les paramètres du serveur sont utilisés.</p>}</section>
     </> : <section className="admin-control-card"><h2>Réglages indisponibles</h2><p>Consultez le message ci-dessus, puis actualisez après correction.</p></section>}
   </main>;
 }
