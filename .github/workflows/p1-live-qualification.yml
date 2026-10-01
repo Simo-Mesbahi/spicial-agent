@@ -21,7 +21,7 @@ on:
           - openai
           - groq
       llm_model:
-        description: 'Exact approved model identifier'
+        description: 'Gemini: gemini-*; Groq: openai/gpt-oss-120b or openai/gpt-oss-20b'
         required: true
         default: gemini-3.5-flash-lite
         type: string
@@ -143,6 +143,13 @@ jobs:
 
           case "${LLM_PROVIDER}" in
             gemini)
+              case "${LLM_MODEL}" in
+                gemini-2.5-flash|gemini-2.5-flash-lite|gemini-3.1-flash-lite|gemini-3.5-flash-lite) ;;
+                *)
+                  echo "Invalid Gemini model. For openai/gpt-oss-120b select llm_provider=groq before starting a new run." >&2
+                  exit 2
+                  ;;
+              esac
               [[ -n "${GEMINI_API_KEY:-}" ]] || { echo "Missing GEMINI_API_KEY." >&2; exit 2; }
               ;;
             openai)

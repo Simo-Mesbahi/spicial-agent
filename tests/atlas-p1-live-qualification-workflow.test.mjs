@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { groundingDecisionPasses } from '../evals/grounding.mjs';
 import {
@@ -46,6 +47,49 @@ test('Groq P1.7 qualification requires its own allowlisted model and key while e
   assert.match(source, /LLM_AUTO_FAILOVER: 'false'/);
   assert.match(source, /Missing embedding\/Gemini API key/);
   assert.match(source, /P1_RELEASE_MODE: off/);
+});
+
+test('P1.7 refuses a Gemini/Groq model mismatch before embedding calls', async () => {
+  const [source, policy] = await Promise.all([
+    readFile(workflowPath, 'utf8'),
+    readFile('lib/atlas/model-policy.ts', 'utf8'),
+  ]);
+  const start = source.indexOf('      - name: Validate server-owned configuration');
+  const runStart = source.indexOf('        run: |\n', start) + '        run: |\n'.length;
+  const end = source.indexOf('\n      - name: Install locked dependencies', runStart);
+  assert.ok(start >= 0 && runStart > start && end > runStart);
+  const script = source.slice(runStart, end).split('\n').map((line) => line.replace(/^          /, '')).join('\n');
+
+  const geminiAllowlist = policy.match(/export const geminiModels = \[([^]*?)\] as const;/)?.[1];
+  assert.ok(geminiAllowlist);
+  for (const model of geminiAllowlist.matchAll(/'([^']+)'/g)) {
+    assert.ok(script.includes(model[1]), `The preflight must include ${model[1]}`);
+  }
+
+  const env = {
+    ...process.env,
+    SUPABASE_URL: 'https://fixture.supabase.co',
+    SUPABASE_PUBLISHABLE_KEY: 'test-publishable',
+    SUPABASE_SECRET_KEY: 'test-secret',
+    SUPABASE_ORGANIZATION_ID: '00000000-0000-4000-8000-000000000001',
+    GEMINI_API_KEY: 'test-gemini-key',
+    GROQ_API_KEY: 'test-groq-key',
+    EMBEDDING_API_KEY: 'test-embedding-key',
+    EMBEDDING_PROVIDER: 'gemini',
+    EMBEDDING_MODEL: 'gemini-embedding-2',
+    LLM_BUDGET_MODE: 'free',
+    LLM_PROVIDER: 'gemini',
+    LLM_MODEL: 'openai/gpt-oss-120b',
+  };
+  const mismatch = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], { env, encoding: 'utf8' });
+  assert.equal(mismatch.status, 2);
+  assert.match(mismatch.stderr, /select llm_provider=groq/);
+
+  const groq = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
+    env: { ...env, LLM_PROVIDER: 'groq' },
+    encoding: 'utf8',
+  });
+  assert.equal(groq.status, 0, groq.stderr);
 });
 
 test('dependency install policy is version-pinned and enforced in every CI path', async () => {
