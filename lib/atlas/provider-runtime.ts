@@ -26,6 +26,9 @@ export type ProviderDiagnostic = {
   parameter: string | null;
   retryAfterMs: number | null;
   rateLimitScope: ProviderRateLimitScope | null;
+  // A fixed label derived from known Groq errors. Never retain the provider message:
+  // it can include a generated answer, prompt, or customer data.
+  groqFailureKind?: 'schema_generation' | 'tool_generation' | 'context_length';
 };
 export class ProviderError extends Error {
   readonly status = 503;
@@ -140,6 +143,8 @@ const errorCodes = new Set([
   'project_spend_limit_exceeded',
   'organization_usage_limit_exceeded',
   'slow_down',
+  'json_validate_failed',
+  'tool_use_failed',
   // Google RPC status names. Never retain arbitrary error messages or details.
   'INVALID_ARGUMENT',
   'UNAUTHENTICATED',
@@ -163,6 +168,22 @@ const errorParameters = new Set([
   'max_completion_tokens',
   'response_format',
 ]);
+
+function safeGroqFailureKind(error: {
+  code?: unknown;
+  message?: unknown;
+}): ProviderDiagnostic['groqFailureKind'] | null {
+  if (error.code === 'json_validate_failed') return 'schema_generation';
+  if (error.code === 'tool_use_failed') return 'tool_generation';
+  if (error.code === 'context_length_exceeded') return 'context_length';
+  if (typeof error.message !== 'string' || error.message.length > 4096) return null;
+  // Only match fixed provider-owned prefixes. The matched text is never copied.
+  if (/^(?:Failed to generate JSON\.|Generated JSON does not match the expected schema\.)/.test(error.message))
+    return 'schema_generation';
+  if (/^(?:Failed to call a function\.|Invalid tool call generated)/.test(error.message))
+    return 'tool_generation';
+  return null;
+}
 export function classifyHttp(status: number): ProviderFailureReason {
   if (status === 401 || status === 403) return 'upstream_auth';
   if (status === 429) return 'upstream_rate_limited';
@@ -349,6 +370,7 @@ async function providerCompletionOnce(
               status: z.unknown().optional(),
               type: z.unknown().optional(),
               param: z.unknown().optional(),
+              message: z.unknown().optional(),
               details: z.array(z.unknown()).max(32).optional(),
             }),
           })
@@ -361,6 +383,10 @@ async function providerCompletionOnce(
             ) ?? null;
           diagnostic.parameter =
             typeof param === 'string' && errorParameters.has(param) ? param : null;
+          if (settings.provider === 'groq' && response.status === 400) {
+            const kind = safeGroqFailureKind(parsed.data.error);
+            if (kind) diagnostic.groqFailureKind = kind;
+          }
           if (response.status === 429) {
             const metadata = safeRateLimitMetadata(body, diagnostic.code);
             diagnostic.rateLimitScope = metadata.rateLimitScope;
