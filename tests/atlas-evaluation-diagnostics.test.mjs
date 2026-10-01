@@ -6,6 +6,73 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+test('structured live runner reaches Groq with the selected model and key', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'atlas-structured-groq-config-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, 'provider.mjs');
+  const output = join(dir, 'report.json');
+  const requestLog = join(dir, 'requests.json');
+  writeFileSync(
+    preload,
+    `
+    import { appendFileSync } from 'node:fs';
+    globalThis.fetch = async (url, options) => {
+      appendFileSync(process.env.PROVIDER_REQUEST_LOG, JSON.stringify({
+        url: String(url),
+        authorized: options?.headers?.Authorization === 'Bearer test-groq-key',
+      }) + '\\n');
+      return Response.json({ error: { message: 'Simulated provider outage' } }, { status: 503 });
+    };
+    `,
+  );
+
+  let error;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '--import', pathToFileURL(preload).href,
+        'scripts/evaluate-structured-ai.mjs', '--live', '--mode', 'structured',
+        '--max-turns', '5', '--languages', 'fr', '--families', 'handoff-toggle',
+        '--output', output,
+      ],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          PROVIDER_REQUEST_LOG: requestLog,
+          LLM_PROVIDER: 'groq',
+          LLM_MODEL: 'openai/gpt-oss-120b',
+          LLM_ENABLED_PROVIDERS: 'groq',
+          LLM_BUDGET_MODE: 'free',
+          LLM_AUTO_FAILOVER: 'false',
+          LLM_DAILY_LIMIT: '100',
+          GROQ_API_KEY: 'test-groq-key',
+          P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '0',
+          P1_STRUCTURED_MAX_SCENARIO_RETRIES: '0',
+          P1_STRUCTURED_RETRY_BACKOFF_MS: '0',
+          P1_LIVE_RATE_LIMIT_RETRY_MIN_MS: '0',
+          P1_LIVE_RATE_LIMIT_RETRY_MAX_MS: '0',
+        },
+      },
+    );
+    assert.fail('The simulated provider outage must fail qualification');
+  } catch (caught) {
+    error = caught;
+  }
+
+  assert.equal(error.status, 1);
+  const requests = readFileSync(requestLog, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(requests.length > 0);
+  assert.ok(requests.every((row) => row.url === 'https://api.groq.com/openai/v1/chat/completions'));
+  assert.ok(requests.every((row) => row.authorized));
+  const report = JSON.parse(readFileSync(output, 'utf8'));
+  assert.equal(report.provider, 'groq');
+  assert.equal(report.model, 'openai/gpt-oss-120b');
+  assert.ok(report.operational.providerCalls > 0);
+});
+
 test('retrieval live runner recovers one embedding 429 without backend spend on failed attempt', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'atlas-retrieval-embedding-retry-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
