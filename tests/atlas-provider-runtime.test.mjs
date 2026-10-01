@@ -78,6 +78,29 @@ test('untrusted diagnostic fields are discarded, even when short strings', async
     (e) => e.diagnostic.code === null && e.diagnostic.parameter === null,
   );
 });
+for (const [code, message, expectedKind] of [
+  ['json_validate_failed', 'Generated JSON does not match the expected schema. Please adjust your prompt. PRIVATE-CUSTOMER', 'schema_generation'],
+  [null, 'Failed to generate JSON. Please adjust your prompt. PRIVATE-CUSTOMER', 'schema_generation'],
+  ['tool_use_failed', 'Failed to call a function. PRIVATE-CUSTOMER', 'tool_generation'],
+]) {
+  test(`Groq HTTP 400 retains only a fixed ${expectedKind} label`, async (t) => {
+    mock(t, async () => Response.json({ error: { code, type: 'invalid_request_error', message } }, { status: 400 }));
+    const trace = providerTrace();
+    const groq = { LLM_PROVIDER: 'groq', LLM_BUDGET_MODE: 'free', LLM_MODEL: 'openai/gpt-oss-120b', GROQ_API_KEY: 'secret-test-key' };
+    await assert.rejects(providerCompletion(groq, completionPayload(groq, [{ role: 'user', content: 'hello' }]), AbortSignal.timeout(1000), trace),
+      (error) => error.reason === 'upstream_request_rejected' && error.diagnostic.groqFailureKind === expectedKind);
+    assert.equal(trace.calls, 1);
+    assert.doesNotMatch(JSON.stringify(trace), /PRIVATE-CUSTOMER|secret-test-key|Please adjust your prompt/);
+  });
+}
+test('Groq unknown error text is never persisted or guessed', async (t) => {
+  mock(t, async () => Response.json({ error: { type: 'invalid_request_error', message: 'PRIVATE-CUSTOMER arbitrary refusal' } }, { status: 400 }));
+  const groq = { LLM_PROVIDER: 'groq', LLM_BUDGET_MODE: 'free', LLM_MODEL: 'openai/gpt-oss-120b', GROQ_API_KEY: 'secret-test-key' };
+  const trace = providerTrace();
+  await assert.rejects(providerCompletion(groq, completionPayload(groq, []), AbortSignal.timeout(1000), trace),
+    (error) => error.diagnostic.groqFailureKind === undefined);
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE-CUSTOMER|secret-test-key/);
+});
 test('server opt-in reasoning; no hidden retry or change of provider', () => {
   assert.equal(payload.reasoning_effort, undefined);
   assert.equal(

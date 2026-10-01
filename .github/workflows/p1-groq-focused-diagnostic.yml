@@ -1,0 +1,99 @@
+name: P1.7 Groq focused diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type P1_RELEASE to acknowledge at most 15 live Groq calls'
+        required: true
+        type: string
+      qualification_environment:
+        description: 'Protected GitHub Environment containing GROQ_API_KEY'
+        required: true
+        type: environment
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p1-groq-focused-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.qualification_environment }}
+    env:
+      LLM_PROVIDER: groq
+      LLM_MODEL: openai/gpt-oss-120b
+      LLM_BUDGET_MODE: free
+      LLM_STRUCTURED_OUTPUT: json_schema
+      LLM_ORCHESTRATOR: structured
+      LLM_REQUEST_TIMEOUT_MS: '60000'
+      LLM_DAILY_LIMIT: '20'
+      P1_LIVE_COMPLETION_MIN_INTERVAL_MS: '10000'
+      P1_STRUCTURED_MAX_SCENARIO_RETRIES: '0'
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - name: Validate bounded diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.confirm }}" == 'P1_RELEASE' ]] || { echo 'Confirmation required.' >&2; exit 2; }
+          [[ "${GITHUB_REF}" == 'refs/heads/main' ]] || { echo 'Diagnostic requires main.' >&2; exit 2; }
+          [[ -n "${GROQ_API_KEY:-}" ]] || { echo 'GROQ_API_KEY missing.' >&2; exit 2; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund --strict-allow-scripts
+
+      - name: Validate diagnostics offline before provider calls
+        run: node --test tests/atlas-provider-runtime.test.mjs tests/atlas-evaluation-corpus.test.mjs
+
+      - name: Recheck Spanish and Arabic correction scenarios
+        continue-on-error: true
+        run: >-
+          node scripts/evaluate-structured-ai.mjs --live --mode structured
+          --max-turns 10 --languages es,ar --families correction-understanding
+          --output outputs/p1-groq-focused/corrections.json
+
+      - name: Recheck French action safety scenario
+        continue-on-error: true
+        run: >-
+          node scripts/evaluate-structured-ai.mjs --live --mode structured
+          --max-turns 5 --languages fr --families information-only-action-safety
+          --output outputs/p1-groq-focused/action-safety.json
+
+      - name: Summarize and enforce diagnostic result
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const paths = ['corrections', 'action-safety'].map(name => `outputs/p1-groq-focused/${name}.json`);
+          const reports = paths.map(path => JSON.parse(fs.readFileSync(path, 'utf8')));
+          const calls = reports.reduce((total, report) => total + report.operational.providerCalls, 0);
+          const failures = reports.flatMap(report => report.rows.filter(row => row.fallback || row.status !== 200 || Object.values(row.checks).some(value => value !== true)).map(row => ({
+            scenario: row.id,
+            reason: row.fallbackReason ?? 'semantic_or_api_failure',
+            diagnostic: row.providerDiagnostic ?? null,
+          })));
+          console.log(JSON.stringify({ sourceSha: process.env.GITHUB_SHA, provider: 'groq', model: 'openai/gpt-oss-120b', calls, maxCalls: 15, failures }, null, 2));
+          if (calls > 15 || reports[0].turns !== 10 || reports[1].turns !== 5 || failures.length) process.exit(1);
+          NODE
+
+      - name: Upload synthetic diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p1-groq-focused-${{ github.sha }}
+          path: outputs/p1-groq-focused/
+          if-no-files-found: warn
+          retention-days: 7
