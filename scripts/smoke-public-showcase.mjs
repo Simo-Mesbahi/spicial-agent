@@ -7,6 +7,12 @@ import { setTimeout as pause } from 'node:timers/promises';
 const origin = 'http://127.0.0.1:4181';
 const output = 'outputs/public-showcase';
 const commercialContact = 'Mohammed.elmesbahi@outlook.com';
+const htmlBudgetBytes = 100_000;
+const responsiveViewports = [
+  { name: 'compact', width: 320, height: 720 },
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'tablet', width: 768, height: 1024 },
+];
 mkdirSync(output, { recursive: true });
 const log = createWriteStream(`${output}/server.log`);
 const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4181', '--strictPort'], {
@@ -19,6 +25,8 @@ server.stderr.pipe(log, { end: false });
 
 let browser;
 let page;
+let rootMetrics = null;
+let rootHtmlBytes = null;
 const checks = [];
 const requests = [];
 const pageErrors = [];
@@ -50,6 +58,20 @@ async function noOverflow() {
   );
 }
 
+async function navigationMetrics() {
+  return page.evaluate(() => {
+    const navigation = performance.getEntriesByType('navigation')[0];
+    if (!(navigation instanceof PerformanceNavigationTiming)) return null;
+    return {
+      domContentLoadedMs: Math.round(navigation.domContentLoadedEventEnd),
+      loadMs: Math.round(navigation.loadEventEnd),
+      transferSize: navigation.transferSize,
+      encodedBodySize: navigation.encodedBodySize,
+      decodedBodySize: navigation.decodedBodySize,
+    };
+  });
+}
+
 async function capture(name) {
   await page.evaluate(async () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -61,6 +83,17 @@ async function capture(name) {
 
 try {
   await waitForServer();
+
+  await check('public HTML stays within the static payload budget', async () => {
+    const response = await fetch(origin, { headers: { accept: 'text/html' } });
+    assert.equal(response.ok, true);
+    rootHtmlBytes = Buffer.byteLength(await response.text());
+    assert.ok(
+      rootHtmlBytes <= htmlBudgetBytes,
+      `root HTML ${rootHtmlBytes} B exceeds ${htmlBudgetBytes} B budget`,
+    );
+  });
+
   browser = await chromium.launch({ channel: process.env.SHOWCASE_BROWSER_CHANNEL || 'chrome', headless: true });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -78,6 +111,7 @@ try {
     await page.getByRole('link', { name: 'Découvrir la démonstration' }).waitFor();
     await page.getByRole('link', { name: 'Demander un essai accompagné' }).first().waitFor();
     await noOverflow();
+    rootMetrics = await navigationMetrics();
     await capture('showcase-desktop');
   });
 
@@ -89,7 +123,14 @@ try {
     assert.deepEqual(externalRequests, []);
   });
 
-  await check('keyboard-visible destinations remain real routes', async () => {
+  await check('keyboard entry exposes the skip link and real CTA routes', async () => {
+    await page.goto(origin, { waitUntil: 'networkidle' });
+    await page.keyboard.press('Tab');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.getAttribute('href')),
+      '#main-content',
+      'first keyboard stop should be the skip link',
+    );
     const demo = page.getByRole('link', { name: 'Découvrir la démonstration' });
     const trial = page.getByRole('link', { name: 'Demander un essai accompagné' }).first();
     assert.equal(await demo.getAttribute('href'), '/demo');
@@ -98,14 +139,32 @@ try {
     assert.equal(await demo.evaluate((element) => document.activeElement === element), true);
   });
 
-  await check('mobile showcase has no horizontal overflow', async () => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  await check('all public internal destinations resolve successfully', async () => {
     await page.goto(origin, { waitUntil: 'networkidle' });
-    await noOverflow();
-    await capture('showcase-mobile');
+    const hrefs = await page.locator('a[href^="/"]').evaluateAll((elements) => [
+      ...new Set(elements.map((element) => element.getAttribute('href')).filter(Boolean)),
+    ]);
+    assert.ok(hrefs.length >= 4, 'expected core internal showcase destinations');
+    for (const href of hrefs) {
+      const response = await fetch(new URL(href, origin), { redirect: 'manual' });
+      assert.ok(
+        response.status >= 200 && response.status < 400,
+        `${href} returned HTTP ${response.status}`,
+      );
+    }
   });
 
+  for (const viewport of responsiveViewports) {
+    await check(`showcase has no horizontal overflow at ${viewport.width}px`, async () => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto(origin, { waitUntil: 'networkidle' });
+      await noOverflow();
+      if (viewport.name === 'mobile') await capture('showcase-mobile');
+    });
+  }
+
   await check('guided-trial page exposes only the confirmed commercial recipient', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${origin}/trial`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: /Préparons une démonstration utile/ }).waitFor();
     await page.getByText(/Contact commercial confirmé/).waitFor();
@@ -113,33 +172,50 @@ try {
     const href = await mail.getAttribute('href');
     assert.ok(href?.startsWith(`mailto:${commercialContact}?subject=`));
     assert.match(href ?? '', /body=/);
+    assert.doesNotMatch(href ?? '', /outloo\.com/i);
     assert.equal(await page.locator('form').count(), 0);
     await noOverflow();
     await capture('trial-mobile');
   });
 
-  const metrics = await page.evaluate(() => {
-    const navigation = performance.getEntriesByType('navigation')[0];
-    if (!(navigation instanceof PerformanceNavigationTiming)) return null;
-    return {
-      domContentLoadedMs: Math.round(navigation.domContentLoadedEventEnd),
-      loadMs: Math.round(navigation.loadEventEnd),
-      transferSize: navigation.transferSize,
-      encodedBodySize: navigation.encodedBodySize,
-      decodedBodySize: navigation.decodedBodySize,
-    };
-  });
-
   assert.deepEqual(pageErrors, []);
   writeFileSync(
     `${output}/report.json`,
-    JSON.stringify({ passed: true, browser: browser.version(), checks, pageErrors, metrics }, null, 2),
+    JSON.stringify(
+      {
+        passed: true,
+        browser: browser.version(),
+        checks,
+        pageErrors,
+        rootPerformance: {
+          htmlBytes: rootHtmlBytes,
+          htmlBudgetBytes,
+          navigation: rootMetrics,
+        },
+      },
+      null,
+      2,
+    ),
   );
 } catch (error) {
   if (page) await page.screenshot({ path: `${output}/failure.png`, fullPage: true }).catch(() => {});
   writeFileSync(
     `${output}/report.json`,
-    JSON.stringify({ passed: false, checks, pageErrors, error: String(error) }, null, 2),
+    JSON.stringify(
+      {
+        passed: false,
+        checks,
+        pageErrors,
+        rootPerformance: {
+          htmlBytes: rootHtmlBytes,
+          htmlBudgetBytes,
+          navigation: rootMetrics,
+        },
+        error: String(error),
+      },
+      null,
+      2,
+    ),
   );
   throw error;
 } finally {
