@@ -53,6 +53,7 @@ test('P1 structured provider failures expose only fixed safe diagnostics', () =>
     {
       scenario: 'pre-p1-correction-understanding-es/3',
       fallbackReason: 'upstream_request_rejected',
+      providerReason: 'upstream_request_rejected',
       httpStatus: 400,
       code: 'invalid_request_error',
       parameter: 'response_format',
@@ -65,6 +66,29 @@ test('P1 structured provider failures expose only fixed safe diagnostics', () =>
   assert.doesNotMatch(serialized, /PRIVATE-CUSTOMER|secret-provider-key|generated content|assistant response/);
 });
 
+test('P1 structured provider failure summary does not relabel semantic failures as provider failures', () => {
+  const summary = structuredProviderFailureSummary({
+    rows: [
+      {
+        id: 'pre-p1-correction-understanding-de/2',
+        status: 200,
+        fallback: null,
+        fallbackReason: null,
+        checks: {
+          intent: false,
+          guidance: true,
+          requiresCase: true,
+          conversationRepair: true,
+          responseLanguage: true,
+        },
+        providerDiagnostic: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(summary, []);
+});
+
 test('P1 structured provider failure summary fails closed on arbitrary diagnostic values', () => {
   const summary = structuredProviderFailureSummary({
     rows: [
@@ -75,6 +99,7 @@ test('P1 structured provider failure summary fails closed on arbitrary diagnosti
         fallbackReason: 'PRIVATE-REASON',
         checks: {},
         providerDiagnostic: {
+          reason: 'PRIVATE-PROVIDER-REASON',
           httpStatus: 999,
           code: 'PRIVATE-CODE',
           parameter: 'PRIVATE-PARAMETER',
@@ -91,6 +116,7 @@ test('P1 structured provider failure summary fails closed on arbitrary diagnosti
     {
       scenario: null,
       fallbackReason: null,
+      providerReason: null,
       httpStatus: null,
       code: null,
       parameter: null,
@@ -112,6 +138,7 @@ test('P1 structured provider failure summary preserves bounded rate-limit eviden
         fallbackReason: 'upstream_rate_limited',
         checks: { intent: null },
         providerDiagnostic: {
+          reason: 'upstream_rate_limited',
           httpStatus: 429,
           code: 'rate_limit_exceeded',
           parameter: null,
@@ -126,6 +153,7 @@ test('P1 structured provider failure summary preserves bounded rate-limit eviden
   assert.deepEqual(summary[0], {
     scenario: 'pre-p1-information-only-action-safety-fr/2',
     fallbackReason: 'upstream_rate_limited',
+    providerReason: 'upstream_rate_limited',
     httpStatus: 429,
     code: 'rate_limit_exceeded',
     parameter: null,
