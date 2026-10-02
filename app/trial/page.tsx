@@ -52,7 +52,7 @@ export default function TrialRequestPage() {
             <small>CONTACT</small>
             <h2 id="trial-contact-title">Canal de réception à confirmer avant publication</h2>
             <p style={{ color: 'var(--showcase-muted)', lineHeight: 1.7 }}>
-              L’adresse communiquée pour cette vitrine contient le domaine « outloo.com ». Pour
+              L’adresse communiquée pour cette vitrine semble comporter une faute de frappe. Pour
               éviter toute redirection vers une adresse non validée, aucun bouton d’envoi n’est
               activé dans cette branche tant que l’adresse finale n’a pas été confirmée explicitement.
             </p>
