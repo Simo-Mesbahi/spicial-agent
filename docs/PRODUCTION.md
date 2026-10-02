@@ -1,37 +1,93 @@
 # Préparation d’un pilote entreprise
 
-Cette version est une démonstration technique ; elle ne constitue pas une livraison de production ni une garantie de couverture exhaustive.
+Le projet dispose désormais d’un socle de préproduction nettement plus avancé qu’une simple démonstration, mais cela ne constitue pas encore une autorisation de généralisation client. La vitrine publique, la démonstration fictive, le socle Supabase et la release P1 ont des gates distincts.
 
-| Sujet        | Version de démonstration                          | À réaliser avec l’entreprise                                                                |
-| ------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Identité     | Session anonyme et code fictif                    | Socle Supabase Auth/MFA prêt à valider ; SSO salariés et récupération à intégrer             |
-| Métier       | Huit familles de scénarios                        | Inventaire des demandes, décisions autorisées, contrats de données, règles validées         |
-| Données      | Base synthétique D1 ; schéma Supabase versionné   | Appliquer en préproduction, puis API SAV/CRM/commandes, synchronisation et réconciliation    |
-| RAG          | Corpus versionné dans le code, recherche lexicale | Documents validés, ingestion, filtrage des droits, benchmark hybride/vectoriel              |
-| Modèles      | Connecteurs configurables, tests simulés          | Accès fournisseur, licence, benchmark français/outils/coûts, politiques de données          |
-| Réclamations | Demandes enregistrées sans envoi                  | Routage vers une vraie file de conseillers et engagements de traitement                     |
-| Activité     | Progression à la consultation                     | Ordonnanceur ou événements du SI, reprise, déduplication et files d’erreur                  |
-| Sécurité     | Sessions dossier, RLS et MFA codés en préproduction | Tests bout en bout, revue indépendante, tests d’intrusion et secrets managés                |
-| Exploitation | Quotas, historique, état de service               | Alertes, budget fournisseur, sauvegardes testées, objectifs de service et runbooks          |
-| Qualité      | Tests fonctionnels synthétiques                   | Jeu de validation indépendant validé par le métier, revue humaine et critères d’acceptation |
+| Sujet | État actuel | Avant généralisation entreprise |
+| --- | --- | --- |
+| Vitrine | `/` statique, preuves desktop/mobile/clavier et absence d’appel IA/API à la première vue | Publier via Sites puis vérifier la version réellement servie |
+| Démonstration | `/demo`, scénarios et données fictifs | Ne jamais y injecter de dossier client réel |
+| Accès client | Référence + code, sessions bornées, contrat serveur | Valider hosted sur l’environnement production exact, anti-abus et restauration |
+| Identité admin | Supabase Auth, rôles, MFA/AAL2 | SSO/récupération selon l’entreprise, moindre privilège et revue des comptes |
+| Données | D1 historique pour démo/tests + schéma Supabase production-aligned | Projet production séparé, migrations gelées, API SAV/CRM et réconciliation |
+| RAG | Lexical + hybride borné disponible, provenance et filtres gouvernés | Qualification corpus exact, plans SQL/ANN, seuils, p50/p95/p99 et charge |
+| Embeddings | Fournisseur séparé, baseline `gemini-embedding-2` 768 dimensions | Quotas, réindexation contrôlée et validation de l’espace exact de release |
+| Génération | Gemini/Groq/OpenAI routables selon politique, validation factuelle et abstention | Qualification live provider/modèle exact, revue humaine, canary |
+| Failover | Optionnel, un seul secours, exclusions fail-closed | N’activer que pour les fournisseurs/données explicitement approuvés |
+| Réclamations/handoff | Orientation humaine déterministe, aucune promesse d’action inexistante | Connecter une vraie file et définir SLA/responsabilités |
+| Sécurité | RLS/MFA/sessions/origine/CSRF et tests automatisés | Pentest/revue indépendante, secrets managés, alertes, rotation et restauration |
+| Exploitation | CI, quotas, diagnostics, preuves de release | SLO, alertes, runbooks, capacité, coûts et plan de retour arrière |
+| Gouvernance GitHub | CI complète et preuves vitrine | Protéger `main` / ruleset ; suivi dans l’issue #109 |
 
-## Sélection du modèle
+## Release P1
 
-Comparer à contexte identique les réponses, les appels d’outils, les erreurs de faits, l’abstention, la latence et le coût total. Aucun modèle n’est déclaré « meilleur » avant ces mesures. Inclure le coût du matériel et de l’exploitation pour l’auto-hébergement. Ne pas transférer automatiquement une conversation à un autre fournisseur sans politique explicite.
+`P1_RELEASE_MODE` ne doit être activé pour de vrais clients qu’après qualification de la configuration exacte. Une CI verte ou un diagnostic ciblé ne suffit pas.
 
-## Matrice de couverture
+La séquence de release est :
 
-Consultation opérationnelle : réparation, devis, échange, livraison, retour, remboursement, réclamation. Explication documentaire : garantie, compte/fidélité/facture, sécurité produit, disponibilités et contact. Les stocks, modifications de compte, paiements, annulations de commandes et remboursements réels ne sont pas exécutés dans cette version.
+`P1.7A Live Qualification → P1.7B Documentary freshness/revalidation → P1.7C Customer Release Gate → P1.7D Canary rollout`
 
-Le plan d’activation détaillé, les responsabilités et les critères de sortie sont dans [SUPABASE-PRODUCTION.md](SUPABASE-PRODUCTION.md).
+Les preuves doivent rester liées au fournisseur, modèle, corpus, environnement et espace d’embedding qualifiés. Une modification de ces éléments peut invalider une attestation précédente.
 
+Voir [P1-CONTROLLED-RELEASE.md](P1-CONTROLLED-RELEASE.md).
+
+## Sélection et qualification des modèles
+
+Comparer à contexte identique : exactitude factuelle, abstention, sorties structurées, respect des outils, multilingue, latence, quotas et coût total. Aucun modèle n’est déclaré « meilleur » uniquement parce que son transport répond ou qu’un smoke test passe.
+
+Le routage administratif distingue Gemini, Groq et OpenAI et peut configurer un secours borné. Le secours ne doit pas transformer une erreur de quota, d’authentification, de requête, un refus ou une sortie invalide en réussite artificielle. Pendant les modes P1 qui lient l’attestation à un fournisseur/modèle exact, le failover automatique reste désactivé.
+
+## RAG et corpus
+
+Le mode hybride existe déjà mais son existence dans le code ne prouve pas son aptitude à la charge production. Avant activation généralisée :
+
+1. vérifier la complétude de l’index dans l’espace d’embedding exact ;
+2. valider les filtres organisation/statut/révision/date/locale/marché ;
+3. mesurer précision/recall avec labels relus ;
+4. inspecter les plans PostgreSQL représentatifs ;
+5. mesurer p50/p95/p99 sous volumes réalistes et concurrence ;
+6. valider le comportement de dégradation lorsque l’embedding ou Supabase est indisponible ;
+7. rejouer grounding, validation factuelle et abstention sur les langues supportées.
+
+Voir [P1-HYBRID-RETRIEVAL.md](P1-HYBRID-RETRIEVAL.md).
+
+## Matrice métier
+
+La plateforme peut présenter et encadrer des consultations de réparation, devis, échange, livraison, retour, remboursement et réclamation selon les données/règles autorisées. Les stocks, paiements, annulations de commandes, remboursements réels ou modifications de compte ne doivent jamais être exécutés simplement parce qu’un modèle les propose.
+
+Chaque intégration entreprise doit définir :
+
+- source de vérité ;
+- opérations en lecture/écriture ;
+- rôles autorisés ;
+- idempotence et versionnement ;
+- erreurs et reprises ;
+- délais/SLA ;
+- journal d’audit ;
+- politique de rétention ;
+- responsable humain en cas d’escalade.
 
 ## Reverse proxy et origine publique
 
-Les mutations HTTP vérifient l’origine du navigateur avant tout traitement métier. Une terminaison TLS classique qui conserve exactement le même hôte public est prise en charge lorsque le navigateur utilise HTTPS et que le runtime interne observe HTTP.
+Les mutations HTTP vérifient l’origine du navigateur avant tout traitement métier. Une terminaison TLS qui conserve le même hôte public est prise en charge lorsque le navigateur utilise HTTPS et que le runtime interne observe HTTP.
 
-Si un reverse proxy réécrit également l’hôte, configurer `APP_PUBLIC_ORIGIN` côté serveur avec l’origine publique canonique exacte, par exemple `https://support.example.com`. Les chemins, jokers, identifiants intégrés à l’URL et origines HTTP hors environnement `LOCAL` sont refusés. L’application ne fait pas confiance à `X-Forwarded-Host` pour décider qu’une mutation est de même origine.
+Si un reverse proxy réécrit l’hôte, configurer `APP_PUBLIC_ORIGIN` côté serveur avec l’origine publique canonique exacte, par exemple `https://support.example.com`. Les chemins, jokers, identifiants intégrés à l’URL et origines HTTP hors environnement `LOCAL` sont refusés. L’application ne fait pas confiance à `X-Forwarded-Host` pour décider qu’une mutation est de même origine.
 
-En développement GitHub Codespaces, `vite.config.ts` dérive automatiquement l’origine HTTPS publique à partir de `CODESPACE_NAME` et `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`, la transmet au Worker comme binding local non secret, fixe le port à `5173` et active `strictPort`. Cela évite une configuration manuelle fragile dans `.dev.vars` tout en conservant la même politique d’origine exacte.
+Cette exception ne remplace ni `Sec-Fetch-Site`, ni les protections CSRF des sessions concernées, ni les cookies `SameSite`.
 
-Cette exception de proxy ne remplace ni `Sec-Fetch-Site`, ni les jetons CSRF des sessions concernées, ni les cookies `SameSite`.
+## Passage préproduction → production
+
+1. figer les migrations et paramètres qualifiés ;
+2. créer des environnements production séparés, avec secrets et comptes distincts ;
+3. appliquer les migrations sans données fictives ;
+4. connecter les SI autorisés avec moindre privilège ;
+5. valider Auth/MFA/RLS et contrats métier en hosted ;
+6. qualifier corpus, embeddings et génération sur la configuration exacte ;
+7. exécuter charge, sécurité, sauvegarde/restauration et observabilité ;
+8. obtenir revue métier et sécurité ;
+9. utiliser canary + rollback plutôt qu’une ouverture générale directe.
+
+Le guide Supabase détaillé est dans [SUPABASE-PRODUCTION.md](SUPABASE-PRODUCTION.md).
+
+## Limites de preuve
+
+Les tests de repository, le build, les dry-runs, les navigateurs CI et les diagnostics fournisseurs constituent des preuves importantes de non-régression. Ils ne remplacent ni une charge à l’échelle réelle, ni un audit externe, ni un pentest, ni une recette sur appareils physiques, ni la validation opérationnelle d’une entreprise cliente.
