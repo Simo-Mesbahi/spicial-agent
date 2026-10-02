@@ -32,10 +32,10 @@ test('dedicated demo route preserves the existing interactive application', asyn
   assert.notEqual(root, demo);
 });
 
-test('guided trial page fails closed until the prospect recipient is confirmed', async () => {
+test('guided trial page uses only the explicitly confirmed commercial recipient', async () => {
   const source = await read('app/trial/page.tsx');
-  assert.match(source, /à confirmer avant publication/i);
-  assert.doesNotMatch(source, /mailto:/i);
+  assert.match(source, /Mohammed\.elmesbahi@outlook\.com/);
+  assert.match(source, /mailto:\$\{COMMERCIAL_CONTACT\}/);
+  assert.match(source, /rien\s+n’est envoyé automatiquement/i);
   assert.doesNotMatch(source, /outloo\.com/i);
-  assert.doesNotMatch(source, /outlook\.com/i);
 });

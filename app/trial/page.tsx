@@ -8,6 +8,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
+const COMMERCIAL_CONTACT = 'Mohammed.elmesbahi@outlook.com';
+const CONTACT_SUBJECT = 'Demande d’essai accompagné — SAV SC Assistant AI';
+const CONTACT_BODY = `Bonjour,\n\nJe souhaite organiser un essai accompagné de SAV SC Assistant AI.\n\nContexte / besoin :\n[Décrivez brièvement votre activité, vos parcours SAV ou service client et ce que vous souhaitez évaluer.]\n\nDisponibilités :\n[Indiquez vos créneaux si utile.]\n\nMerci.`;
+const CONTACT_HREF = `mailto:${COMMERCIAL_CONTACT}?subject=${encodeURIComponent(CONTACT_SUBJECT)}&body=${encodeURIComponent(CONTACT_BODY)}`;
+
 export default function TrialRequestPage() {
   return (
     <div className="showcase">
@@ -50,21 +55,24 @@ export default function TrialRequestPage() {
 
           <section className="showcase-audience" aria-labelledby="trial-contact-title">
             <small>CONTACT</small>
-            <h2 id="trial-contact-title">Canal de réception à confirmer avant publication</h2>
+            <h2 id="trial-contact-title">Contact commercial confirmé</h2>
             <p style={{ color: 'var(--showcase-muted)', lineHeight: 1.7 }}>
-              L’adresse communiquée pour cette vitrine semble comporter une faute de frappe. Pour
-              éviter toute redirection vers une adresse non validée, aucun bouton d’envoi n’est
-              activé dans cette branche tant que l’adresse finale n’a pas été confirmée explicitement.
+              Utilisez votre messagerie pour préparer une demande d’essai à{' '}
+              <strong>{COMMERCIAL_CONTACT}</strong>. Le message reste sous votre contrôle : rien
+              n’est envoyé automatiquement par la vitrine.
             </p>
+            <a className="showcase-button accent" href={CONTACT_HREF}>
+              Préparer ma demande par email
+            </a>
             <p className="showcase-note">
-              Cette limitation est volontaire : la page ne prétend pas qu’un message est envoyé
-              lorsqu’aucun canal de réception n’est encore validé.
+              Votre application de messagerie s’ouvre avec un objet et un message préremplis ; vous
+              pouvez les modifier avant l’envoi.
             </p>
           </section>
         </div>
 
         <div className="showcase-actions" style={{ marginTop: 36 }}>
-          <Link className="showcase-button accent" href="/demo">Découvrir d’abord la démonstration</Link>
+          <Link className="showcase-button" href="/demo">Découvrir d’abord la démonstration</Link>
           <Link className="showcase-button" href="/">Retour à la vitrine</Link>
         </div>
       </main>

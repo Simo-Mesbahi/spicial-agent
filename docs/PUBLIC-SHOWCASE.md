@@ -10,7 +10,7 @@ The public root route is a lightweight commercial presentation of SAV SC Assista
 - `/demo` — the pre-existing interactive demonstration, preserved on fictitious data.
 - `/file` — customer case access path. Its existing authorization boundary is unchanged by this work.
 - `/admin` and its sub-routes — existing protected administration. Unchanged by this work.
-- `/trial` — guided-trial explanation and safe contact gate. It intentionally does not send mail until the final recipient is explicitly confirmed.
+- `/trial` — guided-trial explanation and contact path using the explicitly confirmed commercial recipient. It opens the visitor's mail client and does not claim that a message was sent automatically.
 
 The original interactive root application was copied to `/demo` by reusing its exact Git blob before the root route was replaced. This avoids a manual copy/rewrite of the interactive application.
 
@@ -48,11 +48,13 @@ The showcase provides a skip link, semantic headings/sections, keyboard-focusabl
 
 Browser automation verifies keyboard focus on the main demonstration CTA and checks both the root and trial routes for horizontal overflow.
 
-## Contact blocker
+## Commercial contact
 
-The requested recipient was supplied as `Mohammed.elmesbahi@outloo.com`. Because the domain may be a typo and the requirement explicitly prohibits sending to another address without validation, `/trial` currently fails closed and exposes no `mailto:` action.
+The commercial recipient is explicitly confirmed as `Mohammed.elmesbahi@outlook.com`.
 
-Before publication, confirm the final commercial recipient explicitly and then add the mail action in a small follow-up commit with tests for the exact address and generated subject/body.
+`/trial` uses a standard `mailto:` action with a prefilled subject/body. This intentionally avoids introducing a server-side form, database write, anti-spam service or third-party delivery dependency solely for the showcase. The page states that nothing is sent automatically and that the visitor can edit the message before sending it from their own mail client.
+
+Source and browser regression tests pin the exact confirmed recipient and reject the previously supplied typo domain.
 
 ## Qualification boundary
 
@@ -69,8 +71,8 @@ Those gates remain independent and must not be weakened to publish the showcase.
 ## Rollout
 
 1. Review the desktop and mobile evidence artifacts.
-2. Confirm the commercial contact recipient and wire it separately.
-3. Verify the standard repository Quality checks are green on the final PR head.
+2. Verify the standard repository Quality checks and Public showcase evidence workflow are green on the exact final PR head.
+3. Mark the PR ready for review only after the confirmed commercial contact is covered by source and browser tests.
 4. Merge without changing P1 release flags.
 5. Verify the post-merge `main` Quality checks.
 6. Publish the showcase independently of P1 customer-release activation.

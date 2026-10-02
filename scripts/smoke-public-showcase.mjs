@@ -6,6 +6,7 @@ import { setTimeout as pause } from 'node:timers/promises';
 
 const origin = 'http://127.0.0.1:4181';
 const output = 'outputs/public-showcase';
+const commercialContact = 'Mohammed.elmesbahi@outlook.com';
 mkdirSync(output, { recursive: true });
 const log = createWriteStream(`${output}/server.log`);
 const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4181', '--strictPort'], {
@@ -104,11 +105,15 @@ try {
     await capture('showcase-mobile');
   });
 
-  await check('guided-trial page refuses unconfirmed email delivery', async () => {
+  await check('guided-trial page exposes only the confirmed commercial recipient', async () => {
     await page.goto(`${origin}/trial`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: /Préparons une démonstration utile/ }).waitFor();
-    await page.getByText(/Canal de réception à confirmer avant publication/).waitFor();
-    assert.equal(await page.locator('a[href^="mailto:"]').count(), 0);
+    await page.getByText(/Contact commercial confirmé/).waitFor();
+    const mail = page.getByRole('link', { name: 'Préparer ma demande par email' });
+    const href = await mail.getAttribute('href');
+    assert.ok(href?.startsWith(`mailto:${commercialContact}?subject=`));
+    assert.match(href ?? '', /body=/);
+    assert.equal(await page.locator('form').count(), 0);
     await noOverflow();
     await capture('trial-mobile');
   });
