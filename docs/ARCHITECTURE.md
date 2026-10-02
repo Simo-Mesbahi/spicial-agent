@@ -1,47 +1,170 @@
-# Architecture
+# Architecture actuelle
+
+Ce document décrit l’architecture présente dans `main`. Les anciens snapshots de livraison restent utiles pour l’historique, mais ne doivent plus être lus comme la topologie complète du produit actuel.
+
+## Vue d’ensemble
 
 ```mermaid
 flowchart TD
-  UI[Plateforme React] --> API[API Worker]
-  API --> AUTH[Session et droits par dossier]
-  AUTH --> DB[(Base D1 / SQLite)]
-  API --> MODEL[Adaptateur de modèle]
-  MODEL --> TOOLS[Outils de lecture autorisés]
-  TOOLS --> AUTH
-  TOOLS --> KB[Procédures versionnées]
-  SIM[Simulation contrôlée] --> API
+  PROSPECT["Prospect"] --> SHOWCASE["/ — vitrine statique"]
+  PROSPECT --> DEMO["/demo — démonstration fictive"]
+  CLIENT["Client"] --> FILE["/file — accès dossier"]
+  ADMIN["Administrateur"] --> ADMINUI["/admin — administration"]
+
+  SHOWCASE -->|aucun bootstrap requis| STATIC["HTML/CSS public"]
+  DEMO --> LEGACY["Runtime démonstration déterministe"]
+  LEGACY --> D1[("D1 / SQLite local-historique")]
+
+  FILE --> SERVER["Couche serveur / Worker"]
+  ADMINUI --> SERVER
+  SERVER --> SESSION["Sessions et contrôles d'accès"]
+  SESSION --> SUPA[("Supabase PostgreSQL")]
+  ADMINUI --> AUTH["Supabase Auth + MFA / rôles"]
+  AUTH --> SUPA
+
+  SERVER --> ORCH["Orchestration structurée"]
+  ORCH --> FACTS["Faits dossier filtrés"]
+  ORCH --> RAG["Recherche documentaire gouvernée"]
+  RAG --> LEX["Canal lexical"]
+  RAG --> VEC["Canal vectoriel optionnel"]
+  LEX --> SUPA
+  VEC --> EMB["Embedding borné"]
+  VEC --> SUPA
+
+  ORCH --> VALIDATOR["Validation factuelle"]
+  VALIDATOR --> GEN["Génération naturelle bornée"]
+  GEN --> PROVIDERS["Gemini / Groq / OpenAI selon politique"]
+  ORCH --> HUMAN["Orientation humaine déterministe"]
 ```
 
-## Responsabilités
+## 1. Séparation des surfaces
 
-`lib/atlas/domain.ts` : types métier, scénarios, transitions, labels, recherche documentaire et masquage partiel. Aucun effet de bord.
+### `/` — vitrine commerciale
 
-`lib/atlas/api.ts` : persistance, sessions, quotas atomiques, API, actions, historique, adaptateur Chat Completions et boucle d’outils. Ce module ne dépend pas de React ou de l’environnement Cloudflare ; l’interface `Database` permet les tests avec SQLite.
+La racine est une surface publique légère. Elle ne nécessite ni composant client, ni session, ni appel `/api/`, ni requête Supabase, ni appel LLM pour présenter le produit. Cette indépendance empêche une panne fournisseur ou backend de dégrader la première impression commerciale.
 
-`worker/index.ts` : adaptation HTTP et transmission de l’environnement serveur. Les endpoints `/api/` sont gérés avant le routeur de pages.
+Les tests dédiés interdisent la réintroduction silencieuse de ces dépendances et vérifient desktop, 320/390/768 px, clavier, routes publiques et budget HTML.
 
-`db/schema.ts` et `drizzle/` : schéma et migrations. Le runtime ne crée aucune table. Les données synthétiques sont insérées après création de la session.
+### `/demo` — démonstration fictive
 
-`app/page.tsx` : édition publique limitée à trois espaces — assistant, dossiers et contact — avec composants UI accessibles du catalogue Shadcn. Les vues conseiller, laboratoire, connaissances et projet sont exclues du rendu public. Toute décision sensible reste côté serveur.
+La démonstration interactive historique est conservée séparément. Elle utilise des données/scénarios fictifs et ne doit jamais être confondue avec un environnement client réel ou une qualification P1.
 
-`lib/atlas/contact.ts` : validation et construction cohérente des brouillons pour l’application email par défaut, Gmail et Outlook. Le navigateur n’envoie ni ne stocke le message : le visiteur le relit et confirme l’envoi dans la messagerie choisie.
+Une partie du socle D1/SQLite historique reste utile pour cette démonstration, les fixtures et les tests locaux. Sa présence ne signifie pas que le plan de données Supabase de préproduction doit être remplacé par D1.
 
-`lib/atlas/support-routing.ts` : politique de résolution avant transfert. Une première demande de contact propose une aide guidée ; une confirmation du client, une opération d’écriture, un sujet sensible ou une information métier manquante ouvre le relais sans nouvelle boucle de rétention. Cette décision est déterministe et testée séparément du LLM.
+### `/file` — accès client
 
-## Données et cohérence
+Le parcours client sans compte s’appuie sur une référence de dossier et un code confidentiel. La couche serveur contrôle les sessions, l’accès au dossier et la forme des réponses avant de transmettre des faits à l’assistant.
 
-Clients, produits et achats alimentent les dossiers. Chaque dossier a une version, un état, un historique et une référence unique dans son espace. Les actions métier mettent à jour la version et créent l’événement dans un batch transactionnel. Un identifiant d’opération empêche le rejeu. Un devis bloque la progression automatique tant que le client ne l’a pas accepté.
+### `/admin` — administration interne
 
-Les simulations mettent à jour au plus un dossier éligible par cycle ; elles ne génèrent pas un délai de réparation sans donnée explicite. Les estimations affichées sont identifiées comme simulées. La progression automatique est déclenchée par les requêtes, avec une cadence minimale de 20 secondes. Elle n’est ni un flux de transporteur ni un job permanent.
+L’administration est une surface distincte, protégée par Supabase Auth, rôles métier et MFA/AAL2 pour les opérations concernées. Les paramètres d’assistant, de corpus et d’exploitation ne doivent jamais être exposés par la vitrine.
 
-Sur l’hébergement public, `APP_EDITION=client` neutralise cette progression, refuse `/api/simulation` ainsi que les actions opérateur `advance` et `delay`, et retire journaux et demandes de relais du snapshot navigateur. Les décisions client confirmées sur un devis restent disponibles.
+## 2. Plans de données
 
-## Modèles et documents
+### Démonstration / tests historiques
 
-`demo` : réponses déterministes, zéro appel fournisseur. `ollama` : modèle local, boucle HTTP locale exclusivement, aucune clé transmise, raisonnement désactivé par paramètre pour limiter l’attente. `openai` et `compatible` : connecteurs externes conservés mais bloqués par la politique `zero` par défaut. `lib/atlas/model-policy.ts` valide la politique et l’adresse avant tout appel. Seule une configuration administrative `approved`, après un nouvel accord budgétaire, permettrait ces fournisseurs externes. Outils exposés au modèle : `get_case`, `search_knowledge`. Aucun outil de remboursement ou de modification directe n’est exposé au LLM. Le triage et l’escalade humaine restent dans la couche de contrôle locale, y compris lorsqu’un LLM est actif, afin qu’une réponse générée ne puisse ni retenir abusivement le client ni prétendre exécuter une opération indisponible.
+Le dépôt conserve le schéma Drizzle/D1 et ses migrations pour la démonstration et certains tests. Les simulations restent bornées et les actions opérateur sont bloquées dans les éditions qui ne doivent pas les exposer.
 
-Le corpus est statique, fictif, versionné dans le code. La recherche lexicale pondère les mots-clés et les textes. Cette version n’est pas un système hybride/vectoriel. Les historiques de conversation sont conservés par espace et filtrés par dossier avant envoi au modèle. Les changements de documents ou de modèle doivent être évalués avant publication.
+### Supabase préproduction / production-aligned
 
-## Passage en entreprise
+Le socle Supabase apporte :
 
-Conserver le contrat des outils, remplacer les adaptateurs de données par les API autorisées de l’entreprise, introduire identité/rôles réels et tests de contrat avec son SI. Voir `PRODUCTION.md` pour le périmètre restant.
+- PostgreSQL et migrations versionnées ;
+- isolation par organisation ;
+- RLS ;
+- RPC serveur ;
+- Auth administrative, rôles et MFA ;
+- sessions client bornées ;
+- gestion métier des dossiers ;
+- corpus documentaire versionné ;
+- colonnes/vectorisation nécessaires au mode hybride ;
+- observabilité de release P1.
+
+Le projet Supabase actuellement documenté doit rester un environnement de préproduction tant que la recette complète de production n’est pas terminée. Une future production doit être isolée avec ses propres secrets, comptes et données.
+
+Voir [`SUPABASE-PRODUCTION.md`](SUPABASE-PRODUCTION.md).
+
+## 3. Orchestration conversationnelle
+
+La décision métier ne repose pas sur une réponse libre d’un LLM. La chaîne sépare notamment :
+
+1. compréhension/classification structurée ;
+2. sélection du dossier et autorisation ;
+3. faits métier filtrés ;
+4. recherche documentaire si nécessaire ;
+5. génération naturelle bornée lorsque la politique l’autorise ;
+6. validation factuelle/abstention ;
+7. orientation humaine selon la politique métier.
+
+Les classes d’intention prévues par le moteur couvrent les échanges généraux, information, procédure, recherche/changement de dossier, clarification, handoff humain et action. Une génération ne peut pas s’octroyer un droit métier absent ni transformer une simulation en action réelle.
+
+## 4. Recherche documentaire
+
+`RAG_MODE=lexical` conserve le comportement lexical. `RAG_MODE=hybrid` active explicitement le chemin hybride pour le corpus Supabase configuré.
+
+Le mode hybride est borné :
+
+- requête de recherche autonome issue de l’orchestrateur ;
+- au plus un embedding de requête ;
+- candidats lexicaux et vectoriels filtrés ;
+- contrôle organisation/statut/révision/date/locale/marché ;
+- fusion par reciprocal rank fusion (RRF) ;
+- déduplication et provenance ;
+- seuil de pertinence ;
+- abstention ou dégradation contrôlée lorsque l’évidence est insuffisante.
+
+L’embedding est indépendant du fournisseur de chat. Le baseline P1 documenté utilise `gemini-embedding-2` en 768 dimensions. Un changement de modèle/espace exige une réindexation contrôlée.
+
+Voir [`P1-HYBRID-RETRIEVAL.md`](P1-HYBRID-RETRIEVAL.md).
+
+## 5. Fournisseurs LLM et failover
+
+Les fournisseurs hébergés supportés par la couche de routage sont Gemini, Groq et OpenAI, en plus des modes démo/local prévus par le projet.
+
+Les autorisations sont fail-closed : clé, modèle, allowlist, politique de budget et configuration doivent toutes être valides avant un appel.
+
+- `LLM_BUDGET_MODE=zero` : bloque les API hébergées ;
+- `free` : permet les fournisseurs autorisés pour cette politique, sans garantir le plan commercial du fournisseur ;
+- `approved` : permet les fournisseurs explicitement approuvés selon la configuration.
+
+Le failover automatique est optionnel, désactivé par défaut et borné à un seul fournisseur secondaire. Il ne masque pas les quotas/429, erreurs d’authentification, requêtes invalides, refus ou sorties invalides. Il est désactivé pendant les modes P1 qui exigent l’attestation d’un fournisseur/modèle exact.
+
+Voir [`admin-llm-routing.md`](admin-llm-routing.md).
+
+## 6. Sécurité et frontières
+
+Les principes structurants sont :
+
+- aucune clé fournisseur ou Supabase secrète dans le navigateur ;
+- aucun jeton brut stocké dans la base client ;
+- RLS et organisation appliquées côté données ;
+- MFA/rôles pour l’administration ;
+- décisions et mutations métier déterministes côté serveur ;
+- outils LLM limités aux opérations explicitement autorisées ;
+- provenance documentaire et abstention ;
+- aucune donnée réelle dans la démonstration publique ;
+- séparation des environnements et des flags de release.
+
+Les tests de CI ne remplacent pas un audit de sécurité indépendant, une recette hosted Supabase réelle ou une validation de charge.
+
+## 7. P1 et release
+
+`P1_RELEASE_MODE` est une frontière de release, pas un bouton de qualité. Une CI verte ou un diagnostic fournisseur vert ne suffit pas pour activer P1 à de vrais clients.
+
+La séquence reste :
+
+`P1.7A Live Qualification → P1.7B Documentary freshness/revalidation → P1.7C Customer Release Gate → P1.7D Canary rollout`
+
+Les attestations doivent rester liées à l’environnement, au provider/modèle, au corpus et à l’espace d’embedding qualifiés.
+
+## 8. Hébergement et publication
+
+Le dépôt est lié à un projet Sites par `.openai/hosting.json`. GitHub Actions valide le code et les preuves, mais il n’existe pas de workflow GitHub qui publie automatiquement la production.
+
+Un merge dans `main`, une CI verte et une publication Sites sont donc trois événements distincts. Après chaque publication, vérifier la version réellement servie sur l’URL publique avant de déclarer la release disponible.
+
+## 9. Gouvernance GitHub
+
+La CI produit les preuves techniques, mais les protections de `main` doivent être imposées par GitHub branch protection ou rulesets. L’issue #109 suit ce point : PR obligatoire, check standard requis, résolution des conversations, interdiction des force-push/suppressions et bypass minimal.
+
+Ne jamais modifier les gates, désactiver un test ou assouplir une frontière P1 uniquement pour obtenir un résultat vert.

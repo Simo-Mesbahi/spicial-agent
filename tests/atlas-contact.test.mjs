@@ -19,13 +19,15 @@ const {
   'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
 );
 
-test('Contact messages always target the configured recipient', () => {
+test('Contact messages always target the explicitly confirmed public recipient', () => {
   const link = buildContactMailto({
     subject: 'Question SAV',
     message: 'Bonjour, je souhaite obtenir plus d’informations.',
   });
-  assert.equal(CONTACT_RECIPIENT, 'mohammed.elmesbahi31@gmail.com');
+  assert.equal(CONTACT_RECIPIENT, 'Mohammed.elmesbahi@outlook.com');
   assert.match(link, new RegExp('^mailto:' + CONTACT_RECIPIENT.replace('.', '\\.')));
+  assert.doesNotMatch(link, /mohammed\.elmesbahi31@gmail\.com/i);
+  assert.doesNotMatch(link, /outloo\.com/i);
 });
 
 test('Contact link preserves readable Unicode content', () => {

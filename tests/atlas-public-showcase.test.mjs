@@ -32,12 +32,17 @@ test('dedicated demo route preserves the existing interactive application', asyn
   assert.notEqual(root, demo);
 });
 
-test('guided trial page uses only the explicitly confirmed commercial recipient', async () => {
-  const source = await read('app/trial/page.tsx');
-  assert.match(source, /Mohammed\.elmesbahi@outlook\.com/);
-  assert.match(source, /mailto:\$\{COMMERCIAL_CONTACT\}/);
-  assert.match(source, /rien\s+n’est envoyé automatiquement/i);
-  assert.doesNotMatch(source, /outloo\.com/i);
+test('guided trial and client contact share one confirmed recipient source', async () => {
+  const [trial, contact] = await Promise.all([
+    read('app/trial/page.tsx'),
+    read('lib/atlas/contact.ts'),
+  ]);
+  assert.match(trial, /import \{ CONTACT_RECIPIENT \} from ['"]@\/lib\/atlas\/contact['"]/);
+  assert.match(trial, /mailto:\$\{CONTACT_RECIPIENT\}/);
+  assert.match(trial, /rien\s+n’est envoyé automatiquement/i);
+  assert.doesNotMatch(trial, /outloo\.com|elmesbahi31@gmail\.com/i);
+  assert.match(contact, /CONTACT_RECIPIENT = ['"]Mohammed\.elmesbahi@outlook\.com['"]/);
+  assert.doesNotMatch(contact, /outloo\.com|elmesbahi31@gmail\.com/i);
 });
 
 test('showcase evidence is enforced on pull requests and relevant main pushes', async () => {
