@@ -6,35 +6,35 @@ Ce document décrit l’architecture présente dans `main`. Les anciens snapshot
 
 ```mermaid
 flowchart TD
-  PROSPECT[Prospect] --> SHOWCASE[/ vitrine statique]
-  PROSPECT --> DEMO[/demo fictif]
-  CLIENT[Client] --> FILE[/file accès dossier]
-  ADMIN[Administrateur] --> ADMINUI[/admin]
+  PROSPECT["Prospect"] --> SHOWCASE["/ — vitrine statique"]
+  PROSPECT --> DEMO["/demo — démonstration fictive"]
+  CLIENT["Client"] --> FILE["/file — accès dossier"]
+  ADMIN["Administrateur"] --> ADMINUI["/admin — administration"]
 
-  SHOWCASE -->|aucun bootstrap requis| STATIC[HTML/CSS public]
-  DEMO --> LEGACY[Runtime démonstration déterministe]
-  LEGACY --> D1[(D1 / SQLite local-historique)]
+  SHOWCASE -->|aucun bootstrap requis| STATIC["HTML/CSS public"]
+  DEMO --> LEGACY["Runtime démonstration déterministe"]
+  LEGACY --> D1[("D1 / SQLite local-historique")]
 
-  FILE --> SERVER[Couche serveur / Worker]
+  FILE --> SERVER["Couche serveur / Worker"]
   ADMINUI --> SERVER
-  SERVER --> SESSION[Sessions et contrôles d'accès]
-  SESSION --> SUPA[(Supabase PostgreSQL)]
-  ADMINUI --> AUTH[Supabase Auth + MFA / rôles]
+  SERVER --> SESSION["Sessions et contrôles d'accès"]
+  SESSION --> SUPA[("Supabase PostgreSQL")]
+  ADMINUI --> AUTH["Supabase Auth + MFA / rôles"]
   AUTH --> SUPA
 
-  SERVER --> ORCH[Orchestration structurée]
-  ORCH --> FACTS[Faits dossier filtrés]
-  ORCH --> RAG[Recherche documentaire gouvernée]
-  RAG --> LEX[Canal lexical]
-  RAG --> VEC[Canal vectoriel optionnel]
+  SERVER --> ORCH["Orchestration structurée"]
+  ORCH --> FACTS["Faits dossier filtrés"]
+  ORCH --> RAG["Recherche documentaire gouvernée"]
+  RAG --> LEX["Canal lexical"]
+  RAG --> VEC["Canal vectoriel optionnel"]
   LEX --> SUPA
-  VEC --> EMB[Embedding borné]
+  VEC --> EMB["Embedding borné"]
   VEC --> SUPA
 
-  ORCH --> VALIDATOR[Validation factuelle]
-  VALIDATOR --> GEN[Génération naturelle bornée]
-  GEN --> PROVIDERS[Gemini / Groq / OpenAI selon politique]
-  ORCH --> HUMAN[Orientation humaine déterministe]
+  ORCH --> VALIDATOR["Validation factuelle"]
+  VALIDATOR --> GEN["Génération naturelle bornée"]
+  GEN --> PROVIDERS["Gemini / Groq / OpenAI selon politique"]
+  ORCH --> HUMAN["Orientation humaine déterministe"]
 ```
 
 ## 1. Séparation des surfaces
