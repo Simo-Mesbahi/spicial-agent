@@ -1,136 +1,172 @@
 # SAV SC Assistant AI
 
-**Une plateforme de démonstration SAV et service client, connectée à un système métier simulé.**
+**Plateforme SAV et service client avec vitrine commerciale, démonstration fictive, suivi de dossier sécurisé et administration métier.**
 
-SAV SC Assistant AI permet de suivre une réparation, consulter une livraison, examiner un devis et être accompagné jusqu’au bon niveau de résolution. La publication est une **édition client** : elle expose uniquement l’assistant, les dossiers et le contact. Les vues d’exploitation et d’analyse ne sont ni proposées ni incluses dans l’interface publique ; leurs mutations sont refusées par le serveur.
+SAV SC Assistant AI est conçu pour présenter puis opérer des parcours de service client encadrés : suivi de dossier SAV, demandes de service client, consultation d’informations gouvernées et orientation vers un humain lorsque nécessaire. Le produit distingue strictement la vitrine publique, la démonstration sur données fictives, l’accès client à un dossier et les surfaces internes d’administration.
 
-> **Budget IA : 0 €.** Le mode public par défaut n’utilise **aucun LLM** : règles et recherche documentaire lexicale. Un vrai modèle peut fonctionner **localement avec Ollama, sans clé API**. Les fournisseurs externes sont bloqués par défaut, même si une clé est présente. Maison Atlas et toutes les données sont fictives ; aucune opération réelle n’est exécutée.
+> **État de release :** la vitrine commerciale et ses preuves de non-régression sont fusionnées sur `main`. Cela ne constitue **pas** une qualification P1.7 ni une autorisation d’ouvrir les capacités avancées à de vrais clients. La publication Sites et la qualification live restent des étapes distinctes.
 
-## Essayer
+## Parcours publics et internes
 
-[Ouvrir SAV SC Assistant AI](https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site)
+| Route | Rôle | Frontière |
+| --- | --- | --- |
+| `/` | Vitrine commerciale | Statique, sans bootstrap Supabase/LLM/API nécessaire à la première vue |
+| `/demo` | Démonstration interactive | Données et scénarios fictifs uniquement |
+| `/trial` | Demande d’essai accompagné | Ouvre la messagerie du visiteur vers le contact commercial confirmé |
+| `/file` | Accès client à un dossier | Référence + code, contrôles serveur et session bornée |
+| `/admin` | Administration métier | Authentification, rôles et MFA ; surface interne |
 
-1. Explorer l’aperçu interactif de l’accueil : réparation, livraison ou devis.
-2. Choisir **Vivre l’expérience** pour ouvrir son espace isolé sur le scénario choisi.
-3. Cliquer **Utiliser ce code**, puis **Vérifier et consulter le dossier**. La référence et le code sont contrôlés par le serveur avant la première réponse.
-4. Suivre le bandeau guidé puis poser une question sur l’état ou la prochaine étape.
-5. Lire **Le dossier en clair** : état, suite prévue et consigne client. **Actualiser le suivi** consulte à nouveau le dossier ; les documents utilisés restent accessibles depuis la réponse.
-6. Changer de dossier depuis la conversation, explorer **Mes dossiers** ou préparer un contact contextualisé.
+Le contact public confirmé est **`Mohammed.elmesbahi@outlook.com`**. Les pages de contact préparent un brouillon que le visiteur relit et envoie lui-même ; aucun message n’est prétendu envoyé automatiquement.
 
-Voir le [guide de démonstration](docs/DEMO.md).
-Les [critères d’expérience utilisateur](docs/EXPERIENCE.md) distinguent ce qui est automatisé de ce qui doit encore être évalué par des testeurs.
+## Vitrine commerciale
 
-## Fonctionnalités livrées
+La première page vise une présentation commerciale crédible et rapide :
 
-| Fonction                                                             | État                                                                     |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Base relationnelle : clients, produits, achats, dossiers, événements | Implémentée, migrations SQLite/D1                                        |
-| Huit scénarios et génération de nouveaux dossiers                    | Scénarios publics ; génération réservée aux tests internes               |
-| Session isolée, code par dossier, expiration, CSRF                   | Implémentés et testés                                                    |
-| Suivi SAV/SC, acceptation/refus d’un devis                           | Implémentés ; aucune opération financière                                |
-| Aide guidée puis relais conseiller avec contexte                     | Triage progressif ; confirmation respectée et transfert simulé           |
-| Simulation manuelle et progression automatique                       | Conservées pour les tests internes ; bloquées dans l’édition client      |
-| 12 procédures fictives versionnées                                   | Recherche lexicale, affichage des sources                                |
-| Ollama local, lanceur et diagnostic                                  | Sans clé API ; contrats de lecture testés avec réponses simulées         |
-| Gemini gratuit à quota limité                                        | Connecteur compatible outils, clé serveur, données fictives seulement    |
-| Connecteurs externes OpenAI / compatibles                            | Conservés mais bloqués par le budget zéro par défaut                     |
-| Interface française, thèmes clair/sombre/système, responsive         | Implémentée                                                              |
-| Accueil interactif, parcours guidé, questions contextuelles          | Implémentés ; guide lié aux versions réelles du simulateur               |
-| Synthèse de suivi, versions historiques et changement de dossier     | Faits construits côté serveur ; ancien devis non actionnable             |
-| Reprise d’un message après coupure et délais réseau bornés           | Rejeu sans doublon, réponse enregistrée avant affichage                  |
-| Édition publique limitée au parcours client                          | Assistant, dossiers et contact uniquement                                |
-| Contact email guidé                                                  | Appareil, Gmail ou Outlook ; contexte prérempli et copie champ par champ |
+- proposition de valeur SAV + service client ;
+- aperçu représentatif sur données fictives ;
+- lecture adaptée à un décideur métier et à un évaluateur fonctionnel/technique ;
+- personnalisation possible de l’identité, des parcours, du corpus et des intégrations après cadrage ;
+- limites, sécurité et transfert humain décrits sans transformer une simulation en promesse réelle ;
+- P1 présenté comme une capacité soumise à qualification, et non comme une release déjà autorisée.
+
+La vitrine est volontairement indépendante d’un fournisseur IA et de Supabase au premier affichage. Une indisponibilité de Gemini, Groq, OpenAI ou du backend métier ne doit donc pas empêcher un prospect de comprendre le produit.
+
+Voir [`docs/PUBLIC-SHOWCASE.md`](docs/PUBLIC-SHOWCASE.md) pour les frontières, budgets de régression, preuves navigateur et règles de publication.
+
+## Socle métier et sécurité
+
+Le projet comprend aujourd’hui deux familles de parcours : une démonstration déterministe/fictive conservée pour présenter le produit et un socle Supabase destiné à la préproduction des parcours client/admin gouvernés.
+
+Le socle Supabase couvre notamment :
+
+- consultation client sans compte par référence et code confidentiel ;
+- codes d’accès hachés et sessions de dossier bornées ;
+- séparation des organisations ;
+- Supabase Auth pour l’administration, rôles et MFA obligatoire ;
+- RLS et RPC serveur pour les données sensibles ;
+- audit technique et contrôles de session ;
+- corpus documentaire versionné et publication gouvernée.
+
+Aucun secret ne doit être placé dans Git, une capture, un message ou du JavaScript livré au navigateur. La clé `SUPABASE_SECRET_KEY` et les clés fournisseurs restent exclusivement côté serveur.
+
+Guide : [`docs/SUPABASE-PRODUCTION.md`](docs/SUPABASE-PRODUCTION.md).
+
+## RAG et génération
+
+Le moteur documentaire conserve un mode lexical et peut activer explicitement un mode hybride gouverné (`RAG_MODE=hybrid`) pour le corpus Supabase configuré. Le pipeline hybride est borné : au plus un embedding de requête, candidats lexicaux/vectoriels filtrés, fusion RRF, déduplication, provenance et seuil de pertinence. En cas de faiblesse d’évidence, le système doit s’abstenir ou revenir au comportement documentaire prévu plutôt qu’inventer une information.
+
+Les embeddings sont configurés séparément du fournisseur de chat. La baseline de qualification décrite dans le projet utilise `gemini-embedding-2` avec sortie 768 dimensions ; tout changement d’espace d’embedding nécessite une réindexation contrôlée.
+
+Guide : [`docs/P1-HYBRID-RETRIEVAL.md`](docs/P1-HYBRID-RETRIEVAL.md).
+
+## Fournisseurs LLM et budget
+
+Le routage administrable prend en charge Gemini, Groq et OpenAI avec politiques serveur explicites :
+
+| Fournisseur | Politique | Remarque |
+| --- | --- | --- |
+| Gemini | `free` ou `approved` | Modèle autorisé/configuré côté serveur |
+| Groq | `free` ou `approved` | Modèles `openai/gpt-oss-*` hébergés par Groq |
+| OpenAI | `approved` | Bloqué en mode `free` |
+| Demo / local | selon configuration | Utile pour tests déterministes ou exécution locale |
+
+`LLM_BUDGET_MODE=zero` bloque les API hébergées. Le mode `free` est une autorisation applicative d’utiliser un compte configuré ; il ne constitue pas une garantie commerciale sur le plan ou les quotas du fournisseur.
+
+Un secours automatique optionnel est borné à un seul fournisseur secondaire et ne s’applique pas aux erreurs qui doivent rester explicites, par exemple quota/429, authentification, requête invalide, refus ou sortie non valide. Les embeddings restent indépendants du fournisseur de génération.
+
+Guide : [`docs/admin-llm-routing.md`](docs/admin-llm-routing.md).
+
+## P1 / qualification live
+
+Les tests locaux et CI, les dry-runs RAG/grounding/P1 et les diagnostics fournisseur ne remplacent pas la qualification live.
+
+Avant toute ouverture P1 à de vrais clients, il faut conserver la chaîne de release séparée :
+
+`P1.7A Live Qualification → P1.7B freshness/revalidation → P1.7C Customer Release Gate → P1.7D Canary rollout`
+
+La vitrine publique peut être publiée indépendamment de cette activation, à condition de continuer à présenter P1 comme non autorisé tant que ces gates ne sont pas terminés.
+
+## Qualité et non-régression
+
+La CI standard vérifie notamment :
+
+```bash
+npm run typecheck
+npm run lint:app
+npm test
+npm run check:regressions
+npm run test:origin-runtime
+npm run eval:ai
+npm run eval:rag
+npm run eval:generation
+npm run eval:grounding
+npm run eval:p1:release
+npm run build
+npm run test:starter
+```
+
+La vitrine possède en plus un workflow navigateur spécialisé qui, pour les changements concernés :
+
+- bloque le trafic navigateur tiers ;
+- vérifie l’absence d’appel `/api/` à la première vue ;
+- impose un plafond de régression de **128 KiB** sur le HTML brut de la racine ;
+- vérifie les routes internes publiques ;
+- contrôle l’absence de débordement à 320, 390, 768 px et desktop ;
+- teste le premier focus clavier, les CTA et le contact confirmé ;
+- capture desktop, mobile et `/trial` ;
+- regénère une preuve après merge sur `main`.
+
+Ces métriques sont des garde-fous de CI et ne doivent pas être transformées en promesses de latence production.
 
 ## Lancer localement
 
-Prérequis : Node.js **24 LTS**, npm, environnement Linux/macOS (les scripts de build nécessitent GNU `timeout`, généralement `coreutils` sur macOS).
+Prérequis : Node.js **24**, npm, Linux/macOS ou environnement compatible avec les scripts du dépôt.
 
 ```bash
 git clone https://github.com/Simo-Mesbahi/spicial-agent.git
 cd spicial-agent
 npm ci
 cp .env.example .dev.vars
-npm run db:migrate:local
 npm run dev
 ```
 
-Utiliser l’adresse affichée par Vite. D1 est émulé localement ; sa persistance est dans `.wrangler/state`. Les identifiants et données de session restent côté serveur. Seul le thème est enregistré dans le navigateur.
+Pour les parcours historiques D1 locaux, appliquer les migrations locales prévues avant les tests concernés. Pour Supabase, suivre le guide dédié et ne jamais réutiliser un secret de production dans un environnement local non maîtrisé.
 
-```bash
-npm run typecheck
-npm run lint:app
-npm test
-npm run build
-```
-
-Les tests d’API utilisent une base SQLite réelle en mémoire et les migrations livrées. Les échanges avec un LLM sont simulés dans les tests de contrat ; aucune clé n’est nécessaire pour les exécuter.
-
-## Utiliser un vrai modèle sans frais d’API
-
-Prérequis : **Node.js 24**, macOS ou Linux/WSL, [Ollama installé](https://ollama.com/download) et de la mémoire disponible. Après `npm ci` :
-
-```bash
-npm run ai:local -- --pull
-```
-
-Cette commande démarre un serveur Ollama isolé sur cet ordinateur, désactive son cloud, télécharge le modèle local `qwen3:4b` avec votre accord explicite (`--pull`), prépare la configuration et les migrations locales, puis lance l’application. Les paramètres existants modifiés sont sauvegardés hors Git. Arrêter avec Ctrl+C. Aux lancements suivants, `npm run ai:local` suffit.
-
-Le téléchargement initial représente environ **2,5 Go**, selon la [fiche Ollama du modèle](https://ollama.com/library/qwen3:4b) ; la mémoire nécessaire à son exécution est supérieure à la taille du fichier. Ce choix est un point de départ à évaluer, pas une garantie de performance.
-
-Dans un autre terminal, pendant que le serveur tourne :
-
-```bash
-npm run ai:doctor
-npm run ai:doctor -- --inference
-```
-
-Le premier vérifie l’installation ; le second demande aussi une courte génération locale. Aucun repli vers une API payante. Voir le [guide budget zéro](docs/ZERO-BUDGET.md) pour les limites et le dépannage.
-
-**Le site public n’utilise pas le localhost de votre ordinateur.** Il reste en démonstration sans LLM. Un LLM public permanent exige une ressource d’inférence disponible et son exploitation ; cette livraison ne souscrit aucun hébergement ou abonnement payant.
-
-## Configuration du modèle
-
-| Variable          | Utilisation                                                       |
-| ----------------- | ----------------------------------------------------------------- |
-| `APP_EDITION`     | `client` sur le site public ; neutralise les fonctions internes   |
-| `LLM_BUDGET_MODE` | `zero` par défaut : seuls `demo` et `ollama` sont permis          |
-| `LLM_PROVIDER`    | `demo`, `ollama` ; connecteurs externes conservés mais désactivés |
-| `GEMINI_API_KEY`  | Secret serveur requis pour le mode `gemini` gratuit               |
-| `LLM_MODEL`       | Modèle local installé ; défaut Ollama : `qwen3:4b`                |
-| `LLM_BASE_URL`    | Ollama : boucle locale HTTP terminée par `/v1`                    |
-| `LLM_DAILY_LIMIT` | Maximum de conversations LLM par fenêtre de 24 h, défaut 100      |
-
-Le lanceur utilise le port **11435** et `OLLAMA_NO_CLOUD=1`. Il conserve le serveur Ollama habituel éventuel sur 11434 et ne le modifie pas. L’API n’envoie aucune clé à Ollama et refuse les redirections HTTP.
-
-`gemini` et `groq` sont les fournisseurs hébergés autorisés par `LLM_BUDGET_MODE=free`, avec des comptes fournisseur au niveau gratuit. Le modèle par défaut validé pour ce projet est `gemini-3.1-flash-lite`; les identifiants Gemini 2.5 restent dans l’allowlist pour compatibilité explicite. Le connecteur utilise l’endpoint officiel compatible OpenAI et `GEMINI_API_KEY` stockée comme secret serveur. En mode `free`, les appels OpenAI et aux fournisseurs compatibles restent bloqués par le serveur. L’offre gratuite dépend des quotas et conditions Google : elle convient à cette démo fictive, pas à une production avec des données clients réelles. Les connecteurs historiques `openai` / `compatible` restent bloqués tant que la politique n’est pas `approved`.
-
-**Pilotage multi-fournisseur :** le [guide admin Gemini / Groq / OpenAI](docs/admin-llm-routing.md) décrit la sélection manuelle, le secours automatique optionnel sur panne réseau/5xx, les protections de budget et les limites de qualification P1. Groq et les bascules sont couverts par des tests simulés; leur activation réelle nécessite la vérification des clés, quotas et réponses métier.
-
-Créer une clé ne l’ajoute pas à l’hébergement. Le [guide Gemini sur téléphone](docs/GEMINI-FREE.md) décrit l’enregistrement sécurisé, l’activation et les limites de gratuité. Un quota SAV SC Assistant AI n’est pas un plafond financier garanti par Google.
-
-## Architecture et sécurité
-
-- [Architecture et responsabilités](docs/ARCHITECTURE.md)
-- [Contrat de l’API](docs/API.md)
-- [Périmètre et décisions](docs/PROJECT.md)
-- [Limites et préparation entreprise](docs/PRODUCTION.md)
-- [Politique de sécurité](SECURITY.md)
-
-La démonstration publique ne représente pas une authentification de salarié. Le visiteur dispose uniquement du parcours client dans son **propre espace fictif**. Les codes de démonstration sont visibles pour permettre l’essai ; ne jamais injecter de dossiers clients réels dans ce mode.
+Pour une qualification locale sans fournisseur hébergé, utiliser les modes `demo`/locaux prévus par le projet. Les tests de contrat n’ont pas besoin d’une clé LLM réelle.
 
 ## Déploiement
 
-Le projet utilise React, TypeScript, Vinext et un Worker Cloudflare avec D1. Les migrations Drizzle sont versionnées dans `drizzle/`. La plateforme Sites gère le déploiement de cet exemplaire ; `.openai/hosting.json` identifie le site. `wrangler.local.jsonc` sert uniquement au développement local et ne configure pas un compte Cloudflare de production.
+L’exemplaire hébergé existant est lié à la plateforme **Sites** par [`.openai/hosting.json`](.openai/hosting.json). Le dépôt ne contient pas de workflow GitHub de déploiement production et `wrangler.local.jsonc` sert uniquement au développement local.
 
-Les sources et les configurations de test sont incluses dans la livraison ; aucun secret ni fichier de base de données n’y figure. Voir le [bilan de livraison](docs/DELIVERY.md) pour l’état de la synchronisation GitHub et des validations.
+URL historique de l’exemplaire Sites :
 
-## Limites actuelles
+**https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site**
 
-- Données synthétiques, scénarios bornés et procédures fictives ; pas de connexion à un SI réel.
-- Recherche lexicale ; embeddings, recherche hybride et reranking restent des évolutions à évaluer.
-- Pas d’authentification entreprise, de conseiller connecté ni de notification automatique. La page Contact prépare localement un email contextualisé vers `mohammed.elmesbahi31@gmail.com`, puis laisse choisir l’application par défaut, Gmail ou Outlook. Le visiteur relit et confirme l’envoi dans sa messagerie ; le destinataire, l’objet et le corps peuvent être copiés séparément si nécessaire.
-- Les fonctions de simulation et les vues internes sont désactivées dans la publication client.
-- Le transport Gemini 3.1 Flash-Lite a été validé en appel réel de développement ; chaque hébergement doit encore valider sa propre clé, ses quotas et sa connectivité avant activation.
-- Les tests ne constituent pas un audit de sécurité indépendant ni une certification de production.
+Un merge GitHub ne prouve donc pas, à lui seul, que cette URL exécute le dernier commit. Après publication via Sites, vérifier explicitement la racine, `/demo`, `/trial`, `/file`, les métadonnées et le comportement mobile sur la version réellement servie.
+
+## Gouvernance du dépôt
+
+Les workflows produisent des preuves, mais la protection de branche est un contrôle GitHub séparé. Le suivi de gouvernance est documenté dans l’issue **#109** : protection de `main`, PR obligatoires, check `Quality checks / verify`, résolution des conversations, blocage des force-push/suppressions et bypass minimal.
+
+Ne jamais abaisser un test, un seuil P1, un contrôle MFA/RLS ou une validation métier pour obtenir un état vert.
+
+## Documentation principale
+
+- [`docs/PUBLIC-SHOWCASE.md`](docs/PUBLIC-SHOWCASE.md) — vitrine et preuves navigateur
+- [`docs/SUPABASE-PRODUCTION.md`](docs/SUPABASE-PRODUCTION.md) — Supabase, Auth, RLS, MFA et environnements
+- [`docs/P1-HYBRID-RETRIEVAL.md`](docs/P1-HYBRID-RETRIEVAL.md) — recherche hybride gouvernée
+- [`docs/admin-llm-routing.md`](docs/admin-llm-routing.md) — Gemini / Groq / OpenAI et failover borné
+- [`docs/P1-CONTROLLED-RELEASE.md`](docs/P1-CONTROLLED-RELEASE.md) — release P1 contrôlée
+- [`SECURITY.md`](SECURITY.md) — politique de sécurité
+- [`docs/DELIVERY.md`](docs/DELIVERY.md) — snapshot historique de livraison de septembre 2026
+
+## Limites à ne pas masquer
+
+- La vitrine et la démonstration n’utilisent que des exemples fictifs ; elles ne prouvent aucune intégration client réelle.
+- La CI n’est pas un audit de sécurité indépendant.
+- Le mode hybride doit être qualifié sur l’environnement/corpus exact avant activation production.
+- Les fournisseurs hébergés dépendent de clés, quotas, modèles et conditions externes.
+- La qualification P1.7 live et la publication Sites restent distinctes du simple état vert de `main`.
+- Les performances de charge à grande échelle et la recette sur appareils physiques doivent être démontrées séparément avant une généralisation client.
 
 Projet réalisé pour Simo Mesbahi. Aucune affiliation à une enseigne réelle.
