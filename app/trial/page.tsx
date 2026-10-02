@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { CONTACT_RECIPIENT } from '@/lib/atlas/contact';
 
 export const metadata: Metadata = {
   title: 'Demander un essai accompagné',
@@ -8,10 +9,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-const COMMERCIAL_CONTACT = 'Mohammed.elmesbahi@outlook.com';
 const CONTACT_SUBJECT = 'Demande d’essai accompagné — SAV SC Assistant AI';
 const CONTACT_BODY = `Bonjour,\n\nJe souhaite organiser un essai accompagné de SAV SC Assistant AI.\n\nContexte / besoin :\n[Décrivez brièvement votre activité, vos parcours SAV ou service client et ce que vous souhaitez évaluer.]\n\nDisponibilités :\n[Indiquez vos créneaux si utile.]\n\nMerci.`;
-const CONTACT_HREF = `mailto:${COMMERCIAL_CONTACT}?subject=${encodeURIComponent(CONTACT_SUBJECT)}&body=${encodeURIComponent(CONTACT_BODY)}`;
+const CONTACT_HREF = `mailto:${CONTACT_RECIPIENT}?subject=${encodeURIComponent(CONTACT_SUBJECT)}&body=${encodeURIComponent(CONTACT_BODY)}`;
 
 export default function TrialRequestPage() {
   return (
@@ -58,7 +58,7 @@ export default function TrialRequestPage() {
             <h2 id="trial-contact-title">Contact commercial confirmé</h2>
             <p style={{ color: 'var(--showcase-muted)', lineHeight: 1.7 }}>
               Utilisez votre messagerie pour préparer une demande d’essai à{' '}
-              <strong>{COMMERCIAL_CONTACT}</strong>. Le message reste sous votre contrôle : rien
+              <strong>{CONTACT_RECIPIENT}</strong>. Le message reste sous votre contrôle : rien
               n’est envoyé automatiquement par la vitrine.
             </p>
             <a className="showcase-button accent" href={CONTACT_HREF}>
