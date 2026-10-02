@@ -313,6 +313,10 @@ jobs:
           }, null, 2));
           NODE
 
+      - name: Emit redacted structured provider failure evidence
+        if: failure()
+        run: node scripts/report-p1-structured-failures.mjs outputs/p1-live/structured.json
+
       - name: Generate fail-closed human review template
         run: >-
           npm run eval:p1:review-template --
