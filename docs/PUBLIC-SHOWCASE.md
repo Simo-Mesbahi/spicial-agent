@@ -33,20 +33,20 @@ The showcase is rendered as a server component and contains no direct `/api/`, `
 `scripts/smoke-public-showcase.mjs` launches the application with external providers disabled and release mode off. It blocks all external browser traffic and verifies:
 
 - the root performs no `/api/` or third-party request on first view;
-- the rendered root HTML remains below a 100 KB regression budget;
+- the uncompressed root HTML remains below a 128 KiB regression budget;
 - the public internal destinations exposed by the root respond successfully;
 - the root has no horizontal overflow at 320 px, 390 px, 768 px and desktop width;
 - the first keyboard stop exposes the skip link and primary CTA routes remain focusable;
 - `/trial` exposes only the explicitly confirmed commercial recipient;
 - the browser reports no page errors.
 
-Navigation timings are captured immediately after loading `/` and are diagnostic evidence only. They are not production latency claims.
+The 128 KiB raw-HTML ceiling is intentionally a regression guard, not a production transfer-size claim. The baseline observed when the guard was introduced was 110,089 bytes of uncompressed development HTML. Navigation transfer metrics are captured separately immediately after loading `/` and are diagnostic evidence only.
 
 ## Evidence workflow
 
 `.github/workflows/showcase-evidence.yml` runs for relevant pull-request changes, relevant pushes to `main`, and manual dispatch. This means the specialized browser evidence is recreated after merge rather than relying only on pre-merge evidence.
 
-Artifacts are named with the exact Git SHA (`public-showcase-evidence-${GITHUB_SHA}`) and retained for seven days. Each artifact contains:
+Artifacts are named with the source branch head SHA on pull requests, or the push SHA on `main`, and retained for seven days. Each artifact contains:
 
 - `showcase-desktop.png`
 - `showcase-mobile.png`
@@ -84,7 +84,7 @@ Those gates remain independent and must not be weakened to publish the showcase.
 
 ## Repository governance
 
-The repository must still use GitHub branch protection or a repository ruleset to make required checks mandatory on `main`. CI files can generate evidence but cannot substitute for repository-level enforcement. The intended required checks for changes affecting the product are the standard `Quality checks` workflow plus the specialized `Public showcase evidence` workflow when its path filters apply.
+The repository must still use GitHub branch protection or a repository ruleset to make required checks mandatory on `main`. CI files can generate evidence but cannot substitute for repository-level enforcement. The intended required baseline is the standard `Quality checks` workflow; showcase-specific browser evidence additionally runs whenever its path filters apply.
 
 ## Rollout
 
@@ -92,7 +92,7 @@ The repository must still use GitHub branch protection or a repository ruleset t
 2. Verify the standard repository Quality checks and Public showcase evidence workflow are green on the exact final PR head.
 3. Merge without changing P1 release flags.
 4. Verify the post-merge `main` Quality checks.
-5. For showcase-related changes, also verify the post-merge `main` Public showcase evidence artifact bound to the merge SHA.
+5. For showcase-related changes, also verify the post-merge `main` Public showcase evidence artifact bound to the source/push SHA.
 6. Publish the showcase independently of P1 customer-release activation.
 
 ## Rollback
