@@ -1,6 +1,17 @@
 name: Public showcase evidence
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/page.tsx'
+      - 'app/demo/**'
+      - 'app/trial/**'
+      - 'app/showcase.css'
+      - 'app/layout.tsx'
+      - 'scripts/smoke-public-showcase.mjs'
+      - 'tests/atlas-public-showcase.test.mjs'
+      - '.github/workflows/showcase-evidence.yml'
   pull_request:
     paths:
       - 'app/page.tsx'
@@ -46,7 +57,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: public-showcase-evidence
+          name: public-showcase-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: outputs/public-showcase/
           if-no-files-found: warn
           retention-days: 7

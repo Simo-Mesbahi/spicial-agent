@@ -30,9 +30,23 @@ Customization is described as a scoped service that can cover brand identity, cu
 
 The showcase is rendered as a server component and contains no direct `/api/`, `fetch`, Supabase or provider bootstrap. `tests/atlas-public-showcase.test.mjs` enforces this source boundary.
 
-`scripts/smoke-public-showcase.mjs` launches the application with external providers disabled, blocks all external browser traffic, checks that `/` performs no `/api/` request, captures navigation timing and stores desktop/mobile screenshots.
+`scripts/smoke-public-showcase.mjs` launches the application with external providers disabled and release mode off. It blocks all external browser traffic and verifies:
 
-The browser evidence workflow uploads:
+- the root performs no `/api/` or third-party request on first view;
+- the uncompressed root HTML remains below a 128 KiB regression budget;
+- the public internal destinations exposed by the root respond successfully;
+- the root has no horizontal overflow at 320 px, 390 px, 768 px and desktop width;
+- the first keyboard stop exposes the skip link and primary CTA routes remain focusable;
+- `/trial` exposes only the explicitly confirmed commercial recipient;
+- the browser reports no page errors.
+
+The 128 KiB raw-HTML ceiling is intentionally a regression guard, not a production transfer-size claim. The baseline observed when the guard was introduced was 110,089 bytes of uncompressed development HTML. Navigation transfer metrics are captured separately immediately after loading `/` and are diagnostic evidence only.
+
+## Evidence workflow
+
+`.github/workflows/showcase-evidence.yml` runs for relevant pull-request changes, relevant pushes to `main`, and manual dispatch. This means the specialized browser evidence is recreated after merge rather than relying only on pre-merge evidence.
+
+Artifacts are named with the source branch head SHA on pull requests, or the push SHA on `main`, and retained for seven days. Each artifact contains:
 
 - `showcase-desktop.png`
 - `showcase-mobile.png`
@@ -40,13 +54,13 @@ The browser evidence workflow uploads:
 - `report.json`
 - `server.log`
 
-These development-server timings are comparative diagnostics, not production latency claims.
+The workflow pins external GitHub Actions by commit SHA, disables checkout credential persistence, uses `LLM_PROVIDER=demo`, `LLM_BUDGET_MODE=zero` and `P1_RELEASE_MODE=off`, and does not make live provider qualification calls.
 
 ## Accessibility and responsive checks
 
-The showcase provides a skip link, semantic headings/sections, keyboard-focusable navigation, real route destinations, reduced-motion handling and automated horizontal-overflow checks at desktop and 390 px mobile widths.
+The showcase provides a skip link, semantic headings/sections, keyboard-focusable navigation, real route destinations and reduced-motion handling.
 
-Browser automation verifies keyboard focus on the main demonstration CTA and checks both the root and trial routes for horizontal overflow.
+Browser automation verifies the first keyboard focus stop, explicit focusability of the main demonstration CTA, successful internal route destinations, and horizontal-overflow boundaries across compact mobile, mobile, tablet and desktop layouts.
 
 ## Commercial contact
 
@@ -68,15 +82,19 @@ A green showcase CI proves source/build/browser integrity for the public present
 
 Those gates remain independent and must not be weakened to publish the showcase.
 
+## Repository governance
+
+The repository must still use GitHub branch protection or a repository ruleset to make required checks mandatory on `main`. CI files can generate evidence but cannot substitute for repository-level enforcement. The intended required baseline is the standard `Quality checks` workflow; showcase-specific browser evidence additionally runs whenever its path filters apply.
+
 ## Rollout
 
 1. Review the desktop and mobile evidence artifacts.
 2. Verify the standard repository Quality checks and Public showcase evidence workflow are green on the exact final PR head.
-3. Mark the PR ready for review only after the confirmed commercial contact is covered by source and browser tests.
-4. Merge without changing P1 release flags.
-5. Verify the post-merge `main` Quality checks.
+3. Merge without changing P1 release flags.
+4. Verify the post-merge `main` Quality checks.
+5. For showcase-related changes, also verify the post-merge `main` Public showcase evidence artifact bound to the source/push SHA.
 6. Publish the showcase independently of P1 customer-release activation.
 
 ## Rollback
 
-No database migration or external configuration is introduced. Reverting the showcase commits restores the previous root route. The demonstration, customer tracking, admin routes and P1 runtime remain otherwise unchanged.
+No database migration or external configuration is introduced. Reverting the showcase commit restores the previous root route. The demonstration, customer tracking, admin routes and P1 runtime remain otherwise unchanged.
