@@ -1,4 +1,4 @@
-export const CONTACT_RECIPIENT = 'mohammed.elmesbahi31@gmail.com';
+export const CONTACT_RECIPIENT = 'Mohammed.elmesbahi@outlook.com';
 
 export const DEFAULT_CONTACT_SUBJECT = 'Demande SAV / service client';
 export const DEFAULT_CONTACT_MESSAGE = `Bonjour,
