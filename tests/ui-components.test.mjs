@@ -116,6 +116,8 @@ test('renders a contextual contact draft without exposing a secret', async () =>
   assert.doesNotMatch(html, /Copier les informations de contact/);
   assert.doesNotMatch(html, /<form|<input|<textarea/);
   assert.doesNotMatch(html, /Adresse de réponse/);
-  assert.match(html, /mohammed\.elmesbahi31@gmail\.com/);
+  assert.match(html, /Mohammed\.elmesbahi@outlook\.com/);
+  assert.doesNotMatch(html, /mohammed\.elmesbahi31@gmail\.com/i);
+  assert.doesNotMatch(html, /outloo\.com/i);
   assert.doesNotMatch(html, /GEMINI_API_KEY|OPENAI_API_KEY/);
 });
