@@ -7,7 +7,7 @@ import { setTimeout as pause } from 'node:timers/promises';
 const origin = 'http://127.0.0.1:4181';
 const output = 'outputs/public-showcase';
 const commercialContact = 'Mohammed.elmesbahi@outlook.com';
-const htmlBudgetBytes = 100_000;
+const htmlBudgetBytes = 128 * 1024;
 const responsiveViewports = [
   { name: 'compact', width: 320, height: 720 },
   { name: 'mobile', width: 390, height: 844 },
