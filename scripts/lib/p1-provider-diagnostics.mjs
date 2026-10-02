@@ -75,24 +75,25 @@ function safeScenarioId(value) {
 }
 
 /**
- * Reduce structured-evaluation failures to fixed, non-sensitive diagnostics that are safe
- * to surface in release-gate logs. Provider messages, prompts, generated text, credentials
- * and arbitrary future diagnostic fields are deliberately discarded.
+ * Reduce structured-evaluation provider failures to fixed, non-sensitive diagnostics that
+ * are safe to surface in release-gate logs. Semantic mismatches without a provider failure
+ * remain owned by the normal structured metrics and are intentionally not relabeled here.
+ * Provider messages, prompts, generated text, credentials and arbitrary future diagnostic
+ * fields are deliberately discarded.
  */
 export function structuredProviderFailureSummary(report) {
   const rows = Array.isArray(report?.rows) ? report.rows : [];
   return rows
     .filter(
       (row) =>
-        row?.fallback ||
-        row?.status !== 200 ||
-        Object.values(row?.checks ?? {}).some((value) => value !== true),
+        Boolean(row?.fallback) || row?.status !== 200 || row?.providerDiagnostic != null,
     )
     .map((row) => {
       const diagnostic = row?.providerDiagnostic ?? {};
       return {
         scenario: safeScenarioId(row?.id),
         fallbackReason: safeMember(row?.fallbackReason, providerFailureReasons),
+        providerReason: safeMember(diagnostic?.reason, providerFailureReasons),
         httpStatus: safeInteger(diagnostic?.httpStatus, 100, 599),
         code: safeMember(diagnostic?.code, providerCodes),
         parameter: safeMember(diagnostic?.parameter, providerParameters),
