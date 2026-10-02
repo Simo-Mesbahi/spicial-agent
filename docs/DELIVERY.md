@@ -1,5 +1,7 @@
 # Bilan de livraison — 2 septembre 2026
 
+> **Snapshot historique.** Ce document décrit l’état de la livraison au **2 septembre 2026** et est conservé pour la traçabilité. Il ne décrit plus l’architecture complète ni la surface publique actuelles. Pour l’état présent, utiliser le [`README`](../README.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`PUBLIC-SHOWCASE.md`](PUBLIC-SHOWCASE.md), [`SUPABASE-PRODUCTION.md`](SUPABASE-PRODUCTION.md) et les guides P1. Les affirmations ci-dessous doivent donc être lues dans leur contexte daté, sans être extrapolées au `main` courant.
+
 La révision décrite ici est validée localement. Une mise à jour du dépôt ne prouve pas sa publication : celle-ci et l’activation de Gemini sont contrôlées séparément. Le [rapport de recette du 1er septembre](QA-2026-09-01.md) détaille les résultats et les limites de cette passe ; le [rapport du 31 août](QA-2026-08-31.md) reste disponible pour l’historique.
 
 ## Livré
