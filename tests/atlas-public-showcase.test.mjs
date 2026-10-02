@@ -39,3 +39,12 @@ test('guided trial page uses only the explicitly confirmed commercial recipient'
   assert.match(source, /rien\s+n’est envoyé automatiquement/i);
   assert.doesNotMatch(source, /outloo\.com/i);
 });
+
+test('showcase evidence is enforced on pull requests and relevant main pushes', async () => {
+  const workflow = await read('.github/workflows/showcase-evidence.yml');
+  assert.match(workflow, /push:\s*\n\s*branches:\s*\[main\]/);
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /public-showcase-evidence-\$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /LLM_BUDGET_MODE:\s*zero/);
+  assert.match(workflow, /P1_RELEASE_MODE:\s*off/);
+});
