@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { CONTACT_RECIPIENT } from '@/lib/atlas/contact';
+import { ShowcaseBrand } from '@/components/atlas/showcase-brand';
+import { CopyCommercialEmail } from '@/components/atlas/copy-commercial-email';
 
 export const metadata: Metadata = {
   title: 'Demander un essai accompagné',
@@ -16,12 +18,11 @@ const CONTACT_HREF = `mailto:${CONTACT_RECIPIENT}?subject=${encodeURIComponent(C
 export default function TrialRequestPage() {
   return (
     <div className="showcase">
-      <a className="showcase-skip" href="#trial-main">Aller au contenu</a>
+      <a className="showcase-skip" href="#trial-main">
+        Aller au contenu
+      </a>
       <header className="showcase-container showcase-nav">
-        <Link className="showcase-brand" href="/">
-          <span className="showcase-brand-mark" aria-hidden="true">SC</span>
-          <span>SAV SC Assistant AI</span>
-        </Link>
+        <ShowcaseBrand />
         <nav className="showcase-nav-links" aria-label="Navigation essai">
           <Link href="/demo">Démonstration</Link>
           <Link href="/file">Suivi client</Link>
@@ -33,7 +34,9 @@ export default function TrialRequestPage() {
         <div className="showcase-section-head">
           <div>
             <span className="showcase-kicker">ESSAI ACCOMPAGNÉ</span>
-            <h1 style={{ fontSize: 'clamp(2.8rem, 6vw, 5.5rem)' }}>Préparons une démonstration utile.</h1>
+            <h1 style={{ fontSize: 'clamp(2.8rem, 6vw, 5.5rem)' }}>
+              Préparons une démonstration utile.
+            </h1>
           </div>
           <p>
             L’objectif est de partir de votre contexte : parcours SAV ou service client, identité,
@@ -48,8 +51,12 @@ export default function TrialRequestPage() {
             <ul>
               <li>Nous clarifions le contexte et les objectifs de l’essai.</li>
               <li>Nous choisissons les scénarios fictifs les plus représentatifs.</li>
-              <li>Nous distinguons ce qui est déjà démontré de ce qui nécessiterait une intégration.</li>
-              <li>Nous définissons les prochaines étapes sans activer de capacité non qualifiée.</li>
+              <li>
+                Nous distinguons ce qui est déjà démontré de ce qui nécessiterait une intégration.
+              </li>
+              <li>
+                Nous définissons les prochaines étapes sans activer de capacité non qualifiée.
+              </li>
             </ul>
           </section>
 
@@ -68,12 +75,17 @@ export default function TrialRequestPage() {
               Votre application de messagerie s’ouvre avec un objet et un message préremplis ; vous
               pouvez les modifier avant l’envoi.
             </p>
+            <CopyCommercialEmail />
           </section>
         </div>
 
         <div className="showcase-actions" style={{ marginTop: 36 }}>
-          <Link className="showcase-button" href="/demo">Découvrir d’abord la démonstration</Link>
-          <Link className="showcase-button" href="/">Retour à la vitrine</Link>
+          <Link className="showcase-button" href="/demo">
+            Découvrir d’abord la démonstration
+          </Link>
+          <Link className="showcase-button" href="/">
+            Retour à la vitrine
+          </Link>
         </div>
       </main>
     </div>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ShowcaseBrand } from '@/components/atlas/showcase-brand';
 
 const benefits = [
   {
@@ -41,13 +42,12 @@ const faq = [
 export default function Home() {
   return (
     <div className="showcase">
-      <a className="showcase-skip" href="#main-content">Aller au contenu</a>
+      <a className="showcase-skip" href="#main-content">
+        Aller au contenu
+      </a>
 
       <header className="showcase-container showcase-nav">
-        <Link className="showcase-brand" href="/" aria-label="SAV SC Assistant AI — accueil">
-          <span className="showcase-brand-mark" aria-hidden="true">SC</span>
-          <span>SAV SC Assistant AI</span>
-        </Link>
+        <ShowcaseBrand />
         <nav className="showcase-nav-links" aria-label="Navigation principale">
           <a href="#capacites">Capacités</a>
           <a href="#evaluation">Évaluer</a>
@@ -55,35 +55,51 @@ export default function Home() {
           <a href="#securite">Sécurité</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <Link className="showcase-nav-cta" href="/trial">Demander un essai</Link>
+        <Link className="showcase-nav-cta" href="/demo">
+          Voir la démonstration
+        </Link>
       </header>
 
       <main id="main-content">
         <section className="showcase-container showcase-hero" aria-labelledby="showcase-title">
           <div>
             <span className="showcase-kicker">SAV · SERVICE CLIENT · ASSISTANCE GUIDÉE</span>
-            <h1 id="showcase-title">Des demandes client plus <span>claires.</span></h1>
+            <h1 id="showcase-title">
+              Des demandes client plus <span>claires.</span>
+            </h1>
             <p className="showcase-lead">
-              SAV SC Assistant AI réunit suivi de dossier, demandes de service client, consultation
-              d’informations contrôlées et orientation vers un humain lorsque la situation le
-              nécessite — dans une expérience pensée pour rester lisible côté client et vérifiable
-              côté équipe.
+              Un client retrouve l’état de son dossier et la prochaine étape. L’assistant s’appuie
+              sur les informations disponibles et indique quand un conseiller doit intervenir.
             </p>
             <div className="showcase-actions">
-              <Link className="showcase-button accent" href="/demo">Découvrir la démonstration</Link>
-              <Link className="showcase-button primary" href="/trial">Demander un essai accompagné</Link>
-              <Link className="showcase-button" href="/file">Accéder à un dossier client</Link>
+              <Link className="showcase-button primary" href="/demo">
+                Voir la démonstration fictive
+              </Link>
+              <Link className="showcase-button" href="/trial">
+                Demander un essai accompagné
+              </Link>
             </div>
+            <p className="showcase-client-access">
+              Vous avez déjà une référence et un code ?{' '}
+              <Link href="/file">Accéder à votre dossier</Link>
+            </p>
             <p className="showcase-note">
-              La démonstration publique utilise exclusivement des données fictives. L’assistant
-              avancé P1 reste soumis à qualification avant toute ouverture à de vrais clients.
+              Démonstration sur données fictives · P1 avancé soumis à qualification avant ouverture
+              client.
             </p>
           </div>
 
-          <div className="showcase-preview" aria-label="Aperçu représentatif de l’expérience client">
+          <div
+            className="showcase-preview"
+            aria-label="Aperçu représentatif de l’expérience client"
+          >
             <div className="showcase-preview-window">
               <div className="showcase-preview-top">
-                <span className="showcase-dots" aria-hidden="true"><i/><i/><i/></span>
+                <span className="showcase-dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
                 <span>Aperçu fictif</span>
               </div>
               <div className="showcase-chat">
@@ -105,10 +121,32 @@ export default function Home() {
         </section>
 
         <div className="showcase-container showcase-trustbar" aria-label="Principes du produit">
-          <div><strong>Données séparées</strong><span>Vitrine, démonstration et environnements internes gardent des frontières distinctes.</span></div>
-          <div><strong>Réponses contrôlées</strong><span>Le système privilégie les faits disponibles et l’abstention lorsque l’information manque.</span></div>
-          <div><strong>Actions confirmées</strong><span>Les décisions sensibles ne sont pas présentées comme exécutées sans confirmation réelle.</span></div>
-          <div><strong>Humain quand nécessaire</strong><span>Le parcours rend visible le besoin d’escalade sans inventer une prise en charge.</span></div>
+          <div>
+            <strong>Données séparées</strong>
+            <span>
+              Vitrine, démonstration et environnements internes gardent des frontières distinctes.
+            </span>
+          </div>
+          <div>
+            <strong>Réponses contrôlées</strong>
+            <span>
+              Le système privilégie les faits disponibles et l’abstention lorsque l’information
+              manque.
+            </span>
+          </div>
+          <div>
+            <strong>Actions confirmées</strong>
+            <span>
+              Les décisions sensibles ne sont pas présentées comme exécutées sans confirmation
+              réelle.
+            </span>
+          </div>
+          <div>
+            <strong>Humain quand nécessaire</strong>
+            <span>
+              Le parcours rend visible le besoin d’escalade sans inventer une prise en charge.
+            </span>
+          </div>
         </div>
 
         <section className="showcase-container showcase-section" id="capacites">
@@ -141,9 +179,8 @@ export default function Home() {
               <h2>Comprendre vite. Vérifier en profondeur.</h2>
             </div>
             <p>
-              La même plateforme doit parler à un décideur métier et à la personne chargée de
-              vérifier concrètement le fonctionnement. La démonstration reste ouverte sur des données
-              fictives ; les environnements internes et les contrôles d’administration restent séparés.
+              Un décideur peut comprendre le parcours ; une personne chargée de l’évaluation peut
+              vérifier ses limites dans la démonstration fictive.
             </p>
           </div>
           <div className="showcase-audiences">
@@ -153,8 +190,12 @@ export default function Home() {
               <ul>
                 <li>Suivre un dossier SAV sans créer de compte dans le parcours prévu.</li>
                 <li>Comprendre comment une réponse s’appuie sur le dossier ou une procédure.</li>
-                <li>Observer les limites explicites et le passage vers un accompagnement humain.</li>
-                <li>Identifier ce qui peut être adapté à l’identité et aux processus de l’entreprise.</li>
+                <li>
+                  Observer les limites explicites et le passage vers un accompagnement humain.
+                </li>
+                <li>
+                  Identifier ce qui peut être adapté à l’identité et aux processus de l’entreprise.
+                </li>
               </ul>
             </article>
             <article className="showcase-audience">
@@ -164,13 +205,19 @@ export default function Home() {
                 <li>Utiliser plusieurs scénarios fictifs et observer leur évolution.</li>
                 <li>Vérifier qu’une date absente n’est pas inventée.</li>
                 <li>Contrôler qu’une action sensible demande une confirmation.</li>
-                <li>Examiner le comportement quand une information ou un service est indisponible.</li>
+                <li>
+                  Examiner le comportement quand une information ou un service est indisponible.
+                </li>
               </ul>
             </article>
           </div>
           <div className="showcase-actions">
-            <Link className="showcase-button accent" href="/demo">Ouvrir la démonstration fictive</Link>
-            <Link className="showcase-button" href="/trial">Préparer un essai accompagné</Link>
+            <Link className="showcase-button accent" href="/demo">
+              Ouvrir la démonstration fictive
+            </Link>
+            <Link className="showcase-button" href="/trial">
+              Préparer un essai accompagné
+            </Link>
           </div>
         </section>
 
@@ -186,14 +233,33 @@ export default function Home() {
               </p>
               <p className="showcase-note">
                 La personnalisation est présentée comme une prestation à définir ensemble ; aucune
-                intégration tierce n’est annoncée comme active tant qu’elle n’est pas réellement raccordée.
+                intégration tierce n’est annoncée comme active tant qu’elle n’est pas réellement
+                raccordée.
               </p>
             </div>
             <div className="showcase-custom-panel">
-              <div><strong>Identité</strong><span>Couleurs, ton, marque et composants adaptés au contexte du client.</span></div>
-              <div><strong>Parcours</strong><span>SAV, livraison, retour, réclamation ou autres flux selon les processus réels.</span></div>
-              <div><strong>Connaissance</strong><span>Procédures et contenus publiés selon des règles de gouvernance définies.</span></div>
-              <div><strong>Intégration</strong><span>Site, espace client et systèmes métier après cadrage technique et sécurité.</span></div>
+              <div>
+                <strong>Identité</strong>
+                <span>Couleurs, ton, marque et composants adaptés au contexte du client.</span>
+              </div>
+              <div>
+                <strong>Parcours</strong>
+                <span>
+                  SAV, livraison, retour, réclamation ou autres flux selon les processus réels.
+                </span>
+              </div>
+              <div>
+                <strong>Connaissance</strong>
+                <span>
+                  Procédures et contenus publiés selon des règles de gouvernance définies.
+                </span>
+              </div>
+              <div>
+                <strong>Intégration</strong>
+                <span>
+                  Site, espace client et systèmes métier après cadrage technique et sécurité.
+                </span>
+              </div>
             </div>
           </div>
         </section>
@@ -202,20 +268,31 @@ export default function Home() {
           <div className="showcase-safety">
             <div>
               <span className="showcase-badge">SÉCURITÉ & LIMITES VISIBLES</span>
-              <h2>La confiance vient aussi de ce que le produit refuse de prétendre.</h2>
+              <h2>Ce que l’on peut voir. Ce qu’il reste à qualifier.</h2>
               <p>
-                La vitrine ne dépend d’aucun fournisseur IA ni d’une base métier pour s’afficher.
-                La démonstration reste fictive. Les fonctions de production conservent leurs propres
-                contrôles d’accès, validations et gates de publication.
+                La vitrine s’affiche sans appel IA ni base métier. Les étapes ci-contre distinguent
+                la démonstration des raccordements nécessaires à un usage réel.
               </p>
             </div>
-            <ul>
-              <li>Aucun dossier réel n’est exposé dans la vitrine ou la démonstration publique.</li>
-              <li>Aucun appel LLM n’est déclenché simplement parce qu’un prospect charge cette page.</li>
-              <li>Une CI verte ne vaut pas qualification P1.7 ni autorisation de release client.</li>
-              <li>P1 avancé est présenté comme bientôt disponible tant que sa qualification n’est pas achevée.</li>
-              <li>Les transferts humains et intégrations réelles ne sont annoncés comme exécutés que s’ils sont effectivement raccordés.</li>
-            </ul>
+            <div className="showcase-safety-lists">
+              <div>
+                <h3>Démontré aujourd’hui</h3>
+                <ul>
+                  <li>Parcours interactifs sur dossiers entièrement fictifs.</li>
+                  <li>Information absente signalée et besoin d’intervention humaine visible.</li>
+                </ul>
+              </div>
+              <div>
+                <h3>À qualifier avant un usage réel</h3>
+                <ul>
+                  <li>Raccordement aux systèmes métier et exécution du transfert humain.</li>
+                  <li>
+                    Capacités avancées P1 : qualification P1.7, revue humaine et mise en service
+                    contrôlée.
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -227,7 +304,8 @@ export default function Home() {
             </div>
             <p>
               Des réponses volontairement précises : pas de certification inventée, pas de faux
-              client, pas de chiffre de performance sans mesure et pas de promesse d’intégration non démontrée.
+              client, pas de chiffre de performance sans mesure et pas de promesse d’intégration non
+              démontrée.
             </p>
           </div>
           <div className="showcase-faq">
@@ -249,7 +327,9 @@ export default function Home() {
               personnalisation et identifier les intégrations à qualifier avant un déploiement réel.
             </p>
           </div>
-          <Link className="showcase-button" href="/trial">Demander un essai accompagné</Link>
+          <Link className="showcase-button" href="/trial">
+            Demander un essai accompagné
+          </Link>
         </section>
       </main>
 

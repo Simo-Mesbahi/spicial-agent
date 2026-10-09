@@ -15,11 +15,15 @@ const responsiveViewports = [
 ];
 mkdirSync(output, { recursive: true });
 const log = createWriteStream(`${output}/server.log`);
-const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4181', '--strictPort'], {
-  detached: true,
-  env: { ...process.env, LLM_PROVIDER: 'demo', LLM_BUDGET_MODE: 'zero', P1_RELEASE_MODE: 'off' },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
+const server = spawn(
+  'npm',
+  ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4181', '--strictPort'],
+  {
+    detached: true,
+    env: { ...process.env, LLM_PROVIDER: 'demo', LLM_BUDGET_MODE: 'zero', P1_RELEASE_MODE: 'off' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  },
+);
 server.stdout.pipe(log, { end: false });
 server.stderr.pipe(log, { end: false });
 
@@ -94,8 +98,14 @@ try {
     );
   });
 
-  browser = await chromium.launch({ channel: process.env.SHOWCASE_BROWSER_CHANNEL || 'chrome', headless: true });
-  page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  browser = await chromium.launch({
+    channel: process.env.SHOWCASE_BROWSER_CHANNEL || 'chrome',
+    headless: true,
+  });
+  page = await browser.newPage({
+    viewport: { width: 1440, height: 1000 },
+    reducedMotion: 'reduce',
+  });
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('request', (request) => requests.push(request.url()));
   await page.route('**/*', async (route) => {
@@ -107,8 +117,10 @@ try {
   await check('desktop showcase renders with commercial navigation', async () => {
     const response = await page.goto(origin, { waitUntil: 'networkidle' });
     assert.equal(response?.ok(), true);
-    await page.getByRole('heading', { level: 1, name: /Des demandes client plus claires/ }).waitFor();
-    await page.getByRole('link', { name: 'Découvrir la démonstration' }).waitFor();
+    await page
+      .getByRole('heading', { level: 1, name: /Des demandes client plus claires/ })
+      .waitFor();
+    await page.getByRole('link', { name: 'Voir la démonstration fictive' }).waitFor();
     await page.getByRole('link', { name: 'Demander un essai accompagné' }).first().waitFor();
     await noOverflow();
     rootMetrics = await navigationMetrics();
@@ -117,7 +129,9 @@ try {
 
   await check('public first view performs no API or third-party request', async () => {
     const publicRequests = requests.filter((value) => value.startsWith(origin));
-    const apiRequests = publicRequests.filter((value) => new URL(value).pathname.startsWith('/api/'));
+    const apiRequests = publicRequests.filter((value) =>
+      new URL(value).pathname.startsWith('/api/'),
+    );
     const externalRequests = requests.filter((value) => !value.startsWith(origin));
     assert.deepEqual(apiRequests, []);
     assert.deepEqual(externalRequests, []);
@@ -131,7 +145,7 @@ try {
       '#main-content',
       'first keyboard stop should be the skip link',
     );
-    const demo = page.getByRole('link', { name: 'Découvrir la démonstration' });
+    const demo = page.getByRole('link', { name: 'Voir la démonstration fictive' });
     const trial = page.getByRole('link', { name: 'Demander un essai accompagné' }).first();
     assert.equal(await demo.getAttribute('href'), '/demo');
     assert.equal(await trial.getAttribute('href'), '/trial');
@@ -141,9 +155,11 @@ try {
 
   await check('all public internal destinations resolve successfully', async () => {
     await page.goto(origin, { waitUntil: 'networkidle' });
-    const hrefs = await page.locator('a[href^="/"]').evaluateAll((elements) => [
-      ...new Set(elements.map((element) => element.getAttribute('href')).filter(Boolean)),
-    ]);
+    const hrefs = await page
+      .locator('a[href^="/"]')
+      .evaluateAll((elements) => [
+        ...new Set(elements.map((element) => element.getAttribute('href')).filter(Boolean)),
+      ]);
     assert.ok(hrefs.length >= 4, 'expected core internal showcase destinations');
     for (const href of hrefs) {
       const response = await fetch(new URL(href, origin), { redirect: 'manual' });
@@ -159,6 +175,11 @@ try {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(origin, { waitUntil: 'networkidle' });
       await noOverflow();
+      assert.equal(
+        await page.getByRole('navigation', { name: 'Navigation principale' }).isVisible(),
+        true,
+        'section navigation should remain available on small screens',
+      );
       if (viewport.name === 'mobile') await capture('showcase-mobile');
     });
   }
@@ -173,6 +194,11 @@ try {
     assert.ok(href?.startsWith(`mailto:${commercialContact}?subject=`));
     assert.match(href ?? '', /body=/);
     assert.doesNotMatch(href ?? '', /outloo\.com/i);
+    assert.equal(
+      await page.getByRole('textbox', { name: /Copiez l’adresse/ }).inputValue(),
+      commercialContact,
+    );
+    await page.getByRole('button', { name: 'Copier' }).waitFor();
     assert.equal(await page.locator('form').count(), 0);
     await noOverflow();
     await capture('trial-mobile');
@@ -198,7 +224,8 @@ try {
     ),
   );
 } catch (error) {
-  if (page) await page.screenshot({ path: `${output}/failure.png`, fullPage: true }).catch(() => {});
+  if (page)
+    await page.screenshot({ path: `${output}/failure.png`, fullPage: true }).catch(() => {});
   writeFileSync(
     `${output}/report.json`,
     JSON.stringify(
@@ -221,7 +248,9 @@ try {
 } finally {
   await browser?.close();
   if (server.pid) {
-    try { process.kill(-server.pid, 'SIGTERM'); } catch {}
+    try {
+      process.kill(-server.pid, 'SIGTERM');
+    } catch {}
   }
   log.end();
 }

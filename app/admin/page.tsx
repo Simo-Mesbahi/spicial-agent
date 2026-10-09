@@ -8,15 +8,12 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  BarChart3,
   CheckCircle2,
   Clock3,
   FileText,
   KeyRound,
-  LayoutDashboard,
   LoaderCircle,
   LockKeyhole,
-  LogOut,
   MessageSquareText,
   RefreshCw,
   Search,
@@ -474,42 +471,14 @@ export default function AdminPage() {
     }
   }
 
-  async function logout() {
-    if (busy) return;
-    dataRevision.current++;
-    setBusy(true); setError('');
-    try {
-      await request('/admin/logout', { method: 'POST', body: '{}' });
-      setAdmin(null); setDashboard(null); setCases([]); setTotalCases(0); setOrganizationId('');
-    } catch {
-      setError('La déconnexion n’a pas été confirmée. Réessayez avant de quitter cet appareil.');
-    } finally { setBusy(false); }
-  }
-
   if (loading) return <main className="admin-loading"><LoaderCircle className="spin" /><span>Ouverture de l’espace sécurisé…</span></main>;
   if (!admin) return <SignIn onAuthenticated={(value) => { setAdmin(value); setOrganizationId(value.memberships[0]?.organizationId ?? ''); }} />;
 
   return (
     <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <Brand />
-        <div className="admin-organization">
-          <span className="admin-avatar">{(membership?.organizationName ?? 'A').slice(0, 1)}</span>
-          <div><strong>{membership?.organizationName}</strong><small>{membership ? roleLabels[membership.role] : 'Administration'}</small></div>
-        </div>
-        <nav aria-label="Navigation de l’administration">
-          <a href="#overview"><LayoutDashboard size={18} />Vue d’ensemble</a>
-          <a href="#cases"><FileText size={18} />Dossiers <span>{totalCases}</span></a>
-          <a href="/admin/performance"><BarChart3 size={18} />Performance et réglages</a>
-        </nav>
-        <div className="admin-sidebar-foot">
-          <div><ShieldCheck size={17} /><span><strong>Session protégée</strong><small>MFA · Niveau AAL2</small></span></div>
-          <button onClick={() => void logout()} disabled={busy}><LogOut size={17} />Déconnexion</button>
-        </div>
-      </aside>
       <main className="admin-main">
         <header className="admin-topbar">
-          <div><p>Administration</p><strong>{admin.email}</strong></div>
+          <div><p>{membership?.organizationName ?? 'Administration'} · {membership ? roleLabels[membership.role] : 'Accès contrôlé'}</p><strong>{admin.email}</strong></div>
           <div className="admin-top-actions">
             {admin.memberships.length > 1 && <select aria-label="Organisation" value={organizationId} onChange={(event) => { dataRevision.current++; setDashboard(null); setCases([]); setTotalCases(0); setSearch(''); setOrganizationId(event.target.value); }}>{admin.memberships.map((item) => <option value={item.organizationId} key={item.organizationId}>{item.organizationName}</option>)}</select>}
             <button onClick={() => void loadData(organizationId)} disabled={busy}><RefreshCw className={busy ? 'spin' : ''} size={17} />Actualiser</button>
@@ -543,7 +512,7 @@ export default function AdminPage() {
             </article>
           </section>
           <section className="admin-panel admin-cases" id="cases">
-            <header><div><p className="admin-eyebrow">DOSSIERS SAV & SC</p><h2>Activité récente</h2></div><form onSubmit={applySearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Référence, produit…" maxLength={120} aria-label="Rechercher un dossier" /><button>Rechercher</button></form></header>
+            <header><div><p className="admin-eyebrow">DOSSIERS SAV & SC</p><h2>Activité récente · {totalCases}</h2></div><form onSubmit={applySearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Référence, produit…" maxLength={120} aria-label="Rechercher un dossier" /><button>Rechercher</button></form></header>
             <div className="admin-table-wrap">
               <table><thead><tr><th>Référence</th><th>Demande</th><th>Client</th><th>État</th><th>Échéance</th><th>Mise à jour</th></tr></thead>
                 <tbody>{cases.length ? cases.map((item) => <tr key={item.id}><td><strong>{item.reference}</strong><small>{item.kind.toUpperCase()}</small></td><td><strong>{item.product ?? item.title}</strong><small>{item.store ?? 'Magasin non renseigné'}</small></td><td>{item.customer || '—'}</td><td><span className="admin-case-status"><i data-status={item.status} />{statusLabels[item.status] ?? item.status}</span></td><td>{formatDate(item.estimated_at)}</td><td>{formatDate(item.updated_at)}</td></tr>) : <tr><td colSpan={6}><div className="admin-table-empty"><FileText size={25} /><strong>Aucun dossier trouvé</strong><span>Les dossiers correspondant à votre recherche apparaîtront ici.</span></div></td></tr>}</tbody>
