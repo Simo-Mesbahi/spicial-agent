@@ -6,10 +6,13 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('public showcase is static and does not initialize runtime services', async () => {
   const source = await read('app/page.tsx');
-  assert.doesNotMatch(source, /['"]use client['"]/);
-  assert.doesNotMatch(source, /\/api\//);
-  assert.doesNotMatch(source, /\bfetch\s*\(/);
-  assert.doesNotMatch(source, /requestJson|supabase|GROQ_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY/);
+  const brand = await read('components/atlas/showcase-brand.tsx');
+  for (const content of [source, brand]) {
+    assert.doesNotMatch(content, /['"]use client['"]/);
+    assert.doesNotMatch(content, /\/api\//);
+    assert.doesNotMatch(content, /\bfetch\s*\(/);
+    assert.doesNotMatch(content, /requestJson|supabase|GROQ_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY/);
+  }
   assert.match(source, /href="\/demo"/);
   assert.match(source, /href="\/trial"/);
   assert.match(source, /href="\/file"/);
@@ -55,4 +58,6 @@ test('showcase evidence is enforced on pull requests and relevant main pushes', 
   );
   assert.match(workflow, /LLM_BUDGET_MODE:\s*zero/);
   assert.match(workflow, /P1_RELEASE_MODE:\s*off/);
+  assert.match(workflow, /components\/atlas\/showcase-brand\.tsx/);
+  assert.match(workflow, /components\/atlas\/copy-commercial-email\.tsx/);
 });

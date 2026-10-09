@@ -21,9 +21,6 @@
 }
 
 .admin-ops-topbar {
-  position: sticky;
-  z-index: 10;
-  top: 0;
   display: flex;
   min-height: 70px;
   align-items: center;
@@ -768,10 +765,6 @@ body:has(.admin-ops-page) .admin-operations-launcher {
     flex-direction: column;
   }
 
-  .admin-ops-topbar {
-    position: relative;
-  }
-
   .admin-ops-topbar > div {
     width: 100%;
   }
@@ -861,7 +854,6 @@ body:has(.admin-ops-page) .admin-operations-launcher {
     grid-column: 1 / -1;
   }
 }
-
 
 /* Case management --------------------------------------------------------- */
 
