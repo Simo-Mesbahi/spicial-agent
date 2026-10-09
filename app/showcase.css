@@ -471,6 +471,9 @@
   font-size: clamp(2.2rem, 4vw, 4rem);
   letter-spacing: -0.045em;
 }
+.showcase-final .showcase-kicker {
+  color: #d1fae5;
+}
 .showcase-final p {
   margin: 0;
   color: #d7efed;
