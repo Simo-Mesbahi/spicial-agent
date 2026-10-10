@@ -121,6 +121,7 @@ test('Supabase migration history stays ordered with reviewed local additions', (
     '20260922094715_knowledge_release_revalidation.sql',
     '20260922112140_p1_release_observability.sql',
     '20260922112354_p1_release_observability_hardening.sql',
+    '20261009184409_restore_analyst_overview_aggregates.sql',
   ]);
   assert.ok(!migrations.includes('202609030001_production_foundation.sql'));
 });

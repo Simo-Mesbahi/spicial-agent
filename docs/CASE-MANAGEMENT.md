@@ -16,6 +16,10 @@ Le centre opérationnel permet aux responsables autorisés de gérer les dossier
 
 La base de données répète ces contrôles. Masquer un bouton dans l’interface n’est jamais considéré comme une autorisation.
 
+Les indicateurs agrégés de l’analyste couvrent les dossiers actifs SAV et Service client de son organisation, sans accès aux lignes ni aux détails des dossiers. Les responsables SAV et Service client conservent leur périmètre respectif. Les dossiers archivés et leurs relais sont exclus de ces compteurs. L’autorisation reste conditionnée à une adhésion active, au MFA AAL2 et à une session serveur valide.
+
+`npm test` rejoue désormais toutes les migrations SQL, sans les modifier, sur une base PostgreSQL PGlite jetable, puis exécute `supabase/tests/operations.sql` et `supabase/tests/overview-scopes.sql`. Les tests utilisent des identités fictives et annulent leurs transactions. Les fonctions Auth nécessaires sont reproduites dans ce banc de test ; il ne qualifie ni le service Auth hébergé ni la disponibilité réseau de Supabase. Aucune connexion distante ni aucun appel LLM n’est nécessaire.
+
 ## Modèle métier
 
 `service_cases` conserve l’état courant optimisé pour la lecture. `case_events` et `audit_events` conservent l’historique append-only des changements métier et des actions sensibles.
