@@ -1,6 +1,7 @@
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
+import cloudflarePreviewConfig from './wrangler.preview.json' with { type: 'json' };
 import { sites } from './build/sites-vite-plugin.ts';
 import { codespacesPublicOrigin } from './build/codespaces-origin.ts';
 
@@ -43,6 +44,13 @@ const localBindingConfig = {
     : {}),
 };
 
+const cloudflareDeployTarget = process.env.CLOUDFLARE_DEPLOY_TARGET;
+if (cloudflareDeployTarget && cloudflareDeployTarget !== 'preview')
+  throw new Error('CLOUDFLARE_DEPLOY_TARGET must be unset or "preview".');
+
+const selectedCloudflareConfig =
+  cloudflareDeployTarget === 'preview' ? cloudflarePreviewConfig : localBindingConfig;
+
 export default defineConfig(async () => {
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
@@ -67,7 +75,7 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
         inspectorPort: false,
-        config: localBindingConfig,
+        config: selectedCloudflareConfig,
       }),
     ],
   };

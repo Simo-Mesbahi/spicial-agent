@@ -1,0 +1,29 @@
+{
+  "name": "sav-sc-assistant-preview",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sav-sc-assistant-preview",
+      "database_id": "4f6a7f9e-6eeb-4a36-ac48-abb2893e9522",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "vars": {
+    "APP_ENVIRONMENT": "PREPRODUCTION",
+    "APP_EDITION": "client",
+    "APP_PUBLIC_ORIGIN": "https://sav-sc-assistant-preview.savsc-assistant.workers.dev",
+    "SUPABASE_URL": "https://exbhajwuniufgedbkipg.supabase.co",
+    "SUPABASE_ORGANIZATION_ID": "00000000-0000-4000-8000-000000000001",
+    "LLM_PROVIDER": "demo",
+    "LLM_ENABLED_PROVIDERS": "demo",
+    "LLM_BUDGET_MODE": "zero",
+    "LLM_GENERATION_MODE": "off",
+    "LLM_VALIDATION_MODE": "off",
+    "LLM_AUTO_FAILOVER": "false",
+    "P1_RELEASE_MODE": "off"
+  }
+}

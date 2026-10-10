@@ -136,7 +136,11 @@ Pour une qualification locale sans fournisseur hébergé, utiliser les modes `de
 
 ## Déploiement
 
-L’exemplaire hébergé existant est lié à la plateforme **Sites** par [`.openai/hosting.json`](.openai/hosting.json). Le dépôt ne contient pas de workflow GitHub de déploiement production et `wrangler.local.jsonc` sert uniquement au développement local.
+La configuration locale `wrangler.local.jsonc` reste réservée au développement. La préproduction Cloudflare utilise `wrangler.preview.json` ; `npm run check:cloudflare:preview` reconstruit l’application et valide le bundle Wrangler sans rien publier, puis `npm run deploy:cloudflare:preview` publie. Elle verrouille l’édition client, le fournisseur démo, le budget IA à zéro et `P1_RELEASE_MODE=off`. La migration D1 est séparée du déploiement : `npm run db:migrate:cloudflare:preview`.
+
+Cette préproduction `workers.dev` est publique et ne doit recevoir aucune donnée client réelle. Les clés Supabase doivent être ajoutées comme secrets Cloudflare côté serveur avant d’activer les parcours `/file` et `/admin`. Le lancement client réel demande un projet Supabase de production distinct, un domaine approprié, les contrôles documentés dans [`docs/SUPABASE-PRODUCTION.md`](docs/SUPABASE-PRODUCTION.md) et les gates P1.7.
+
+L’exemplaire hébergé existant reste lié à la plateforme **Sites** par [`.openai/hosting.json`](.openai/hosting.json). Un déploiement Cloudflare n’actualise pas automatiquement cette URL. Le détail de la préproduction et des secrets requis est dans [`docs/CLOUDFLARE-PREVIEW.md`](docs/CLOUDFLARE-PREVIEW.md).
 
 URL historique de l’exemplaire Sites :
 
