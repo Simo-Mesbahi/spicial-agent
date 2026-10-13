@@ -14,7 +14,7 @@ test('Cloudflare preview permits capped Gemini trials and keeps P1 disabled', ()
   assert.equal(config.vars.LLM_ENABLED_PROVIDERS, 'demo,gemini');
   assert.equal(config.vars.LLM_BUDGET_MODE, 'free');
   assert.equal(config.vars.GEMINI_MODEL, 'gemini-3.5-flash-lite');
-  assert.equal(config.vars.LLM_DAILY_LIMIT, '3');
+  assert.equal(config.vars.LLM_DAILY_LIMIT, '20');
   assert.equal(config.vars.LLM_ORCHESTRATOR, undefined);
   assert.equal(config.vars.LLM_GENERATION_MODE, 'off');
   assert.equal(config.vars.LLM_VALIDATION_MODE, 'off');
