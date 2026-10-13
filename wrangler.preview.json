@@ -22,7 +22,7 @@
     "LLM_ENABLED_PROVIDERS": "demo,gemini",
     "LLM_BUDGET_MODE": "free",
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
-    "LLM_DAILY_LIMIT": "3",
+    "LLM_DAILY_LIMIT": "20",
     "LLM_GENERATION_MODE": "off",
     "LLM_VALIDATION_MODE": "off",
     "LLM_AUTO_FAILOVER": "false",
