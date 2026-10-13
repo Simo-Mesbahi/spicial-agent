@@ -38,6 +38,7 @@ import type { SupabaseRuntimeEnv } from './supabase';
 import { effectiveEnvironment } from './runtime-settings';
 import { modelSettings, publicModelConfig, type ModelEnvironment } from './model-policy';
 import { caseBrief } from './case-brief';
+import { completeRequestedDetails } from './response-presentation';
 import { boundedJson, JsonLimitError } from './bounded-json';
 import { mutationOriginAllowed } from './request-security';
 import { supportDecision, supportQuickReplies, type SupportPath } from './support-routing';
@@ -739,6 +740,22 @@ function localGuard(answer: AssistantAnswer) {
     answer.action === 'switch_case'
   );
 }
+function presentedAnswer(
+  message: string,
+  answer: AssistantAnswer,
+  currentCase: CaseRow | null,
+  language: ReturnType<typeof detectConversationLanguage>,
+): AssistantAnswer {
+  if (localGuard(answer)) return answer;
+  return {
+    ...answer,
+    content: completeRequestedDetails(
+      message, answer.content,
+      currentCase && answer.tools.includes('get_case') ? currentCase : null,
+      language,
+    ),
+  };
+}
 async function generate(
   env: AtlasEnv,
   message: string,
@@ -754,7 +771,12 @@ async function generate(
     throw new ApiError(503, e instanceof Error ? e.message : 'Configuration du modèle invalide.');
   }
   const mode = settings.provider;
-  const expected = demoAnswer(message, c, history, env, knowledge.articles);
+  const expected = presentedAnswer(
+    message,
+    demoAnswer(message, c, history, env, knowledge.articles),
+    c,
+    detectConversationLanguage(message, history.filter(item => item.role === 'user').map(item => item.content)),
+  );
   if (mode === 'demo' || localGuard(expected))
     return { ...expected, mode: 'demo', inputTokens: 0, outputTokens: 0 };
   const { base } = settings;
@@ -814,8 +836,18 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
   // One deadline for the whole tool loop, not three independent long requests.
   const deadline = AbortSignal.timeout(settings.timeoutMs);
   for (let round = 0; round < 3; round++) {
+    // Mixed questions can tempt Gemini to answer the general part without
+    // consulting the case. Require the missing read tool; its result is still
+    // authorized and validated locally before any business fact is displayed.
+    const requiredTool = mode === 'gemini'
+      ? expected.tools.find(tool =>
+          (tool === 'get_case' && !trace.includes(tool)) ||
+          (tool === 'search_knowledge' &&
+            (!trace.includes(tool) || !expected.sources.every(source => sources.has(source.id)))),
+        )
+      : undefined;
     const out = await providerCompletion(env,
-      completionPayload(env, msgs, activeTools, round === 2, route === 'open' ? 500 : 1200),
+      completionPayload(env, msgs, activeTools, round === 2, route === 'open' ? 500 : 1200, requiredTool),
       deadline, telemetry);
     const m = out.choices[0].message;
     inputTokens = telemetry.inputTokens;
@@ -1343,7 +1375,8 @@ export async function handleApi(req: Request, env: AtlasEnv): Promise<Response> 
         }
       }
       const answer = generated ?? {
-        ...demoAnswer(message, c, history, env, knowledge.articles),
+        ...presentedAnswer(message, demoAnswer(message, c, history, env, knowledge.articles), c,
+          detectConversationLanguage(message, previousUserMessages)),
         mode: 'demo',
         inputTokens: null,
         outputTokens: null,

@@ -95,6 +95,7 @@ import {
 import { Toaster, toast } from 'sonner';
 import { Discovery } from '@/components/atlas/discovery';
 import { CaseReceipt } from '@/components/atlas/case-receipt';
+import { ResponseContent } from '@/components/atlas/response-content';
 import { ContactPage, type ContactPrefill } from '@/components/atlas/contact-page';
 import { type CaseBrief } from '@/lib/atlas/case-brief';
 import { ApiRequestError, mergeMessages, newRequestId, requestJson } from '@/lib/atlas/client';
@@ -1120,12 +1121,12 @@ export default function Home() {
                                   />
                                   <details className="answer-transcript">
                                     <summary>Lire la réponse complète</summary>
-                                    <div className="message-bubble">{m.content}</div>
+                                    <div className="message-bubble"><ResponseContent content={m.content} /></div>
                                   </details>
                                 </>
                               ) : (
                                 <>
-                                  <div className="message-bubble">{m.content}</div>
+                                  <div className="message-bubble">{m.role === 'assistant' ? <ResponseContent content={m.content} /> : m.content}</div>
                                   {m.role === 'assistant' && m.metadata.caseBrief && (
                                     <CaseReceipt
                                       brief={m.metadata.caseBrief}

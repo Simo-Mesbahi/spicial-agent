@@ -271,6 +271,7 @@ export function completionPayload(
   tools: unknown[] = [],
   finalRound = false,
   maxTokens = 1200,
+  requiredTool?: string,
 ) {
   const settings = modelSettings(env);
   const mode = settings.provider;
@@ -281,7 +282,11 @@ export function completionPayload(
     ...(tools.length
       ? {
           tools,
-          tool_choice: finalRound ? 'none' : 'auto',
+          tool_choice: finalRound
+            ? 'none'
+            : requiredTool
+              ? { type: 'function', function: { name: requiredTool } }
+              : 'auto',
           ...(mode === 'openai' ? { parallel_tool_calls: false } : {}),
         }
       : {}),
@@ -522,6 +527,7 @@ function adaptedPayload(env: ModelEnvironment, payload: ReturnType<typeof comple
       payload.tools ?? [],
       payload.tool_choice === 'none',
       tokens,
+      typeof payload.tool_choice === 'object' ? payload.tool_choice.function.name : undefined,
     ),
   );
   const format = rebuilt.response_format as

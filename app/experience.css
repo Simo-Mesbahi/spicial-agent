@@ -1027,6 +1027,16 @@
   color: var(--primary);
   min-height: 34px;
 }
+
+.response-content { min-width: 0; white-space: normal; }
+.response-prose { white-space: pre-wrap; }
+.response-content > * + * { margin-top: 1rem; }
+.response-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.response-table-wrap:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.response-table-wrap table { width: 100%; border-collapse: collapse; font-size: inherit; }
+.response-table-wrap th, .response-table-wrap td { padding: .65rem .8rem; text-align: start; vertical-align: top; border-bottom: 1px solid var(--border); min-width: 8rem; overflow-wrap: anywhere; }
+.response-table-wrap th { font-weight: 650; background: var(--soft); }
+.response-table-wrap tr:last-child td { border-bottom: 0; }
 .answer-transcript .message-bubble {
   margin-top: 6px;
 }
