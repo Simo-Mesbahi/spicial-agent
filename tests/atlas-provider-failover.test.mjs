@@ -43,6 +43,20 @@ function mock(t, handler) {
     globalThis.fetch = previous;
   });
 }
+
+test('an explicitly required evidence tool survives provider payload adaptation', async (t) => {
+  const tools = [{ type: 'function', function: { name: 'get_case', parameters: { type: 'object', properties: {} } } }];
+  const payload = completionPayload(base, [{ role: 'user', content: 'My case' }], tools, false, 1200, 'get_case');
+  let calls = 0;
+  mock(t, async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.tool_choice, { type: 'function', function: { name: 'get_case' } });
+    calls++;
+    return calls === 1 ? new Response('', { status: 502 }) : Response.json(ok);
+  });
+  await providerCompletion(base, payload, AbortSignal.timeout(1000), providerTrace());
+  assert.equal(calls, 2);
+});
 function input(env) {
   return {
     ...completionPayload(env, [{ role: 'user', content: 'Return JSON.' }], [], false, 900),

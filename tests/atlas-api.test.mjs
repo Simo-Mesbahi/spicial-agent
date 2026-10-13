@@ -789,6 +789,53 @@ test('Gemini free adapter uses only its fixed endpoint and redacted conversation
   }
 });
 
+test('Gemini answers the mixed case, language and table question with one mandatory evidence read', async () => {
+  const db = database();
+  const original = globalThis.fetch;
+  try {
+    const c = await client(db);
+    const row = c.snapshot.cases.find(x => x.reference === 'SAV-2026-1042');
+    await verify(c, row);
+    Object.assign(c.env, { LLM_PROVIDER: 'gemini', LLM_BUDGET_MODE: 'free', GEMINI_API_KEY: 'test-key' });
+    const message = 'Salut bogoss je veux savoir c’est la prochaine étape et c’est quoi les langues avec les quelles tu peux me répondre et est que tu peux répondre par fournir un tableau pour une réponse par exemple un tableau des étapes pour traiter mon dossier';
+    let calls = 0;
+    globalThis.fetch = async (_url, options) => {
+      calls++;
+      const payload = JSON.parse(options.body);
+      assert.deepEqual(payload.tool_choice, { type: 'function', function: { name: 'get_case' } });
+      return Response.json({ choices: [{ message: { role: 'assistant', tool_calls: [
+        { id: 'case-read', function: { name: 'get_case', arguments: '{}' } },
+      ] } }], usage: { prompt_tokens: 12, completion_tokens: 8 } });
+    };
+    const reply = await c.call('chat', { caseId: row.id, message });
+    assert.equal(reply.status, 200);
+    assert.equal(reply.body.metadata.fallback, null);
+    assert.equal(reply.body.metadata.mode, 'gemini');
+    assert.equal(calls, 1);
+    assert.deepEqual(reply.body.metadata.executedTools, ['get_case']);
+    assert.equal(reply.body.metadata.presentation, 'text');
+    assert.match(reply.body.content, /français, anglais, allemand, espagnol et arabe/);
+    assert.match(reply.body.content, /\| En attente de pièce \| État actuel enregistré \|/);
+    assert.match(reply.body.content, /\| En réparation \| Suite prévue/);
+    assert.match(reply.body.content, /pas encore réalisées/);
+    assert.match(reply.body.content, /Aucun délai confirmé/);
+    assert.doesNotMatch(reply.body.content, /demain|garantie demain/);
+    // A provider that ignores the mandatory tool is still rejected. The safe
+    // fallback must nevertheless answer the language and formatting requests.
+    globalThis.fetch = async () => Response.json({ choices: [{ message: {
+      role: 'assistant', content: 'Votre réparation sera terminée demain.',
+    } }] });
+    const fallback = await c.call('chat', { caseId: row.id, message });
+    assert.equal(fallback.body.metadata.fallbackReason, 'missing_verifiable_sources');
+    assert.match(fallback.body.content, /français, anglais, allemand, espagnol et arabe/);
+    assert.match(fallback.body.content, /\| En réparation \| Suite prévue/);
+    assert.doesNotMatch(fallback.body.content, /terminée demain/);
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
 test('Gemini multi-tool transcript names the function and stops after verified evidence', async () => {
   const db = database(), c = await client(db), row = c.snapshot.cases[0];
   await verify(c, row);
