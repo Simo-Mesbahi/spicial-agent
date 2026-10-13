@@ -78,6 +78,6 @@ if (checkOnly) {
 }
 
 console.log(
-  `Deploying ${generated.name} to workers.dev with PREPRODUCTION, demo-only AI, zero budget and P1_RELEASE_MODE=off.`,
+  `Deploying ${generated.name} to workers.dev with PREPRODUCTION, Gemini free tier, daily interaction cap and P1_RELEASE_MODE=off.`,
 );
 run(wrangler, ['deploy', '--config', configPath], wranglerEnvironment);

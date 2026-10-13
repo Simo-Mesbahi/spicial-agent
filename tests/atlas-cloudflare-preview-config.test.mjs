@@ -4,15 +4,21 @@ import test from 'node:test';
 
 const config = JSON.parse(readFileSync(new URL('../wrangler.preview.json', import.meta.url), 'utf8'));
 
-test('Cloudflare preview stays client-only, demo-only and P1-disabled', () => {
+test('Cloudflare preview permits capped Gemini trials and keeps P1 disabled', () => {
   assert.equal(config.name, 'sav-sc-assistant-preview');
   assert.equal(config.workers_dev, true);
   assert.equal(config.compatibility_date, '2026-10-10');
   assert.equal(config.vars.APP_ENVIRONMENT, 'PREPRODUCTION');
   assert.equal(config.vars.APP_EDITION, 'client');
-  assert.equal(config.vars.LLM_PROVIDER, 'demo');
-  assert.equal(config.vars.LLM_ENABLED_PROVIDERS, 'demo');
-  assert.equal(config.vars.LLM_BUDGET_MODE, 'zero');
+  assert.equal(config.vars.LLM_PROVIDER, 'gemini');
+  assert.equal(config.vars.LLM_ENABLED_PROVIDERS, 'demo,gemini');
+  assert.equal(config.vars.LLM_BUDGET_MODE, 'free');
+  assert.equal(config.vars.GEMINI_MODEL, 'gemini-3.5-flash-lite');
+  assert.equal(config.vars.LLM_DAILY_LIMIT, '3');
+  assert.equal(config.vars.LLM_ORCHESTRATOR, undefined);
+  assert.equal(config.vars.LLM_GENERATION_MODE, 'off');
+  assert.equal(config.vars.LLM_VALIDATION_MODE, 'off');
+  assert.equal(config.vars.LLM_AUTO_FAILOVER, 'false');
   assert.equal(config.vars.P1_RELEASE_MODE, 'off');
 });
 

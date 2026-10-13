@@ -136,7 +136,7 @@ Pour une qualification locale sans fournisseur hébergé, utiliser les modes `de
 
 ## Déploiement
 
-La configuration locale `wrangler.local.jsonc` reste réservée au développement. La préproduction Cloudflare utilise `wrangler.preview.json` ; `npm run check:cloudflare:preview` reconstruit l’application et valide le bundle Wrangler sans rien publier, puis `npm run deploy:cloudflare:preview` publie. Elle verrouille l’édition client, le fournisseur démo, le budget IA à zéro et `P1_RELEASE_MODE=off`. La migration D1 est séparée du déploiement : `npm run db:migrate:cloudflare:preview`.
+La configuration locale `wrangler.local.jsonc` reste réservée au développement. La préproduction Cloudflare utilise `wrangler.preview.json` ; `npm run check:cloudflare:preview` reconstruit l’application et valide le bundle Wrangler sans rien publier, puis `npm run deploy:cloudflare:preview` publie. Elle verrouille l’édition client, Gemini en niveau gratuit pour les seules questions de la démo fictive, un plafond applicatif de 3 interactions IA par fenêtre glissante de 24 h et `P1_RELEASE_MODE=off`. La migration D1 est séparée du déploiement : `npm run db:migrate:cloudflare:preview`.
 
 Cette préproduction `workers.dev` est publique et ne doit recevoir aucune donnée client réelle. Les clés Supabase doivent être ajoutées comme secrets Cloudflare côté serveur avant d’activer les parcours `/file` et `/admin`. Le lancement client réel demande un projet Supabase de production distinct, un domaine approprié, les contrôles documentés dans [`docs/SUPABASE-PRODUCTION.md`](docs/SUPABASE-PRODUCTION.md) et les gates P1.7.
 
