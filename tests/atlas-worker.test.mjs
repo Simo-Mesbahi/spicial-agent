@@ -175,7 +175,7 @@ for (const redirect of [false, true]) test(`Cloudflare: Gemini ${redirect ? 'blo
     const result = await reply.json();
     assert.equal(result.metadata.mode, redirect ? 'demo' : 'gemini');
     if (redirect) assert.equal(result.metadata.fallback, 'provider_unavailable');
-    assert.equal(calls.length, redirect ? 1 : 2);
+    assert.equal(calls.length, 1);
     assert.doesNotMatch(JSON.stringify(calls), new RegExp(row.demoCode));
   } finally { await mf.dispose(); }
 });

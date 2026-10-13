@@ -43,6 +43,9 @@ test('recognizes natural small talk without forcing document retrieval', () => {
   assert.equal(casualIntent('cv ?'), 'wellbeing');
   assert.equal(casualIntent('cc cv ?'), 'wellbeing');
   assert.equal(casualIntent('coucou ça va ?'), 'wellbeing');
+  assert.equal(casualIntent('Wesh cv ou quoi ?'), 'wellbeing');
+  assert.equal(casualIntent('T’es qui ?'), 'identity');
+  assert.match(casualReply('fr', 'identity', null), /SAV SC Assistant AI/);
   assert.equal(casualIntent('how are you?'), 'wellbeing');
   assert.equal(casualIntent('Danke!'), 'thanks');
   assert.equal(casualIntent('مرحبا'), 'greeting');

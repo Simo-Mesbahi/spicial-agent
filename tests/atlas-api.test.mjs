@@ -732,6 +732,10 @@ test('Gemini free adapter uses only its fixed endpoint and redacted conversation
     });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.metadata.mode, 'gemini');
+    assert.equal(r.body.metadata.fallback, null);
+    assert.equal(r.body.metadata.providerCalls, 1);
+    assert.equal(captured.length, 1);
+    assert.ok(r.body.metadata.tools.includes('get_case'));
     assert.equal(captured[0].model, 'gemini-3.5-flash-lite');
     assert.equal(captured[0].max_completion_tokens, 1200);
     assert.equal(captured[0].reasoning_effort, 'minimal');
@@ -740,6 +744,48 @@ test('Gemini free adapter uses only its fixed endpoint and redacted conversation
     assert.ok(!outbound.includes(row.demoCode));
     assert.ok(!outbound.includes('test@example.com'));
     assert.ok(!outbound.includes('code_hash'));
+  } finally {
+    globalThis.fetch = original;
+    db.sql.close();
+  }
+});
+
+test('Gemini multi-tool transcript names the function and stops after verified evidence', async () => {
+  const db = database(), c = await client(db), row = c.snapshot.cases[0];
+  await verify(c, row);
+  Object.assign(c.env, {
+    LLM_PROVIDER: 'gemini', LLM_BUDGET_MODE: 'free', GEMINI_API_KEY: 'gemini-test-key',
+  });
+  const original = globalThis.fetch, captured = [];
+  globalThis.fetch = async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    captured.push(payload);
+    if (captured.length === 2) {
+      assert.equal(payload.messages.at(-1).role, 'tool');
+      assert.equal(payload.messages.at(-1).name, 'get_case');
+      assert.equal(payload.messages.at(-1).tool_call_id, 'gemini-case');
+    }
+    return Response.json({
+      choices: [{ message: {
+        role: 'assistant', content: null,
+        tool_calls: [{
+          id: captured.length === 1 ? 'gemini-case' : 'gemini-knowledge',
+          function: captured.length === 1
+            ? { name: 'get_case', arguments: '{}' }
+            : { name: 'search_knowledge', arguments: '{"query":"garantie"}' },
+        }],
+      } }],
+      usage: { prompt_tokens: 12, completion_tokens: 8 },
+    });
+  };
+  try {
+    const r = await c.call('chat', { caseId: row.id, message: 'Ma réparation est-elle prise en charge en garantie ?' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.metadata.fallback, null);
+    assert.equal(r.body.metadata.mode, 'gemini');
+    assert.deepEqual(r.body.metadata.executedTools, ['get_case', 'search_knowledge']);
+    assert.equal(r.body.metadata.providerCalls, 2);
+    assert.equal(captured.length, 2);
   } finally {
     globalThis.fetch = original;
     db.sql.close();
