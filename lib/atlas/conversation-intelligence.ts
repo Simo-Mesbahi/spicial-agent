@@ -12,15 +12,19 @@ const scores: Record<Exclude<ConversationLanguage, 'ar'>, RegExp[]> = {
   fr: [
     /\b(bonjour|bonsoir|salut|merci|svp|s'il vous plait|comment|pourquoi|retour|reparation|remboursement|livraison|colis|dossier|garantie|devis|conseiller|mon|ma|mes|vous|je)\b/i,
     /\b(ca va|ça va|cv)\b/i,
+    /^(?:t[’']es qui|tu es qui|vous êtes qui|vous etes qui|qui es-tu|qui êtes-vous|qui etes-vous)[ !?.،؟]*$/iu,
   ],
   en: [
     /\b(hello|hi|hey|thanks|thank you|please|how|why|return|repair|refund|delivery|package|parcel|case|warranty|quote|advisor|agent|my|your|can you|where is)\b/i,
+    /^who are you[ !?.]*$/iu,
   ],
   de: [
     /\b(hallo|guten tag|danke|bitte|wie|warum|ruckgabe|rückgabe|reparatur|erstattung|lieferung|paket|fall|garantie|kostenvoranschlag|berater|mein|meine|wo ist)\b/i,
+    /^(?:wer bist du|wer sind sie)[ !?.]*$/iu,
   ],
   es: [
     /\b(hola|buenas|gracias|por favor|como|cómo|porque|por qué|devolucion|devolución|reparacion|reparación|reembolso|entrega|paquete|pedido|garantia|garantía|presupuesto|asesor|mi|donde|dónde)\b/i,
+    /^[¿¡]?\s*(?:quien eres|quién eres|quien es usted|quién es usted)[ !?.]*$/iu,
   ],
 };
 
@@ -64,6 +68,7 @@ export function casualIntent(message: string): CasualIntent {
   const raw = message.trim().toLowerCase();
   const text = raw
     .replace(/[’']/g, "'")
+    .replace(/^[¿¡]\s*/u, '')
     .replace(/^(?:cc|coucou|slt|salut|hey|yo|wesh)\s*[,;:!.-]?\s+(?=\S)/iu, '')
     .replace(/\s+ou quoi\s*[?!.]*$/iu, '')
     .replace(/\s+/g, ' ')
