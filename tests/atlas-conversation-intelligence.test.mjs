@@ -57,6 +57,23 @@ test('recognizes natural small talk without forcing document retrieval', () => {
   assert.match(casualReply('en', 'greeting', null), /How can I help/i);
 });
 
+test('an explicit identity question selects its language over conversation history', () => {
+  for (const [message, language] of [
+    ['T’es qui ?', 'fr'],
+    ['Who are you?', 'en'],
+    ['Wer bist du?', 'de'],
+    ['¿Quién eres?', 'es'],
+    ['من أنت؟', 'ar'],
+  ]) {
+    const history = language === 'fr' ? ['Hello, how can I track my repair?'] : ['Bonjour'];
+    assert.equal(detectConversationLanguage(message, history), language, message);
+    assert.equal(casualIntent(message), 'identity', message);
+    assert.equal(conversationRoute(message, history), 'small_talk', message);
+  }
+  assert.equal(casualIntent('¿Dónde está mi pedido?'), null);
+  assert.equal(conversationRoute('¿Dónde está mi pedido?'), 'business');
+});
+
 test('normalizes multilingual service intents to the French knowledge corpus', () => {
   assert.equal(retrievalQuery('How do I return an item?'), 'retour échange');
   assert.equal(retrievalQuery('My package is incomplete'), 'colis incomplet endommagé');

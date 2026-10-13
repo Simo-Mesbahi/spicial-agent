@@ -99,6 +99,45 @@ async function client(db) {
     snapshot: created.body,
   };
 }
+
+test('Gemini identity questions switch languages locally even when the daily quota is exhausted', async () => {
+  const db = database();
+  const c = await client(db);
+  Object.assign(c.env, {
+    LLM_PROVIDER: 'gemini', LLM_BUDGET_MODE: 'free', GEMINI_API_KEY: 'gemini-test-key',
+    LLM_DAILY_LIMIT: '3',
+  });
+  db.sql.prepare('INSERT INTO rate_buckets (id,count,expires_at) VALUES (?,?,?)')
+    .run('llm-global', 3, Date.now() + 86400000);
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    throw new Error('Identity questions must not call a provider');
+  };
+  try {
+    for (const [message, language, prefix] of [
+      ['T’es qui ?', 'fr', /^Je suis SAV SC/],
+      ['Who are you?', 'en', /^I.m SAV SC/],
+      ['Wer bist du?', 'de', /^Ich bin SAV SC/],
+      ['¿Quién eres?', 'es', /^Soy SAV SC/],
+      ['من أنت؟', 'ar', /^أنا SAV SC/],
+    ]) {
+      const reply = await c.call('chat', { message });
+      assert.equal(reply.status, 200, message);
+      assert.equal(reply.body.metadata.language, language, message);
+      assert.equal(reply.body.metadata.mode, 'conversation', message);
+      assert.equal(reply.body.metadata.fallback, null, message);
+      assert.equal(reply.body.metadata.providerCalls, 0, message);
+      assert.match(reply.body.content, prefix, message);
+    }
+    assert.equal(providerCalls, 0);
+    assert.equal(db.sql.prepare("SELECT count FROM rate_buckets WHERE id='llm-global'").get().count, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.sql.close();
+  }
+});
 async function verify(c, row) {
   const r = await c.call('verify', { reference: row.reference, code: row.demoCode });
   assert.equal(r.status, 200, JSON.stringify(r.body));
