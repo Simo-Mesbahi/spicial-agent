@@ -910,8 +910,28 @@ Votre ton doit être naturel, professionnel, chaleureux et concis. N’agissez p
         found.articles.forEach((x) => sources.set(x.id, x));
         result = found.articles;
       }
-      msgs.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+      msgs.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        ...(mode === 'gemini' ? { name: call.function.name } : {}),
+        content: JSON.stringify(result),
+      });
     }
+    // Business replies use server-verified facts rather than model wording.
+    // Once Gemini has requested every required source, another provider call
+    // cannot add evidence and can fail in its compatibility tool transcript.
+    if (
+      mode === 'gemini' &&
+      expected.tools.length > 0 &&
+      expected.tools.every((tool) => trace.includes(tool)) &&
+      expected.sources.every((source) => sources.has(source.id))
+    )
+      return {
+        ...expected,
+        mode,
+        inputTokens: telemetry.inputTokens,
+        outputTokens: telemetry.outputTokens,
+      };
   }
   throw new ProviderError('tool_loop');
 }

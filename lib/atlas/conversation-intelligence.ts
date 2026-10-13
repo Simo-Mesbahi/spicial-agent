@@ -6,7 +6,7 @@ import type {
 } from './case-schema';
 
 export type ConversationLanguage = 'fr' | 'en' | 'de' | 'es' | 'ar';
-export type CasualIntent = 'greeting' | 'wellbeing' | 'thanks' | 'farewell' | 'help' | null;
+export type CasualIntent = 'greeting' | 'wellbeing' | 'thanks' | 'farewell' | 'help' | 'identity' | null;
 
 const scores: Record<Exclude<ConversationLanguage, 'ar'>, RegExp[]> = {
   fr: [
@@ -64,7 +64,8 @@ export function casualIntent(message: string): CasualIntent {
   const raw = message.trim().toLowerCase();
   const text = raw
     .replace(/[’']/g, "'")
-    .replace(/^(?:cc|coucou|slt|salut|hey|yo)\s*[,;:!.-]?\s+(?=\S)/iu, '')
+    .replace(/^(?:cc|coucou|slt|salut|hey|yo|wesh)\s*[,;:!.-]?\s+(?=\S)/iu, '')
+    .replace(/\s+ou quoi\s*[?!.]*$/iu, '')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -102,6 +103,11 @@ export function casualIntent(message: string): CasualIntent {
     )
   )
     return 'help';
+
+  if (
+    /^(t'es qui|tu es qui|vous êtes qui|vous etes qui|qui es-tu|qui êtes-vous|qui etes-vous|who are you|wer bist du|wer sind sie|quien eres|quién eres|quien es usted|quién es usted|من أنت|من انت)[ !?.،؟]*$/iu.test(text)
+  )
+    return 'identity';
 
   return null;
 }
@@ -174,6 +180,10 @@ const replies: Record<
       withCase: (reference) =>
         `Je peux vous aider à comprendre et suivre le dossier ${reference}, expliquer son statut, la prochaine étape, un devis, une garantie ou préparer un relais vers un conseiller si nécessaire. Parlez-moi naturellement.`,
     },
+    identity: {
+      general: 'Je suis SAV SC Assistant AI, l’assistant de cette démonstration fictive. Je peux vous aider à comprendre un dossier vérifié ou une procédure publiée, et je vous dirai lorsqu’une information manque.',
+      withCase: () => 'Je suis SAV SC Assistant AI, l’assistant de cette démonstration fictive.',
+    },
   },
   en: {
     greeting: {
@@ -201,6 +211,10 @@ const replies: Record<
         'I can help with repair and customer-service questions, returns, deliveries, warranties, refunds, and verified case tracking. You can speak to me naturally.',
       withCase: (reference) =>
         `I can help you understand and track case ${reference}, explain its status or next step, discuss a quote or warranty, and prepare a handoff to an advisor when needed. You can speak to me naturally.`,
+    },
+    identity: {
+      general: 'I’m SAV SC Assistant AI, the assistant for this fictional demo. I can help explain a verified case or a published procedure and tell you when information is missing.',
+      withCase: () => 'I’m SAV SC Assistant AI, the assistant for this fictional demo.',
     },
   },
   de: {
@@ -230,6 +244,10 @@ const replies: Record<
       withCase: (reference) =>
         `Ich kann Ihnen beim Vorgang ${reference} helfen, den Status oder nächsten Schritt erklären und bei Bedarf einen Kontakt zu einem Berater vorbereiten. Schreiben Sie einfach ganz natürlich.`,
     },
+    identity: {
+      general: 'Ich bin SAV SC Assistant AI, der Assistent dieser fiktiven Demonstration. Ich helfe bei verifizierten Vorgängen und veröffentlichten Verfahren und sage klar, wenn Angaben fehlen.',
+      withCase: () => 'Ich bin SAV SC Assistant AI, der Assistent dieser fiktiven Demonstration.',
+    },
   },
   es: {
     greeting: {
@@ -258,6 +276,10 @@ const replies: Record<
       withCase: (reference) =>
         `Puedo ayudarle a entender y seguir el expediente ${reference}, explicar su estado o siguiente paso y preparar un contacto con un asesor si hace falta. Puede hablarme de forma natural.`,
     },
+    identity: {
+      general: 'Soy SAV SC Assistant AI, el asistente de esta demostración ficticia. Puedo explicar un expediente verificado o un procedimiento publicado e indicar si falta información.',
+      withCase: () => 'Soy SAV SC Assistant AI, el asistente de esta demostración ficticia.',
+    },
   },
   ar: {
     greeting: {
@@ -285,6 +307,10 @@ const replies: Record<
         'يمكنني مساعدتك في أسئلة الإصلاح وخدمة العملاء والإرجاع والتوصيل والضمان والاسترداد ومتابعة الملفات بعد التحقق الآمن. يمكنك التحدث معي بشكل طبيعي.',
       withCase: (reference) =>
         `يمكنني مساعدتك في فهم ومتابعة الملف ${reference} وشرح حالته أو الخطوة التالية وتجهيز التحويل إلى مستشار عند الحاجة. تحدث معي بشكل طبيعي.`,
+    },
+    identity: {
+      general: 'أنا SAV SC Assistant AI، مساعد هذه التجربة الافتراضية. يمكنني شرح ملف تم التحقق منه أو إجراء منشور، وسأوضح إذا كانت المعلومات ناقصة.',
+      withCase: () => 'أنا SAV SC Assistant AI، مساعد هذه التجربة الافتراضية.',
     },
   },
 };

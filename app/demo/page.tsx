@@ -143,6 +143,7 @@ type Meta = {
   sources?: { id: string; title: string; version: string }[];
   tools?: string[];
   mode?: string;
+  providerCalls?: number;
   fallback?: 'daily_limit' | 'provider_unavailable' | null;
   latencyMs?: number;
   inputTokens?: number | null;
@@ -1230,7 +1231,13 @@ export default function Home() {
                                     ))}
                                   </div>
                                   <div className="message-meta">
-                                    <span>Réponse préparée · {dateTime(m.created_at)}</span>
+                                    <span>
+                                      {m.metadata.mode === 'gemini' && !m.metadata.fallback &&
+                                      (m.metadata.providerCalls ?? 0) > 0
+                                        ? 'Gemini consulté'
+                                        : 'Réponse préparée'}{' · '}
+                                      {dateTime(m.created_at)}
+                                    </span>
                                   </div>
                                 </>
                               )}
