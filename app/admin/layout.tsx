@@ -4,6 +4,7 @@ import AdminSessionGuard from './admin-session-guard';
 import './admin-control.css';
 import './admin.css';
 import './admin-operations.css';
+import './admin-interface.css';
 
 export const metadata: Metadata = {
   title: 'Administration · SAV SC Assistant AI',
@@ -15,7 +16,9 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
   return (
     <AdminSessionGuard>
       <AdminNavigation />
-      {children}
+      <div id="admin-main" tabIndex={-1}>
+        {children}
+      </div>
     </AdminSessionGuard>
   );
 }

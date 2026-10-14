@@ -51,6 +51,9 @@ export default function AdminNavigation() {
 
   return (
     <header className="admin-workspace-nav">
+      <a className="admin-skip-link" href="#admin-main">
+        Aller au contenu de l’administration
+      </a>
       <div className="admin-workspace-brand">
         <span className="admin-workspace-mark" aria-hidden="true">
           <Sparkles size={17} />

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import './experience.css';
 import './showcase.css';
+import './interface.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://atlas-sav-sc-ai.mohammed-elmesbahi.chatgpt.site'),

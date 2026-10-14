@@ -1,0 +1,707 @@
+/* Operational surfaces share the client palette without changing authorization or actions. */
+:is(
+  .admin-auth-page,
+  .admin-shell,
+  .admin-ops-page,
+  .admin-control-page,
+  .admin-loading,
+  .admin-ops-loading
+) {
+  --admin-navy: var(--foreground);
+  --admin-green: var(--primary);
+  --admin-line: var(--border);
+  --ops-ink: var(--foreground);
+  --ops-green: var(--primary);
+  --ops-line: var(--border);
+  --ops-muted: var(--muted-foreground);
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--ui-font);
+}
+.admin-skip-link {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 100;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--foreground);
+  color: var(--background);
+}
+.admin-skip-link:focus {
+  top: 12px;
+}
+.admin-workspace-nav {
+  gap: 18px;
+  padding: 16px 28px;
+  background: var(--surface);
+  box-shadow: 0 3px 16px -12px rgb(16 37 30 / 18%);
+}
+.admin-workspace-brand {
+  gap: 10px;
+}
+.admin-workspace-brand strong {
+  font-size: 17px;
+  letter-spacing: -0.025em;
+}
+.admin-workspace-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+.admin-environment {
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 7px;
+  padding: 6px 8px;
+}
+.admin-workspace-nav nav {
+  gap: 6px;
+}
+.admin-workspace-nav nav a {
+  min-height: 46px;
+  padding: 11px 14px;
+  font-size: 14px;
+  border-radius: 11px;
+}
+.admin-workspace-nav nav a[aria-current='page'] {
+  box-shadow: inset 0 -2px var(--primary);
+}
+.admin-workspace-actions :is(a, button) {
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+:is(.admin-auth-page, .admin-shell, .admin-ops-page, .admin-control-page, .admin-workspace-nav)
+  :is(button, a, input, select, textarea, summary, [tabindex='0']):focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+:is(.admin-shell, .admin-ops-page, .admin-control-page) button {
+  min-height: 44px;
+  font-size: 13px;
+}
+:is(.admin-shell, .admin-ops-page, .admin-control-page)
+  :is(input:not([type='checkbox']), select, textarea) {
+  font-size: 16px;
+  color: var(--foreground);
+  background: var(--surface);
+  border-color: var(--input);
+  border-radius: 10px;
+}
+:is(.admin-shell, .admin-ops-page, .admin-control-page) :is(input:not([type='checkbox']), select) {
+  min-height: 46px;
+}
+:is(.admin-shell, .admin-ops-page, .admin-control-page) input[type='checkbox'] {
+  accent-color: var(--primary);
+  width: 20px;
+  height: 20px;
+}
+.admin-auth-page {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.admin-auth-panel {
+  background: var(--background);
+}
+.admin-auth-card {
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: 24px;
+  box-shadow: var(--ui-shadow);
+}
+.admin-auth-card h2 {
+  font-size: 32px;
+  letter-spacing: -0.035em;
+  color: var(--foreground);
+}
+.admin-auth-card .admin-muted {
+  color: var(--muted-foreground);
+  font-size: 15px;
+}
+.admin-auth-card .admin-form label {
+  color: var(--foreground);
+  font-size: 14px;
+}
+.admin-auth-card .admin-form :is(input, select) {
+  color: var(--foreground);
+  background: var(--soft);
+  border-color: var(--input);
+  font-size: 16px;
+}
+.admin-auth-card .admin-form {
+  gap: 22px;
+}
+.admin-auth-card .admin-lock {
+  color: var(--primary);
+  background: var(--accent);
+}
+.admin-auth-card .admin-secondary {
+  color: var(--foreground);
+  background: var(--soft);
+  border-color: var(--input);
+}
+.admin-content,
+.admin-ops-content {
+  padding: 32px 28px 36px;
+}
+.admin-heading h1,
+.admin-ops-heading h1 {
+  font-size: clamp(32px, 3.5vw, 46px);
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+}
+.admin-heading p,
+.admin-ops-heading > div > p {
+  font-size: 15px;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+.admin-ops-heading aside {
+  min-width: 0;
+  color: var(--foreground);
+  background: var(--accent);
+  border-color: var(--border);
+}
+.admin-ops-heading aside strong {
+  font-size: 13px;
+}
+.admin-ops-heading aside small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.admin-topbar,
+.admin-ops-topbar {
+  background: var(--surface);
+  border-color: var(--border);
+  padding-inline: 28px;
+}
+.admin-topbar :is(a, button, select),
+.admin-ops-topbar :is(a, button, select) {
+  min-height: 44px;
+}
+.admin-ops-topbar > a {
+  color: var(--primary);
+  font-size: 14px;
+}
+.admin-ops-metrics {
+  margin-top: 28px;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+:is(.admin-metric, .admin-ops-metric, .admin-control-card, .admin-panel, .admin-ops-panel) {
+  border-color: var(--border);
+  border-radius: var(--ui-radius);
+  background: var(--surface);
+  box-shadow: var(--ui-shadow);
+}
+.admin-metric,
+.admin-ops-metric {
+  padding: 20px;
+  min-height: 120px;
+}
+.admin-metric strong,
+.admin-ops-metric strong {
+  font-size: 30px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+.admin-metric :is(span, small),
+.admin-ops-metric :is(span, small) {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.admin-ops-metric-icon,
+.knowledge-metric-icon {
+  background: var(--accent);
+  color: var(--primary);
+  border-radius: 12px;
+}
+.admin-ops-case-grid {
+  gap: 20px;
+  grid-template-columns: minmax(340px, 0.8fr) minmax(0, 1.2fr);
+  margin-top: 20px;
+}
+.admin-ops-panel > header {
+  padding: 20px 22px;
+  border-color: var(--border);
+}
+.admin-ops-panel > header p {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+}
+.admin-ops-panel > header h2 {
+  font-size: 21px;
+  color: var(--foreground);
+}
+.admin-ops-panel > header > span {
+  font-size: 12px;
+  color: var(--primary);
+  background: var(--accent);
+}
+.admin-ops-page .admin-ops-case-results button {
+  padding: 18px 20px;
+  min-height: 94px;
+  border-color: var(--border);
+}
+.admin-ops-page .admin-ops-case-results button.active {
+  background: var(--accent);
+  box-shadow: inset 3px 0 var(--primary);
+}
+.admin-ops-page .admin-ops-case-results strong {
+  font-size: 15px;
+  color: var(--foreground);
+  line-height: 1.5;
+}
+.admin-ops-page .admin-ops-case-results :is(small, time) {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+.admin-ops-page .admin-ops-case-results button:hover:not(:disabled) {
+  background: var(--soft);
+}
+.admin-ops-search {
+  background: var(--soft);
+  border-color: var(--border);
+  padding: 16px;
+}
+.admin-ops-search-advanced {
+  gap: 10px;
+}
+.admin-ops-search input {
+  background: var(--surface);
+  padding-inline: 12px;
+}
+.admin-ops-detail {
+  padding: 22px;
+}
+.admin-ops-detail-facts {
+  gap: 12px;
+}
+.admin-ops-detail-facts > div {
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.admin-ops-detail-facts small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.admin-ops-detail-facts strong {
+  font-size: 15px;
+  color: var(--foreground);
+  line-height: 1.5;
+}
+.admin-ops-detail-facts span {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.admin-ops-page :is(.admin-ops-manager, .admin-ops-workflow, .admin-ops-sensitive) {
+  border-color: var(--border);
+  background: var(--surface);
+}
+.admin-ops-page
+  :is(.admin-ops-form-grid label, .admin-ops-note label, .admin-ops-sensitive-action strong) {
+  font-size: 14px;
+  color: var(--foreground);
+}
+.admin-ops-page
+  :is(
+    .admin-ops-form-grid small,
+    .admin-ops-sensitive-action small,
+    .admin-ops-manager-heading p,
+    .admin-ops-workflow p
+  ) {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.65;
+}
+.admin-ops-page :is(.admin-ops-manager-heading h3, .admin-ops-workflow h3) {
+  color: var(--foreground);
+  font-size: 18px;
+}
+.admin-ops-page :is(.admin-ops-entity-results, .admin-ops-entity-selected, .admin-ops-one-time) {
+  border-color: var(--border);
+  background: var(--soft);
+  color: var(--foreground);
+}
+.admin-ops-page .admin-ops-entity-results button {
+  font-size: 14px;
+  background: var(--surface);
+  color: var(--foreground);
+}
+.admin-ops-pagination {
+  padding: 18px 20px;
+  background: var(--soft);
+  border-color: var(--border);
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.admin-ops-page :is(.admin-ops-list, .admin-ops-events) {
+  font-size: 14px;
+  color: var(--foreground);
+}
+.admin-ops-page :is(.admin-ops-events small, .admin-ops-events time, .admin-ops-footer) {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.admin-control-page {
+  max-width: 1360px;
+  padding: 32px 28px;
+  gap: 22px;
+}
+.admin-control-heading h1 {
+  font-size: 36px;
+  letter-spacing: -0.04em;
+}
+.admin-control-heading p {
+  font-size: 15px;
+}
+.admin-control-page .admin-control-card {
+  padding: 24px;
+}
+.admin-control-card h2 {
+  font-size: 20px;
+  letter-spacing: -0.025em;
+}
+.admin-control-card p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.admin-control-card small {
+  font-size: 12px;
+}
+.admin-control-tabs {
+  gap: 8px;
+  border: 0;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--soft);
+  width: fit-content;
+  max-width: 100%;
+}
+.admin-control-tabs button {
+  border-color: transparent;
+  background: transparent;
+  border-radius: 10px;
+}
+.admin-control-tabs button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--foreground);
+  border-color: var(--border);
+  box-shadow: var(--ui-shadow);
+}
+.admin-control-table {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  scrollbar-width: thin;
+}
+.admin-control-table :is(th, td) {
+  padding: 14px 16px;
+  font-size: 14px;
+}
+.admin-control-table thead {
+  background: var(--soft);
+}
+.admin-control-table thead th {
+  font-weight: 650;
+  color: var(--foreground);
+}
+.admin-control-table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+.admin-control-form {
+  gap: 22px;
+}
+.admin-control-form fieldset {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 0;
+}
+.admin-control-form legend {
+  font-size: 15px;
+  padding-inline: 8px;
+}
+.admin-control-form label {
+  font-size: 14px;
+}
+.admin-control-form summary {
+  min-height: 44px;
+}
+.admin-control-save {
+  gap: 12px;
+}
+.admin-control-scope {
+  background: var(--accent);
+  border-radius: 12px;
+}
+.knowledge-workspace {
+  gap: 22px;
+}
+.knowledge-list {
+  top: 112px;
+}
+.knowledge-items > button {
+  min-height: 90px !important;
+  padding: 18px !important;
+}
+.knowledge-items strong {
+  font-size: 15px;
+}
+.knowledge-status {
+  font-size: 12px;
+}
+.knowledge-editor-heading h2 {
+  font-size: 23px;
+}
+.knowledge-editor label {
+  font-size: 14px;
+}
+.knowledge-filters :is(input, select, button) {
+  min-height: 44px;
+}
+.knowledge-preview details {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--soft);
+}
+.knowledge-preview summary {
+  min-height: 44px;
+  font-size: 14px;
+}
+.admin-table-wrap table {
+  font-size: 14px;
+}
+.admin-table-wrap :is(th, td) {
+  padding: 16px;
+  border-color: var(--border);
+  color: var(--foreground);
+}
+.admin-table-wrap th {
+  font-size: 12px;
+  background: var(--soft);
+}
+.admin-table-wrap td :is(strong, small) {
+  font-size: 13px;
+  color: var(--foreground);
+}
+.admin-table-wrap td small {
+  color: var(--muted-foreground);
+}
+.admin-footer {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+@media (max-width: 1100px) {
+  .admin-workspace-nav {
+    gap: 12px;
+    padding: 14px 20px;
+  }
+  .admin-workspace-nav nav {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .admin-workspace-nav nav a {
+    flex: none;
+    white-space: nowrap;
+  }
+  .admin-ops-case-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .knowledge-list {
+    position: static;
+  }
+}
+@media (max-width: 767px) {
+  .admin-workspace-nav {
+    position: static;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+  .admin-workspace-brand {
+    width: 100%;
+    gap: 8px;
+  }
+  .admin-workspace-brand strong {
+    font-size: 16px;
+  }
+  .admin-workspace-brand strong span {
+    display: none;
+  }
+  .admin-workspace-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .admin-workspace-nav nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    overflow: visible;
+    gap: 4px;
+  }
+  .admin-workspace-nav nav a {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: center;
+    white-space: normal;
+    padding: 10px 4px;
+    font-size: 11px;
+    line-height: 1.35;
+    min-height: 66px;
+  }
+  .admin-workspace-nav nav a svg {
+    display: block;
+    flex: none;
+  }
+  .admin-workspace-brand {
+    flex-wrap: wrap;
+  }
+  .admin-environment {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .admin-session-badge {
+    font-size: 11px;
+  }
+  .admin-content,
+  .admin-ops-content {
+    padding: 26px 14px;
+  }
+  .admin-heading h1,
+  .admin-ops-heading h1 {
+    font-size: 32px;
+  }
+  .admin-ops-heading {
+    gap: 18px;
+  }
+  .admin-ops-heading aside {
+    width: 100%;
+  }
+  .admin-ops-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .admin-metric,
+  .admin-ops-metric {
+    padding: 16px;
+    min-height: 116px;
+  }
+  .admin-ops-metric strong {
+    font-size: 28px;
+  }
+  .admin-ops-topbar {
+    padding: 14px;
+    flex-wrap: wrap;
+  }
+  .admin-ops-topbar > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .admin-ops-topbar select {
+    width: 100%;
+    max-width: 100%;
+  }
+  .admin-ops-case-grid {
+    gap: 16px;
+  }
+  .admin-ops-panel > header {
+    padding: 18px 16px;
+  }
+  .admin-ops-detail {
+    padding: 16px;
+  }
+  .admin-control-page {
+    padding: 26px 14px;
+  }
+  .admin-control-heading {
+    flex-wrap: wrap;
+  }
+  .admin-control-heading h1 {
+    font-size: 32px;
+  }
+  .admin-control-page .admin-control-card {
+    padding: 18px;
+  }
+  .admin-control-tabs {
+    width: 100%;
+  }
+  .admin-control-tabs button {
+    flex: 1;
+    font-size: 13px;
+    white-space: normal;
+  }
+  .admin-control-form fieldset {
+    padding: 14px;
+  }
+  .admin-control-form .admin-control-confirm {
+    align-items: flex-start;
+    min-height: 44px;
+    line-height: 1.6;
+  }
+  .admin-control-form .admin-control-confirm input {
+    margin-top: 3px;
+  }
+  .knowledge-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .knowledge-list {
+    max-height: none;
+  }
+  .knowledge-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .knowledge-filters label {
+    grid-column: auto;
+  }
+  .knowledge-filters :is(select, button) {
+    width: 100%;
+  }
+  .admin-auth-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-auth-story {
+    min-height: 240px;
+    padding: 28px 22px;
+    gap: 28px;
+  }
+  .admin-auth-story h1 {
+    font-size: clamp(34px, 9vw, 46px);
+  }
+  .admin-auth-panel {
+    padding: 20px 14px 36px;
+  }
+  .admin-auth-card {
+    padding: 28px 22px;
+  }
+  .admin-auth-card h2 {
+    font-size: 28px;
+  }
+}
+@media (max-width: 359px) {
+  .admin-ops-metrics,
+  .knowledge-metrics,
+  .admin-control-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-workspace-nav nav a {
+    font-size: 10px;
+  }
+  .admin-ops-pagination {
+    align-items: stretch;
+  }
+  .admin-ops-pagination > div {
+    width: 100%;
+  }
+  .admin-ops-pagination button {
+    flex: 1;
+  }
+}
