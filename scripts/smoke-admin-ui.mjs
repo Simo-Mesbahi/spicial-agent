@@ -355,6 +355,18 @@ try {
     await noOverflow();
     await capture('rag-mobile');
   });
+  await check('réglages administratifs lisibles avec le thème système sombre', async () => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    assert.equal(
+      await page
+        .locator('.admin-control-card')
+        .first()
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+      'rgb(25, 37, 31)',
+    );
+    await noOverflow();
+    await capture('rag-dark-mobile');
+  });
   assert.deepEqual(errors, []);
   assert.equal(
     calls.some((call) => call.path.endsWith('/settings') && call.method !== 'GET'),

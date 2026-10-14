@@ -155,7 +155,7 @@ body {
   font-size: 14px;
 }
 .app-shell .assistant-view .message-area {
-  height: clamp(320px, calc(100dvh - 400px), 640px);
+  height: clamp(320px, calc(100dvh - 560px), 600px);
   padding: 24px 20px;
   scrollbar-color: var(--input) transparent;
 }

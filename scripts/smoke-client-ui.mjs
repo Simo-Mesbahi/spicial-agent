@@ -99,6 +99,11 @@ async function noOverflow() {
   );
 }
 async function capture(name) {
+  await page.evaluate(async () => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   await page.screenshot({ path: `${output}/${name}.png`, fullPage: true, animations: 'disabled' });
 }
 try {
@@ -148,6 +153,8 @@ try {
         role: 'assistant',
         content,
         metadata: {
+          tools: ['get_case'],
+          caseVersion: 0,
           mode: 'demo',
           providerCalls: 0,
           fallback: null,
@@ -234,6 +241,17 @@ try {
     );
     await noOverflow();
     await capture('client-arabic-mobile');
+  });
+  await check('dark theme keeps the response and composer readable', async () => {
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = 'dark';
+    });
+    assert.equal(
+      await page.locator('.chat-panel').evaluate((el) => getComputedStyle(el).backgroundColor),
+      'rgb(25, 37, 31)',
+    );
+    await noOverflow();
+    await capture('client-dark-mobile');
   });
   assert.deepEqual(errors, []);
   writeFileSync(

@@ -496,6 +496,12 @@
   font-size: 12px;
   color: var(--muted-foreground);
 }
+:is(.admin-shell, .admin-ops-page) :is(h1, h2, h3, strong) {
+  color: var(--foreground);
+}
+.admin-ops-case-results b {
+  color: var(--primary);
+}
 @media (max-width: 1100px) {
   .admin-workspace-nav {
     gap: 12px;
