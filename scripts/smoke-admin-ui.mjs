@@ -293,6 +293,32 @@ try {
     await noOverflow();
     await capture('operations-mobile');
   });
+  await check('navigation mobile, formulaires et dossiers sur petits écrans', async () => {
+    for (const width of [320, 390, 768]) {
+      await page.setViewportSize({ width, height: 844 });
+      await noOverflow();
+      const next = navigation.getByRole('button', { name: 'Suivant' });
+      assert.ok((await next.boundingBox()).height >= 44);
+      assert.ok(
+        (await page
+          .getByRole('textbox', { name: 'Rechercher un dossier' })
+          .evaluate((el) => parseFloat(getComputedStyle(el).fontSize))) >= 16,
+      );
+      const sectionLinks = page
+        .getByRole('navigation', { name: 'Sections de l’administration' })
+        .getByRole('link');
+      assert.equal(await sectionLinks.count(), 4);
+      for (const link of await sectionLinks.all())
+        assert.ok((await link.boundingBox()).height >= 44);
+    }
+  });
+  await check('raccourci clavier vers le contenu administratif', async () => {
+    const skip = page.getByRole('link', { name: 'Aller au contenu de l’administration' });
+    await skip.focus();
+    assert.ok((await skip.evaluate((el) => parseFloat(getComputedStyle(el).outlineWidth))) >= 2);
+    await skip.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'admin-main');
+  });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/admin/performance`);
   await page.getByRole('button', { name: /Réglages de l’assistant/ }).click();
@@ -328,6 +354,18 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     await noOverflow();
     await capture('rag-mobile');
+  });
+  await check('réglages administratifs lisibles avec le thème système sombre', async () => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    assert.equal(
+      await page
+        .locator('.admin-control-card')
+        .first()
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+      'rgb(25, 37, 31)',
+    );
+    await noOverflow();
+    await capture('rag-dark-mobile');
   });
   assert.deepEqual(errors, []);
   assert.equal(

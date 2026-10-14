@@ -5,7 +5,7 @@ export function ResponseContent({ content }: { content: string }) {
     <div className="response-content">
       {responseBlocks(content).map((block, index) =>
         block.kind === 'text' ? (
-          <div className="response-prose" key={index}>
+          <div className="response-prose" dir="auto" key={index}>
             {block.text}
           </div>
         ) : (
@@ -30,7 +30,9 @@ export function ResponseContent({ content }: { content: string }) {
                 {block.rows.map((row, line) => (
                   <tr key={line}>
                     {row.map((value, cell) => (
-                      <td key={cell}>{value}</td>
+                      <td key={cell} dir="auto">
+                        {value}
+                      </td>
                     ))}
                   </tr>
                 ))}

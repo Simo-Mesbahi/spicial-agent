@@ -1,0 +1,693 @@
+/* Shared finishes: native fonts, semantic colours and responsive reading surfaces. */
+:root {
+  --ui-radius: 18px;
+  --ui-shadow: 0 8px 32px -18px rgb(16 37 30 / 18%);
+  --ui-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --quiet: #52675e;
+  --muted-foreground: #52675e;
+}
+:root[data-theme='dark'] {
+  --quiet: #b1c2b7;
+  --muted-foreground: #b1c2b7;
+  --ui-shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    --quiet: #b1c2b7;
+    --muted-foreground: #b1c2b7;
+    --ui-shadow: none;
+  }
+}
+body {
+  font-family: var(--ui-font);
+}
+:is(.app-shell, .discovery-page, .customer-contact-route, .showcase) {
+  -webkit-tap-highlight-color: transparent;
+}
+:is(.app-shell, .discovery-page, .customer-contact-route, .showcase)
+  :is(button, a, input, select, textarea, summary, [tabindex='0']):focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 4px;
+}
+:is(button, a) {
+  touch-action: manipulation;
+}
+.app-shell .topbar {
+  min-height: 64px;
+  height: 64px;
+  padding-inline: 28px;
+}
+.app-shell :is(.breadcrumb, .top-actions) {
+  font-size: 13px;
+}
+.app-shell .demo-pill {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 6px 11px;
+}
+:is(.app-shell, .atlas-sidebar) .icon-button {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+.atlas-sidebar .brand-header {
+  padding: 25px 22px;
+  gap: 22px;
+}
+.atlas-sidebar [data-slot='sidebar-menu'] {
+  gap: 8px;
+}
+.atlas-sidebar .nav-item {
+  height: 48px;
+  font-size: 14px;
+  border-radius: 12px;
+}
+.atlas-sidebar .workspace-name {
+  font-size: 13px;
+}
+.atlas-sidebar [data-slot='sidebar-group-label'] {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.atlas-sidebar .sidebar-note {
+  padding: 18px 15px;
+  border-radius: 14px;
+}
+.atlas-sidebar :is(.sidebar-note strong, .sidebar-profile strong) {
+  font-size: 13px;
+}
+.atlas-sidebar :is(.sidebar-note p, .sidebar-profile small) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.app-shell .main-content {
+  padding: 28px;
+  margin-block: 0;
+}
+.app-shell .page-heading {
+  margin-bottom: 22px;
+}
+.app-shell .page-heading h1 {
+  font-size: clamp(26px, 2.6vw, 36px);
+  letter-spacing: -0.04em;
+  line-height: 1.18;
+}
+.app-shell .page-heading p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.app-shell .eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.app-shell .engine-status {
+  font-size: 12px;
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+.app-shell .button {
+  min-height: 44px;
+  padding: 11px 16px;
+  font-size: 14px;
+  border-radius: 12px;
+}
+.app-shell .text-button {
+  min-height: 44px;
+  font-size: 13px;
+}
+.app-shell .assistant-grid {
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 20px;
+}
+.app-shell :is(.chat-panel, .context-panel, .case-card) {
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow);
+}
+.app-shell .chat-header {
+  padding: 16px 20px;
+}
+.app-shell .chat-header strong {
+  font-size: 14px;
+}
+.app-shell :is(.chat-header small, .chat-header-badge) {
+  font-size: 12px;
+}
+.app-shell .chat-header-badge {
+  color: var(--primary);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+.app-shell .conversation-case-bar {
+  padding: 12px 20px;
+}
+.app-shell .conversation-case-bar > label {
+  font-size: 12px;
+}
+.app-shell .conversation-case-select {
+  min-height: 46px;
+  font-size: 14px;
+  border-radius: 11px;
+}
+.conversation-case-options [data-slot='select-item'] {
+  font-size: 14px;
+}
+.app-shell .assistant-view .message-area {
+  height: clamp(320px, calc(100dvh - 560px), 600px);
+  padding: 24px 20px;
+  scrollbar-color: var(--input) transparent;
+}
+.app-shell .message {
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.app-shell .message-content {
+  max-width: 94%;
+}
+.app-shell .message.assistant .message-content {
+  flex: 1;
+}
+.app-shell .message-bubble {
+  padding: 18px 20px;
+  border-radius: 4px 16px 16px;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.app-shell .message.user .message-bubble {
+  border-radius: 16px 4px 16px 16px;
+}
+.app-shell :is(.message-meta, .receipt-history) {
+  font-size: 12px;
+}
+.app-shell .message-sources button {
+  min-height: 36px;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.app-shell .response-notice {
+  font-size: 13px;
+}
+.response-prose {
+  line-height: 1.75;
+  text-align: start;
+}
+.response-table-wrap {
+  border-radius: 12px;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.response-table-wrap table {
+  min-width: 320px;
+}
+.response-table-wrap :is(th, td) {
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.response-table-wrap thead th {
+  color: var(--foreground);
+  font-weight: 700;
+}
+.response-table-wrap tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--soft) 55%, var(--surface));
+}
+.response-table-wrap tbody td:first-child {
+  font-weight: 600;
+}
+.app-shell .composer {
+  margin: 0 16px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--soft);
+}
+.app-shell .composer:focus-within {
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 16%, transparent);
+}
+.app-shell .composer textarea {
+  font-size: 16px;
+  min-height: 48px;
+}
+.app-shell .composer-bottom > span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.app-shell .send-button {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+}
+.app-shell .chat-disclaimer {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 12px 20px 16px;
+}
+.app-shell .quick-followups {
+  gap: 8px;
+  padding: 8px 0 4px 37px;
+}
+.app-shell .quick-followups button {
+  min-height: 44px;
+  font-size: 13px;
+  border-radius: 12px;
+  padding: 10px 13px;
+}
+.app-shell .trial-guide {
+  border-radius: 14px;
+  background: var(--accent);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.app-shell .trial-guide-copy > strong {
+  font-size: 15px;
+}
+.app-shell .trial-guide-copy > p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.app-shell .trial-guide-copy > small {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.app-shell .trial-guide > .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.app-shell .context-panel {
+  padding: 22px;
+}
+.app-shell .context-panel h3 {
+  font-size: 22px;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+.app-shell .context-panel :is(p, dd, dt) {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.app-shell .context-top {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.app-shell :is(.timeline strong, .timeline span, .context-selected strong) {
+  font-size: 14px;
+}
+.app-shell :is(.timeline small, .timeline time, .context-selected small, .context-tip) {
+  font-size: 12px;
+  line-height: 1.65;
+}
+.app-shell .case-receipt {
+  border-radius: 14px;
+}
+.app-shell .receipt-heading {
+  font-size: 12px;
+  border-bottom-style: solid;
+}
+.app-shell .receipt-current h3 {
+  font-size: 24px;
+  letter-spacing: -0.025em;
+}
+.app-shell .receipt-current p {
+  font-size: 14px;
+}
+.app-shell .receipt-current small {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.app-shell .receipt-facts dt {
+  font-size: 12px;
+  font-weight: 600;
+}
+.app-shell .receipt-facts dd {
+  font-size: 14px;
+}
+.app-shell :is(.receipt-facts small, .receipt-date, .receipt-footer) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.app-shell .answer-transcript summary {
+  min-height: 44px;
+  font-size: 13px;
+}
+.app-shell .case-card {
+  padding: 24px;
+}
+.app-shell .case-card h3 {
+  font-size: 20px;
+  letter-spacing: -0.025em;
+}
+.app-shell .case-card :is(p, small, footer) {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.app-shell .status {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+.app-shell :is(.trust-footer, .app-footer) {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.atlas-dialog {
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 28px 80px rgb(16 37 30 / 20%);
+}
+.atlas-dialog :is(p, label, .verify-product strong) {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.atlas-dialog [data-slot='dialog-title'] {
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+.atlas-dialog [data-slot='input-otp-slot'] {
+  width: 44px;
+  height: 52px;
+  font-size: 20px;
+}
+.atlas-dialog [data-slot='dialog-close'] {
+  min-height: 44px;
+  min-width: 44px;
+}
+.atlas-dialog .demo-code-hint {
+  font-size: 13px;
+}
+.atlas-dialog .demo-code-hint button {
+  min-height: 44px;
+}
+.discovery-page .discovery-nav {
+  min-height: 84px;
+}
+.discovery-page .discovery-nav nav {
+  font-size: 14px;
+}
+.discovery-page .discovery-nav nav :is(a, button) {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.discovery-page .discovery-intro h1 {
+  letter-spacing: -0.045em;
+  font-weight: 600;
+}
+.discovery-page .discovery-intro h1 > span {
+  letter-spacing: -0.025em;
+}
+.discovery-page .discovery-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.discovery-page .discovery-stage {
+  border-radius: 24px;
+  box-shadow: 0 22px 60px -26px rgb(16 37 30 / 35%);
+}
+.discovery-page .preview-answer p {
+  font-size: 15px;
+  line-height: 1.65;
+}
+.discovery-page .discovery-tabs-list [data-slot='tabs-trigger'] {
+  min-height: 44px;
+  font-size: 13px;
+}
+.discovery-page .stage-bottom button {
+  min-height: 44px;
+  font-size: 13px;
+}
+.discovery-page .discovery-primary {
+  font-size: 15px;
+  min-height: 52px;
+  border-radius: 12px;
+}
+.discovery-page :is(.discovery-sublead, .discovery-mode) {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.discovery-page .discovery-steps article {
+  border-radius: 18px;
+}
+.discovery-page :is(.discovery-steps p, .confidence-editorial p) {
+  font-size: 15px;
+  line-height: 1.75;
+}
+.discovery-page .discovery-value-strip :is(strong, small) {
+  font-size: 13px;
+}
+.discovery-page .discovery-faq [data-slot='accordion-trigger'] {
+  font-size: 15px;
+  min-height: 52px;
+}
+.showcase {
+  --showcase-muted: #4e6458;
+  --showcase-line: rgb(16 37 30 / 14%);
+}
+.showcase .showcase-nav {
+  min-height: 84px;
+}
+.showcase .showcase-brand {
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+.showcase .showcase-nav-links a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.showcase .showcase-hero {
+  gap: clamp(32px, 5vw, 64px);
+  padding-block: 80px 64px;
+}
+.showcase h1 {
+  font-weight: 650;
+  font-size: clamp(44px, 6.2vw, 84px);
+  line-height: 1.04;
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+}
+.showcase .showcase-preview {
+  padding: 12px;
+  border-radius: 24px;
+  box-shadow: 0 24px 64px -24px rgb(16 37 30 / 20%);
+  backdrop-filter: none;
+}
+.showcase .showcase-button {
+  border-radius: 12px;
+  min-height: 50px;
+}
+.showcase .showcase-feature-card,
+.showcase .showcase-audience-card {
+  border-radius: 18px;
+  box-shadow: var(--ui-shadow);
+}
+.showcase .showcase-section-heading h2 {
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.showcase .showcase-faq summary {
+  min-height: 48px;
+}
+.customer-contact-route :is(.contact-clients-card, .contact-promise) {
+  border-radius: 20px;
+}
+.customer-contact-route :is(button, a.button) {
+  min-height: 44px;
+}
+@media (max-width: 1100px) {
+  .app-shell .assistant-grid {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 16px;
+  }
+  .app-shell .main-content {
+    padding: 24px;
+  }
+}
+@media (max-width: 960px) {
+  .app-shell .assistant-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell .context-panel {
+    display: block;
+  }
+}
+@media (max-width: 767px) {
+  .app-shell .topbar {
+    height: 60px;
+    padding-inline: 16px;
+  }
+  .app-shell .main-content {
+    padding: 22px 14px 18px;
+  }
+  .app-shell .page-heading {
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .app-shell .page-heading h1 {
+    font-size: 27px;
+  }
+  .app-shell .trial-guide {
+    padding: 14px;
+    gap: 10px;
+  }
+  .app-shell .trial-guide-copy {
+    flex-basis: calc(100% - 96px);
+  }
+  .app-shell .trial-guide > .icon-button {
+    right: 8px;
+    top: 8px;
+  }
+  .app-shell .trial-guide > .button {
+    margin-left: 0;
+    width: 100%;
+  }
+  .app-shell .mobile-case-toggle {
+    min-height: 56px;
+    border-radius: 14px;
+  }
+  .app-shell .mobile-case-toggle strong {
+    font-size: 14px;
+  }
+  .app-shell .mobile-case-toggle small {
+    font-size: 12px;
+  }
+  .app-shell .assistant-grid[data-context-open='false'] > .context-panel {
+    display: none;
+  }
+  .app-shell .assistant-grid[data-context-open='true'] > .context-panel {
+    display: block;
+  }
+  .app-shell .chat-header {
+    padding: 14px;
+    flex-wrap: wrap;
+  }
+  .app-shell .chat-header-badge {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+  .app-shell .conversation-case-bar {
+    padding: 12px 14px;
+  }
+  .app-shell .conversation-case-select {
+    max-width: none;
+  }
+  .app-shell .assistant-view .message-area {
+    height: clamp(360px, 52dvh, 560px);
+    padding: 18px 12px;
+  }
+  .app-shell .message-content {
+    max-width: 100%;
+  }
+  .app-shell .message.assistant > .brand {
+    display: none;
+  }
+  .app-shell .message-bubble {
+    padding: 16px 14px;
+  }
+  .app-shell .quick-followups {
+    padding-left: 0;
+  }
+  .app-shell .composer {
+    margin-inline: 10px;
+    padding: 12px;
+  }
+  .app-shell .composer-bottom > span {
+    font-size: 11px;
+    max-width: 220px;
+  }
+  .app-shell .receipt-facts {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .app-shell .receipt-current h3 {
+    font-size: 22px;
+  }
+  .app-shell .receipt-footer {
+    gap: 8px;
+    font-size: 11px;
+  }
+  .response-table-wrap :is(th, td) {
+    padding: 12px;
+    min-width: 120px;
+  }
+  .atlas-dialog {
+    padding: 24px 18px;
+    max-width: calc(100vw - 24px);
+  }
+  .atlas-dialog [data-slot='input-otp-slot'] {
+    width: clamp(36px, 10vw, 44px);
+  }
+  .discovery-page .discovery-container {
+    width: calc(100% - 32px);
+  }
+  .discovery-page .discovery-hero {
+    padding-top: 36px;
+  }
+  .discovery-page .discovery-nav-cta {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .discovery-page .discovery-intro h1 {
+    font-size: clamp(36px, 9vw, 56px);
+  }
+  .discovery-page .discovery-section-heading h2 {
+    font-size: 32px;
+  }
+  .showcase .showcase-hero {
+    padding-block: 48px 40px;
+  }
+  .showcase .showcase-brand {
+    font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .response-content,
+  .showcase-button,
+  .discovery-primary {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Real customer tracking uses the same reading and focus hierarchy. */
+.tracking-page :is(.tracking-form-card, .tracking-receipt, .tracking-summary, .tracking-panel) {
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow);
+}
+.tracking-page .tracking-form-card {
+  padding: 32px;
+}
+.tracking-page .tracking-form-card h2 {
+  font-size: 28px;
+  letter-spacing: -0.035em;
+}
+.tracking-page .tracking-form-card label {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.tracking-page :is(button, input, summary, a):focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 4px;
+}
+.tracking-page :is(button, a.tracking-primary, summary) {
+  min-height: 44px;
+}
+.tracking-page .tracking-form-card input {
+  min-height: 52px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+.tracking-page :is(.tracking-form-foot, .tracking-config-note, .tracking-footer) {
+  font-size: 13px;
+  line-height: 1.65;
+}
+@media (max-width: 767px) {
+  .tracking-page .tracking-form-card {
+    padding: 24px 20px;
+  }
+  .tracking-page .tracking-form-card h2 {
+    font-size: 25px;
+  }
+}
