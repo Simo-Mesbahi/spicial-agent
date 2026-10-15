@@ -55,7 +55,7 @@ test('all Supabase migrations replay and the SQL operations contract passes', as
     );
     assert.deepEqual(unprotected.rows, [], 'all application tables must enable RLS');
 
-    for (const file of ['operations.sql', 'overview-scopes.sql']) {
+    for (const file of ['operations.sql', 'overview-scopes.sql', 'business.sql']) {
       const results = await db.exec(readFileSync(`supabase/tests/${file}`, 'utf8'));
       assert.ok(
         results.some((result) => result.rows.some((row) => String(row.result).startsWith('PASS:'))),

@@ -1,4 +1,5 @@
 import { syntheticProviderHealth } from './provider-health';
+import { handleAdminBusinessApi } from './admin-business-api';
 import { effectiveEnvironment } from './runtime-settings';
 import { z } from 'zod';
 import { previewKnowledge, ragConfiguration, ragPreviewInputSchema } from './admin-rag-preview';
@@ -495,8 +496,20 @@ function caseManagerOrganizationId(
 }
 
 function mapSupabaseError(error: SupabaseRequestError): never {
+  const businessMessages: Record<string,string> = {
+    export_limit_exceeded: 'Plus de 1 000 dossiers correspondent à ces filtres. Affinez la recherche avant de réexporter.',
+    export_size_exceeded: 'Cet export est trop volumineux. Affinez la recherche pour obtenir un fichier complet.',
+    entity_reference_already_exists: 'Cette référence existe déjà. Retrouvez la fiche existante ou utilisez une autre référence.',
+    store_has_open_cases: 'Ce magasin est rattaché à des dossiers non archivés et doit rester actif.',
+    restore_store_inactive: 'Le magasin lié est inactif. Un super-administrateur doit le réactiver avant la restauration.',
+    shared_entity_role_denied: 'Cette fiche est partagée avec un autre service. Sa correction nécessite un super-administrateur.',
+    case_not_archived: 'Ce dossier est déjà actif. Actualisez son état.',
+  };
+  if (['22023','42501'].includes(error.code) && error.reason && Object.hasOwn(businessMessages,error.reason))
+    fail(error.code === '42501' ? 403 : 400,businessMessages[error.reason],error.reason);
   switch (error.code) {
     case '40001':
+    case '40P01':
       fail(409, 'Les données ont changé. Actualisez avant de réessayer.', 'version_conflict');
     case '42501':
       fail(403, 'Votre rôle ne permet pas cette action.', 'admin_access_denied');
@@ -536,6 +549,16 @@ export async function handleAdminOperationsApi(
       return json({ error: 'Ressource introuvable.', code: 'not_found' }, 404);
 
     const session = await requireAdmin(req, env);
+
+    if (path === `${BASE_PATH}/business` || path.startsWith(`${BASE_PATH}/business/`)) {
+      return await handleAdminBusinessApi(req, {
+        organization: value => organizationFromBody(value, session.me),
+        guard: () => guardMutation(req, env),
+        body: () => requestBody(req, 32 * 1024),
+        rpc: (name, payload) => safeRpc(env, name, payload, session.accessToken),
+        json: (body, status = 200) => json(body, status, session.cookies),
+      });
+    }
 
     if (path === `${BASE_PATH}/provider-health`) {
       if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.', code: 'method_not_allowed' }, 405, session.cookies);

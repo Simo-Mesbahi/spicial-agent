@@ -276,11 +276,14 @@ try {
   await check('modification conservée après refus de quitter le dossier', async () => {
     await page.locator('.admin-ops-case-results button').first().click();
     await page.getByRole('button', { name: 'Modifier', exact: true }).click();
-    await page.locator('.admin-ops-edit-form input').first().fill('Modification non enregistrée');
+    await page
+      .locator('.admin-ops-edit-form')
+      .getByLabel('Objet', { exact: true })
+      .fill('Modification non enregistrée');
     page.once('dialog', (dialog) => dialog.dismiss());
     await navigation.getByRole('button', { name: 'Précédent' }).click();
     assert.equal(
-      await page.locator('.admin-ops-edit-form input').first().inputValue(),
+      await page.locator('.admin-ops-edit-form').getByLabel('Objet', { exact: true }).inputValue(),
       'Modification non enregistrée',
     );
     page.once('dialog', (dialog) => dialog.accept());
@@ -307,7 +310,7 @@ try {
       const sectionLinks = page
         .getByRole('navigation', { name: 'Sections de l’administration' })
         .getByRole('link');
-      assert.equal(await sectionLinks.count(), 4);
+      assert.equal(await sectionLinks.count(), 6);
       for (const link of await sectionLinks.all())
         assert.ok((await link.boundingBox()).height >= 44);
     }

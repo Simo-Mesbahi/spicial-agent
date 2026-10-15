@@ -17,6 +17,7 @@ export class SupabaseRequestError extends Error {
     public status: number,
     public code: string,
     message = 'Supabase request failed',
+    public reason?: string,
   ) {
     super(message);
   }
@@ -152,6 +153,7 @@ export async function supabaseRequest<T>(
         response.status,
         errorCode(payload),
         'Supabase rejected request',
+        safeBusinessReason(payload),
       );
     return payload as T;
   } catch (error) {
@@ -165,6 +167,16 @@ export async function supabaseRequest<T>(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// Only these fixed identifiers may cross the HTTP boundary. Never retain raw SQL errors.
+function safeBusinessReason(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object' || !('message' in payload)) return undefined;
+  const allowed = new Set([
+    'export_limit_exceeded', 'export_size_exceeded', 'entity_reference_already_exists',
+    'store_has_open_cases', 'restore_store_inactive', 'shared_entity_role_denied', 'case_not_archived',
+  ]);
+  return typeof payload.message === 'string' && allowed.has(payload.message) ? payload.message : undefined;
 }
 
 export function jwtClaims(accessToken: string): Record<string, unknown> | null {

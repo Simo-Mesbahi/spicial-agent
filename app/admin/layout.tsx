@@ -5,6 +5,7 @@ import './admin-control.css';
 import './admin.css';
 import './admin-operations.css';
 import './admin-interface.css';
+import './admin-business.css';
 
 export const metadata: Metadata = {
   title: 'Administration · SAV SC Assistant AI',
