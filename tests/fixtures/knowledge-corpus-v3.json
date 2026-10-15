@@ -1,0 +1,423 @@
+[
+  {
+    "title": "Abstention lorsque les preuves manquent",
+    "category": "Opérations",
+    "version": "1.0",
+    "checksum": "917859692853a32dbc14c1abf88bb3d625cd03b23078cf05d4cc2c1cc201f573",
+    "tags": ["abstention", "incertitude", "preuve", "hallucination", "procedure:ops-abstention"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nPréférer une réponse limitée mais exacte à une réponse plausible non vérifiée.\nRÈGLES\nSans procédure publiée pertinente ni donnée dossier suffisante, l’assistant doit le dire. En cas de sources contradictoires, ne pas choisir arbitrairement : signaler l’incohérence et escalader. La connaissance générale du modèle ne remplace pas prix, délai, garantie, stock ou décision métier.\nFORMULATION\nDire ce qui est connu, ce qui manque et l’étape suivante fiable."
+  },
+  {
+    "title": "Accepter ou refuser un devis",
+    "category": "SAV",
+    "version": "2.0",
+    "checksum": "f21eff6018577f689615b17df077708166f04569767905b1e6377a771ba73a10",
+    "tags": [
+      "devis",
+      "accepter",
+      "refuser",
+      "prix",
+      "cout",
+      "montant",
+      "reparation",
+      "legacy:sav-devis"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Accepter ou refuser un devis » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nUn devis en attente nécessite une confirmation explicite du client. Le montant présenté est celui du dossier actuel. L’intervention ne commence pas avant acceptation. En cas de refus, un conseiller organise la restitution ; aucun paiement réel n’est déclenché dans cette démonstration.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Annulation d’une commande",
+    "category": "Service client",
+    "version": "1.0",
+    "checksum": "fa7c8b73b52bd99a95bd62862bcc623428341859b946826bd6b8a637a9f578bb",
+    "tags": ["annulation", "commande", "expédition", "préparation", "procedure:sc-annulation"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nQualifier une demande d’annulation selon l’état réel de la commande.\nPARCOURS\nIdentifier le statut. Si une action d’annulation est réellement disponible, la présenter avec confirmation explicite. Si la commande est déjà expédiée ou si aucune action n’existe, ne pas prétendre qu’elle peut être stoppée ; orienter vers retour ou conseiller.\nINTERDITS\nNe pas inventer délai d’annulation, frais, remboursement automatique ou interception logistique garantie."
+  },
+  {
+    "title": "Attente de pièce ou pièce indisponible",
+    "category": "SAV",
+    "version": "1.0",
+    "checksum": "220451330ebaa8f697ffee4a2f45aa4393236b0515fd334d419d20e08aba4e5b",
+    "tags": ["pièce", "attente", "indisponible", "approvisionnement", "procedure:sav-piece"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nExpliquer une réparation bloquée par une pièce nécessaire.\nPARCOURS\nVérifier l’attente de pièce, citer une référence uniquement si elle est utile et enregistrée, présenter une date d’approvisionnement seulement lorsqu’elle vient de la source métier. Sans date, expliquer que l’intervention reste bloquée.\nESCALADE\nPièce définitivement indisponible, estimation dépassée, solution alternative ou contestation.\nINTERDITS\nNe pas inventer stock fournisseur, délai ou équivalence."
+  },
+  {
+    "title": "Colis incomplet ou endommagé",
+    "category": "Service client",
+    "version": "2.0",
+    "checksum": "f94d1b0885783096d4034d03dbae12193fd691dceb431d3cbb2c7198e922f9df",
+    "tags": [
+      "manquant",
+      "incomplet",
+      "casse",
+      "abime",
+      "endommage",
+      "article",
+      "colis",
+      "legacy:sc-incomplet"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Colis incomplet ou endommagé » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nPrécisez la référence de commande et les articles concernés. Conservez l’emballage et les justificatifs disponibles. Le conseiller vérifie s’il existe un envoi séparé ou ouvre une réclamation. Aucun remboursement ni échange n’est promis avant examen du dossier.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Commande expédiée ou livrée partiellement",
+    "category": "Service client",
+    "version": "1.0",
+    "checksum": "b65beb6bec1369848405ee3ab80f26f1694c0dac98c35e2c3dac04ab1bac20e7",
+    "tags": [
+      "commande partielle",
+      "colis multiples",
+      "expédition partielle",
+      "procedure:sc-commande-partielle"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nExpliquer une commande répartie en plusieurs colis sans déclarer un article perdu trop tôt.\nPARCOURS\nDistinguer chaque ligne ou colis : préparation, expédié, livré ou sans information. Présenter séparément les suivis disponibles. Si un élément reste sans mouvement alors que les autres sont terminés, appliquer la procédure incident.\nINTERDITS\nNe pas annoncer perte définitive, remboursement ou nouvelle expédition sans décision confirmée."
+  },
+  {
+    "title": "Commande indiquée livrée mais non reçue",
+    "category": "Service client",
+    "version": "1.0",
+    "checksum": "30aed598aeb3a2087d9d730fa54c53b22c8bb9662221f1b5385081c8e47c2583",
+    "tags": ["livré", "non reçu", "colis", "incident", "procedure:sc-livree-non-recue"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nTraiter l’écart entre un statut « livré » et la situation décrite par le client.\nPARCOURS\nVérifier que le suivi indique réellement « livré ». Demander uniquement les vérifications simples prévues. Si le colis reste introuvable, préparer une investigation avec référence, date du statut et résumé.\nESCALADE\nRéclamation transporteur ou décision commerciale.\nINTERDITS\nNe pas accuser le client ou le transporteur ; ne pas promettre remplacement ou remboursement immédiat."
+  },
+  {
+    "title": "Comprendre le suivi de réparation",
+    "category": "SAV",
+    "version": "2.0",
+    "checksum": "e17da52c93f9ab7d96cbde65e0c8703f03dca304aa11f3d966197fbc11944b28",
+    "tags": [
+      "reparation",
+      "panne",
+      "sav",
+      "technicien",
+      "diagnostic",
+      "piece",
+      "atelier",
+      "suivi",
+      "legacy:sav-suivi"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Comprendre le suivi de réparation » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nLe suivi distingue le dépôt, la réception à l’atelier, le diagnostic, l’attente de pièce, la réparation, le contrôle et le retour. Une réparation terminée ne signifie pas que le produit est disponible au magasin. Les dates de retour sont estimatives tant que la réception n’est pas confirmée.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Compte, fidélité et facture",
+    "category": "Service client",
+    "version": "2.0",
+    "checksum": "a0eeddbe06cd37f8f6c7ab08d9091ec0233912132a9ca40415e8d36f8b68b41e",
+    "tags": [
+      "compte",
+      "fidelite",
+      "points",
+      "facture",
+      "ticket",
+      "paiement",
+      "mot",
+      "passe",
+      "legacy:sc-compte"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Compte, fidélité et facture » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nUn conseiller peut examiner une demande liée au compte, aux points de fidélité ou à une facture. La plateforme de démonstration ne dispose pas de connecteur de paiement ou de programme de fidélité réel. Ne communiquez jamais de mot de passe, code bancaire ou numéro de carte dans la conversation.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Conseil et disponibilité produit",
+    "category": "Produits",
+    "version": "2.0",
+    "checksum": "fb7f6a2441a17576aee409b04a874ebb4cd85dafaf094b8fcae682c4ce8d0287",
+    "tags": [
+      "produit",
+      "stock",
+      "disponibilite",
+      "compatible",
+      "conseil",
+      "caracteristique",
+      "acheter",
+      "legacy:produit-conseil"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Conseil et disponibilité produit » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nLe catalogue de démonstration présente des produits fictifs. Le stock et la compatibilité technique ne sont pas reliés à un inventaire réel. Pour une caractéristique absente de la notice, l’assistant doit préciser qu’il ne peut pas la vérifier et proposer un conseiller.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Contacter un conseiller",
+    "category": "Service client",
+    "version": "2.0",
+    "checksum": "0e0b9710d156573cf92e8ba21d4aceb27ebb7669f99c504c3f4217677b8be79e",
+    "tags": [
+      "conseiller",
+      "humain",
+      "contact",
+      "reclamation",
+      "magasin",
+      "horaires",
+      "telephone",
+      "adresse",
+      "legacy:magasin-contact"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Contacter un conseiller » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nUne demande de contact rassemble la référence du dossier, le statut et le résumé du problème. Elle apparaît dans l’espace de gestion. Le relais conseiller est simulé : aucun appel, email ou SMS automatique n’est déclenché. La page de contact séparée permet au visiteur de préparer puis de confirmer lui-même un email. Les horaires des magasins ne sont pas disponibles dans cette version.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Demander un retour ou un échange",
+    "category": "Service client",
+    "version": "2.0",
+    "checksum": "bad446d5e226fd118d736005d42527ecfe1f88e383057c6cd9ed4f5be654c688",
+    "tags": ["retour", "retourner", "echange", "changer", "produit", "delai", "legacy:sc-retour"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Demander un retour ou un échange » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nLes possibilités de retour dépendent du produit, du mode d’achat et de la politique applicable. Dans la démonstration, les retours autorisés sont identifiés dans le dossier. Un retour réceptionné doit être contrôlé avant la validation du remboursement. Les situations non documentées sont transmises à un conseiller.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Dépôt SAV et qualification initiale",
+    "category": "SAV",
+    "version": "1.0",
+    "checksum": "f3d5c5188d1ad1673c1d58b5539d9e693ecd90be2bceece3700496cbf154673f",
+    "tags": ["dépôt", "qualification", "panne", "symptôme", "procedure:sav-depot"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nCréer un dossier SAV exploitable sans transformer un symptôme en diagnostic.\nPARCOURS\nIdentifier le produit, recueillir le symptôme avec les mots du client, noter fréquence/message d’erreur/contexte utile, séparer observation client et fait vérifié, puis orienter vers diagnostic, sécurité, devis ou suivi.\nESCALADE\nTout signal de danger bascule immédiatement vers la procédure sécurité.\nINTERDITS\nNe pas diagnostiquer à distance ni promettre réparabilité, prix ou délai."
+  },
+  {
+    "title": "Diagnostic et attente technicien",
+    "category": "SAV",
+    "version": "1.0",
+    "checksum": "3f33e8cbdcbdba310a04a3c4002b99309c6c98249a32467c89a9033dff8fba38",
+    "tags": ["diagnostic", "technicien", "atelier", "attente", "procedure:sav-diagnostic"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nExpliquer la phase de diagnostic sans inventer de cause ni de délai.\nRÈGLES\n« Attente technicien » signifie que l’expertise n’est pas finalisée. « Diagnostic » ne permet de citer que les conclusions réellement enregistrées.\nPARCOURS\nRestituer statut, dernière mise à jour et conclusions disponibles. Sans estimation fiable, le dire explicitement. Basculer ensuite vers devis, pièce ou prise en charge lorsque le dossier l’indique.\nINTERDITS\nNe pas attribuer une cause sans preuve."
+  },
+  {
+    "title": "Dossier SAV sans estimation ou en retard",
+    "category": "SAV",
+    "version": "1.0",
+    "checksum": "c6d38e7c25b6e4f7c35bf5d19007650b331c13f30e7afbccdf2edbd598d2482d",
+    "tags": ["retard SAV", "sans date", "ETA", "stagnation", "procedure:sav-retard"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nRépondre utilement lorsqu’un dossier n’a pas de date fiable ou n’évolue plus.\nPARCOURS\nRestituer statut et dernière mise à jour. Sans date, le dire. Ne jamais transformer une moyenne en promesse individuelle. Si le dossier est marqué en retard, reprendre ce fait sans inventer la cause.\nESCALADE\nEstimations dépassées, absence prolongée d’événement ou information contradictoire."
+  },
+  {
+    "title": "Garantie et prise en charge",
+    "category": "SAV",
+    "version": "2.0",
+    "checksum": "cc76ac7a58da8a7fa0c7ab67cb8257d4ac2ab53bdf3dcf67fe475b008240aaeb",
+    "tags": [
+      "garantie",
+      "gratuit",
+      "payer",
+      "couverture",
+      "prise",
+      "charge",
+      "legacy:sav-garantie"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Garantie et prise en charge » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nDans cette enseigne fictive, la décision de prise en charge est enregistrée dans le dossier après contrôle des justificatifs et du diagnostic. L’assistant explique cette décision, mais ne détermine pas les droits légaux et ne promet pas une gratuité. En cas de désaccord, un conseiller doit examiner le dossier.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Installation, branchement et compatibilité sensible",
+    "category": "Produits",
+    "version": "1.0",
+    "checksum": "eececd9087dc2ad86aa2c782fa57955d8cd7f31ad93eb9b9ef8dce5bf84cce55",
+    "tags": [
+      "installation",
+      "branchement",
+      "compatibilité",
+      "électricité",
+      "gaz",
+      "procedure:product-install"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nÉviter qu’un conseil commercial soit interprété comme une validation technique d’installation.\nRÈGLES\nUne compatibilité simple doit s’appuyer sur une spécification documentée. Pour électricité, gaz, fixation lourde, sécurité ou dimensions critiques, ne pas improviser : demander la référence exacte et orienter vers documentation officielle ou professionnel compétent.\nINTERDITS\nAucun contournement de sécurité, modification électrique ou raccordement risqué ; ne pas déclarer une compatibilité sans preuve."
+  },
+  {
+    "title": "Paiement débité, refusé ou anomalie de transaction",
+    "category": "Service client",
+    "version": "1.0",
+    "checksum": "2984d7c4e2679cf508e7f2925d91b55ecc898369d75eeee412ec0ab5a2332225",
+    "tags": ["paiement", "débit", "refusé", "double débit", "procedure:sc-paiement"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nQualifier un paiement refusé, débité sans commande visible, en double ou incohérent.\nSÉCURITÉ\nNe jamais demander numéro de carte complet, cryptogramme, PIN, mot de passe bancaire ou code de validation.\nPARCOURS\nDistinguer paiement refusé, autorisation en attente, débit confirmé, double débit ou commande introuvable. Toute correction financière nécessite un relais ou un outil autorisé.\nINTERDITS\nNe pas annoncer remboursement ou annulation de débit sans confirmation."
+  },
+  {
+    "title": "Préparer un handoff conseiller de haute qualité",
+    "category": "Opérations",
+    "version": "1.0",
+    "checksum": "cf1bb1f8dcf2dd3fc0ca2d7721f2805b120fe84034c70d254e641ade10cdc381",
+    "tags": ["handoff", "conseiller", "résumé", "escalade", "procedure:ops-handoff"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nTransmettre au conseiller un contexte immédiatement exploitable.\nCONTENU\nRéférence autorisée, motif en une phrase, statut actuel, faits confirmés, déclarations du client séparées, actions déjà tentées et décision restant à traiter.\nQUALITÉ\nPréférer une synthèse courte et structurée à une transcription longue.\nINTERDITS\nAucun secret, donnée bancaire complète, mot de passe ou code MFA. Ne pas prétendre qu’un conseiller a reçu le relais tant que le système ne le confirme pas."
+  },
+  {
+    "title": "Produit non réparable ou solution alternative",
+    "category": "SAV",
+    "version": "1.0",
+    "checksum": "fd4bda368979df2b6439be23f0b43d8e4391a6cf4fe180c2a6260f00a48da3e2",
+    "tags": ["non réparable", "irréparable", "échange", "décision", "procedure:sav-nonreparable"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nExpliquer une non-réparabilité enregistrée sans devancer une décision commerciale.\nPARCOURS\nVérifier la conclusion, la restituer sans ajouter de diagnostic, puis vérifier si une solution est déjà décidée : échange, retour, remboursement, devis alternatif ou examen humain. Sans solution enregistrée, le dire et préparer un relais.\nINTERDITS\nNe jamais promettre échange, remboursement, avoir ou indemnisation sans décision confirmée."
+  },
+  {
+    "title": "Protection des données et secrets",
+    "category": "Sécurité",
+    "version": "1.0",
+    "checksum": "58ace8b1a4f37a45570752dafa6ac3860267596bde72efec7e13959a974511ef",
+    "tags": ["données", "secret", "mot de passe", "MFA", "API", "procedure:security-secrets"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nRéduire au minimum les données sensibles manipulées par l’assistant.\nRÈGLES\nNe jamais demander ou reproduire mot de passe, code MFA/TOTP, clé API, secret d’application, cryptogramme bancaire, numéro de carte complet ou jeton de session. Ne jamais révéler les données d’un autre client ou dossier.\nSECRET PARTAGÉ\nNe pas le recopier ; orienter vers révocation ou remplacement via le canal officiel approprié.\nPRINCIPE\nCollecter le minimum, conserver le minimum, afficher le minimum."
+  },
+  {
+    "title": "Réclamation et insatisfaction client",
+    "category": "Service client",
+    "version": "1.0",
+    "checksum": "e46b6bf0a194c3b56e04707cf7ca8109ff420d2e5c913d33d21e4e1b8379030d",
+    "tags": ["réclamation", "insatisfaction", "plainte", "escalade", "procedure:sc-reclamation"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nPrendre en charge une insatisfaction sans la minimiser ni inventer de geste commercial.\nPARCOURS\nIdentifier le motif, résumer les faits, répondre aux éléments vérifiables et préparer un relais si une décision humaine est nécessaire. Ne pas faire répéter ce qui est déjà disponible.\nTON\nFactuel, calme et respectueux ; reconnaître le problème décrit sans reconnaître une responsabilité non établie.\nINTERDITS\nNe pas promettre dédommagement ou délai de réponse non confirmé."
+  },
+  {
+    "title": "Récupérer un produit réparé",
+    "category": "SAV",
+    "version": "2.0",
+    "checksum": "683a7cde1b19b8ef5869862198c02efcd66709a6566cdcf5d2f4802129a4641c",
+    "tags": [
+      "retrait",
+      "recuperer",
+      "chercher",
+      "magasin",
+      "repare",
+      "disponible",
+      "legacy:sav-retrait"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Récupérer un produit réparé » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nLe retrait est possible lorsque le dossier indique « Disponible au retrait ». Préparez la référence du dossier et le justificatif de dépôt. Un produit encore en transport n’est pas disponible. Pour un changement de magasin ou une livraison à domicile, un conseiller vérifie la faisabilité.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Retard ou incident de livraison",
+    "category": "Service client",
+    "version": "2.0",
+    "checksum": "d5ebcc6564c25b88cc903710c3af93a6ba07bb1df771aa0fff90bd1abfbaec87",
+    "tags": [
+      "livraison",
+      "retard",
+      "colis",
+      "transporteur",
+      "date",
+      "commande",
+      "arriver",
+      "legacy:sc-livraison"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Retard ou incident de livraison » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nLe statut et l’estimation proviennent du suivi enregistré. Une estimation ne constitue pas une date garantie. Si la date n’est pas communiquée ou si le colis est signalé perdu, une demande de contact peut être créée pour le service client. La simulation métier ne déclenche aucun SMS ni email automatique.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Standard de qualité des réponses client",
+    "category": "Opérations",
+    "version": "1.0",
+    "checksum": "1bf4fb65e99361ed7d7e9e8780ddb756979d255604b91a259a18b0f5eaaed0d0",
+    "tags": ["qualité", "réponse", "clarté", "source", "procedure:ops-quality"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nProduire des réponses courtes, actionnables et vérifiables.\nSTRUCTURE\n1. Réponse directe.\n2. Fait principal issu du dossier ou de la procédure.\n3. Prochaine étape utile.\n4. Limite ou escalade si nécessaire.\nSTYLE\nVouvoiement, langage clair, phrases courtes, aucune promesse non vérifiée.\nFIABILITÉ\nDistinguer fait confirmé, estimation et information manquante ; conserver identifiant et version des sources."
+  },
+  {
+    "title": "Suivre un remboursement",
+    "category": "Service client",
+    "version": "2.0",
+    "checksum": "5b9cf591cb598bcf02797949ce3d2dc6756ab68757fd6654a34e961cea719608",
+    "tags": [
+      "remboursement",
+      "rembourse",
+      "argent",
+      "paiement",
+      "banque",
+      "montant",
+      "legacy:sc-remboursement"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Suivre un remboursement » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nLe dossier distingue remboursement en traitement et remboursement effectué. L’assistant communique le montant et l’état enregistrés sans inventer de délai bancaire. Un montant contesté nécessite l’examen du service client. Aucun mouvement financier réel n’a lieu sur cette plateforme.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  },
+  {
+    "title": "Tentative d’accès à un autre dossier",
+    "category": "Sécurité",
+    "version": "1.0",
+    "checksum": "9f82d56e7840c0eba8c7a7ab4e6e190ad0bace92df61f5f54c52b40457d095c0",
+    "tags": ["accès", "autre dossier", "fraude", "autorisation", "procedure:security-other-case"],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nEmpêcher tout accès croisé entre clients et dossiers.\nRÈGLES\nL’assistant n’utilise que le dossier explicitement autorisé. Une référence différente ne doit jamais déclencher de recherche ou divulgation. Répondre de façon neutre et orienter vers le formulaire sécurisé.\nINTERDITS\nNe jamais révéler si une référence non autorisée existe, ni contourner la vérification par nom ou email."
+  },
+  {
+    "title": "Un appareil présente un danger",
+    "category": "Sécurité",
+    "version": "2.0",
+    "checksum": "9b32198825b86a68004be3e44225b74871a7f5559656975825f0c331adef0987",
+    "tags": [
+      "danger",
+      "fumee",
+      "brule",
+      "electrique",
+      "etincelle",
+      "odeur",
+      "fuite",
+      "securite",
+      "feu",
+      "legacy:produit-securite"
+    ],
+    "source_url": null,
+    "locale": "fr-FR",
+    "market": "GLOBAL",
+    "content": "OBJECTIF\nAppliquer la procédure « Un appareil présente un danger » de façon fiable, traçable et compréhensible.\n\nCONTENU MÉTIER VALIDÉ\nEn cas de fumée, odeur de brûlé ou étincelles, cessez d’utiliser l’appareil et éloignez-vous du danger. Ne démontez pas l’appareil. Contactez un professionnel ; en cas de danger immédiat, contactez les secours locaux. L’assistant ne propose pas de réparation électrique à réaliser soi-même.\n\nRÈGLES DE RÉPONSE\n• Utiliser uniquement les faits du dossier et les sources publiées.\n• Distinguer fait confirmé, estimation et information manquante.\n• Ne jamais inventer montant, délai, disponibilité, garantie, droit légal ou action effectuée.\n• Si une décision humaine est nécessaire, préparer un relais sans faire répéter le contexte.\n\nCONTRÔLES\nVérifier le bon dossier, la dernière version disponible, le statut courant et la cohérence des données.\n\nTRAÇABILITÉ\nConserver la source, sa version et, lorsque pertinent, la version du dossier."
+  }
+]
