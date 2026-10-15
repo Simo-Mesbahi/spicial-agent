@@ -120,7 +120,7 @@ export default function RecordsPage() {
           <button
             key={type}
             aria-pressed={kind === type}
-            disabled={creating || !!selected}
+            disabled={!organization || busy || creating || !!selected}
             onClick={() => {
               setKind(type);
               setData(null);
@@ -169,13 +169,14 @@ export default function RecordsPage() {
               <Search size={16} />
               <input
                 aria-label="Rechercher une fiche"
+                disabled={!organization || busy || creating || !!selected}
                 maxLength={120}
                 placeholder="Nom, référence, coordonnées…"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
-            <button disabled={busy || creating || !!selected}>Rechercher</button>
+              <button disabled={!organization || busy || creating || !!selected}>Rechercher</button>
           </form>
           <div className="admin-business-list" aria-busy={busy}>
             {data?.items.map((item) => (

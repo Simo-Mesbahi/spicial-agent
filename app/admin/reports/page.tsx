@@ -153,7 +153,7 @@ export default function ReportsPage() {
         Période d’analyse
         <select
           aria-label="Période d’analyse"
-          disabled={busy}
+          disabled={!organization || busy}
           value={days}
           onChange={(event) => setDays(Number(event.target.value))}
         >
