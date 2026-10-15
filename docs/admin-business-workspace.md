@@ -38,6 +38,10 @@ synthétiques, sans appel à un fournisseur IA.
   au maximum 1 000 dossiers ; un volume supérieur ou une réponse dépassant la
   borne de taille est refusé avec une invitation à affiner les filtres. Aucun
   fichier partiel n’est présenté comme complet.
+- Toutes les lignes d’un export proviennent d’un même instantané PostgreSQL,
+  ordonné par mise à jour puis identifiant. Les modifications simultanées ne
+  déplacent pas de dossiers entre des pages d’export ; les références dupliquées
+  sont également refusées par l’API.
 - Les CSV échappent les séparateurs, guillemets et préfixes de formules. Ils ne
   contiennent ni codes d’accès, ni sessions, ni métadonnées internes.
 - L’historique des échanges lit uniquement les messages client/assistant

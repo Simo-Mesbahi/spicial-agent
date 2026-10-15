@@ -221,7 +221,12 @@ export async function handleAdminBusinessApi(req: Request, context: Context): Pr
           p_archive: data.archive,
         }),
       );
-      if (!result.success || result.data.total !== result.data.items.length) return invalidResult();
+      if (
+        !result.success ||
+        result.data.total !== result.data.items.length ||
+        new Set(result.data.items.map((item) => item.reference)).size !== result.data.items.length
+      )
+        return invalidResult();
       const rows = [
         [
           'Référence',
