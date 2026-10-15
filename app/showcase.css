@@ -113,6 +113,7 @@
 }
 .showcase-nav-links a {
   min-height: 44px;
+  min-width: 44px;
   display: inline-flex;
   align-items: center;
   position: relative;
