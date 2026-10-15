@@ -388,6 +388,38 @@ test('partial or malformed exports are refused instead of downloading incomplete
       assert.equal(response.status, 502);
     },
   ));
+test('an export with duplicated case references is refused even when the count matches', async () => {
+  const item = {
+    reference: 'QA-DUPLICATE-001',
+    service_type: 'sav',
+    kind: 'repair',
+    title: 'Dossier',
+    status: 'opened',
+    customer: null,
+    product: null,
+    store: null,
+    estimated_at: null,
+    updated_at: '2026-10-15T00:00:00Z',
+    archived_at: null,
+  };
+  await withRpc(
+    {
+      admin_export_cases: () => ({
+        items: [item, item],
+        total: 2,
+        generatedAt: '2026-10-15T00:00:00Z',
+      }),
+    },
+    async () => {
+      const response = await handleAdminOperationsApi(
+        req('/cases/export', { organizationId: org }),
+        env,
+      );
+      assert.equal(response.status, 502);
+      assert.equal((await response.json()).csv, undefined);
+    },
+  );
+});
 test('message history uses an opaque pair cursor and rejects incomplete cursors', async () =>
   withRpc(
     {
@@ -469,11 +501,22 @@ test('empty customers and unexpected entity fields are rejected by the editor co
   );
 });
 
-test('recognized business failures are actionable and arbitrary SQL messages remain hidden',async()=>{
-  for(const [message,expectedCode] of [['export_limit_exceeded','export_limit_exceeded'],['secret-customer@example.invalid','invalid_operation']])
-    await withRpc({admin_export_cases:()=>Response.json({code:'22023',message},{status:400})},async()=>{
-      const response=await handleAdminOperationsApi(req('/cases/export',{organizationId:org}),env);
-      assert.equal(response.status,400);const result=await response.json();assert.equal(result.code,expectedCode);
-      assert.doesNotMatch(result.error,/secret-customer/);
-    });
+test('recognized business failures are actionable and arbitrary SQL messages remain hidden', async () => {
+  for (const [message, expectedCode] of [
+    ['export_limit_exceeded', 'export_limit_exceeded'],
+    ['secret-customer@example.invalid', 'invalid_operation'],
+  ])
+    await withRpc(
+      { admin_export_cases: () => Response.json({ code: '22023', message }, { status: 400 }) },
+      async () => {
+        const response = await handleAdminOperationsApi(
+          req('/cases/export', { organizationId: org }),
+          env,
+        );
+        assert.equal(response.status, 400);
+        const result = await response.json();
+        assert.equal(result.code, expectedCode);
+        assert.doesNotMatch(result.error, /secret-customer/);
+      },
+    );
 });

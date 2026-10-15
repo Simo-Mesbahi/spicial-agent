@@ -135,8 +135,31 @@ do $$ begin
   begin perform public.admin_entities('9b000000-0000-4000-8000-000000000001','customer','',0); raise exception 'Adviser enumerated directory'; exception when insufficient_privilege then null; end;
 end $$;
 reset role;
+-- More than two former export pages, with tied timestamps and stable UUID order.
+insert into public.service_cases(id,organization_id,reference,service_type,kind,title,status,updated_at)
+  select ('9b000000-0000-4000-8001-'||lpad(n::text,12,'0'))::uuid,
+    '9b000000-0000-4000-8000-000000000001','QA-SNAPSHOT-'||lpad(n::text,4,'0'),
+    'sav','repair','Instantané synthétique','opened','2026-01-01T00:00:00Z'::timestamptz
+  from generate_series(1,300) n;
+select set_config('request.jwt.claims','{"sub":"9b000000-0000-4000-8000-000000000101","role":"authenticated","aal":"aal2","session_id":"9b000000-0000-4000-8000-000000000201"}',true);
+set local role authenticated;
+do $$ declare r jsonb; begin
+  r:=public.admin_export_cases('9b000000-0000-4000-8000-000000000001','QA-SNAPSHOT','sav','opened','active');
+  if r->>'total'<>'300' or jsonb_array_length(r->'items')<>300
+    or (select count(distinct x->>'id') from jsonb_array_elements(r->'items') x)<>300
+    or r#>>'{items,0,reference}'<>'QA-SNAPSHOT-0001'
+    or r#>>'{items,299,reference}'<>'QA-SNAPSHOT-0300' then
+    raise exception 'Export completeness or stable ordering failed'; end if;
+  r:=public.admin_export_cases('9b000000-0000-4000-8000-000000000001','QA-SNAPSHOT','customer_service','','all');
+  if r->>'total'<>'0' or r->'items'<>'[]'::jsonb then raise exception 'Empty filtered export failed'; end if;
+  begin perform public.admin_export_cases('9b000000-0000-4000-8000-000000000001','','other','','active');
+    raise exception 'Invalid export service accepted'; exception when invalid_parameter_value then null; end;
+  begin perform public.admin_export_cases('9b000000-0000-4000-8000-000000000001','','','',null);
+    raise exception 'Null export archive filter accepted'; exception when invalid_parameter_value then null; end;
+end $$;
+reset role;
 insert into public.service_cases(organization_id,reference,service_type,kind,title,status)
-  select '9b000000-0000-4000-8000-000000000001','QA-LIMIT-'||n,'sav','repair','Volume synthétique','opened'
+  select '9b000000-0000-4000-8000-000000000001','QA-LIMIT-'||n,'sav','repair',repeat('V',180),'opened'
   from generate_series(1,1001) n;
 select set_config('request.jwt.claims','{"sub":"9b000000-0000-4000-8000-000000000101","role":"authenticated","aal":"aal2","session_id":"9b000000-0000-4000-8000-000000000201"}',true);
 set local role authenticated;
@@ -144,6 +167,15 @@ do $$ begin
   begin perform public.admin_export_cases('9b000000-0000-4000-8000-000000000001','QA-LIMIT','','','active'); raise exception 'Unbounded export accepted';
     exception when invalid_parameter_value then
       if sqlerrm<>'export_limit_exceeded' then raise; end if;
+  end;
+end $$;
+reset role;
+update public.service_cases set status='diagnosis' where organization_id='9b000000-0000-4000-8000-000000000001' and reference='QA-LIMIT-1';
+set local role authenticated;
+do $$ begin
+  begin perform public.admin_export_cases('9b000000-0000-4000-8000-000000000001','QA-LIMIT','','opened','active');
+    raise exception 'Oversized export accepted'; exception when invalid_parameter_value then
+      if sqlerrm<>'export_size_exceeded' then raise; end if;
   end;
 end $$;
 reset role;
