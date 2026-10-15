@@ -124,7 +124,19 @@ select set_config('request.jwt.claims','{"sub":"9b000000-0000-4000-8000-00000000
 set local role authenticated;
 do $$ begin
   begin perform public.admin_export_cases('9b000000-0000-4000-8000-000000000001','','','','active'); raise exception 'Analyst exported raw cases'; exception when insufficient_privilege then null; end;
-  begin perform public.admin_entities('9b000000-0000-4000-8000-0000000…291 tokens truncated…id,reference,service_type,kind,title,status,updated_at)
+  begin perform public.admin_entities('9b000000-0000-4000-8000-000000000001','customer','',0); raise exception 'Analyst read directory'; exception when insufficient_privilege then null; end;
+  begin perform public.admin_case_messages('9b000000-0000-4000-8000-000000000001','9b000000-0000-4000-8000-000000000401'); raise exception 'Analyst read messages'; exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+select set_config('request.jwt.claims','{"sub":"9b000000-0000-4000-8000-000000000103","role":"authenticated","aal":"aal2","session_id":"9b000000-0000-4000-8000-000000000203"}',true);
+set local role authenticated;
+do $$ begin
+  if jsonb_array_length(public.admin_case_messages('9b000000-0000-4000-8000-000000000001','9b000000-0000-4000-8000-000000000401')->'items')<>50 then raise exception 'Adviser message read failed'; end if;
+  begin perform public.admin_entities('9b000000-0000-4000-8000-000000000001','customer','',0); raise exception 'Adviser enumerated directory'; exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+-- More than two former export pages, with tied timestamps and stable UUID order.
+insert into public.service_cases(id,organization_id,reference,service_type,kind,title,status,updated_at)
   select ('9b000000-0000-4000-8001-'||lpad(n::text,12,'0'))::uuid,
     '9b000000-0000-4000-8000-000000000001','QA-SNAPSHOT-'||lpad(n::text,4,'0'),
     'sav','repair','Instantané synthétique','opened','2026-01-01T00:00:00Z'::timestamptz
