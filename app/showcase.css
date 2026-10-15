@@ -148,6 +148,9 @@
 .showcase-nav-cta:hover {
   background: #eef2e6;
 }
+.showcase-nav-cta-short {
+  display: none;
+}
 .showcase-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
@@ -1472,6 +1475,12 @@
   }
 }
 @media (max-width: 680px) {
+  .showcase-nav-cta-label {
+    display: none;
+  }
+  .showcase-nav-cta-short {
+    display: inline;
+  }
   .showcase-container {
     width: calc(100% - 36px);
   }

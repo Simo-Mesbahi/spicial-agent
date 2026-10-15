@@ -85,8 +85,8 @@ async function capture(name) {
     await document.fonts.ready;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
-  await page.screenshot({ path: `${output}/${name}.png`, fullPage: true, animations: 'disabled' });
   await page.screenshot({ path: `${output}/${name}-first-screen.png`, animations: 'disabled' });
+  await page.screenshot({ path: `${output}/${name}.png`, fullPage: true, animations: 'disabled' });
 }
 
 try {

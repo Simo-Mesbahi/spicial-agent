@@ -166,8 +166,12 @@ export default function PublicShowcasePage() {
           <a href="#personnalisation">Votre marque</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <Link className="showcase-nav-cta" href="/trial">
-          Parlons de votre projet <ArrowUpRight size={16} aria-hidden="true" />
+        <Link className="showcase-nav-cta" href="/trial" aria-label="Parlons de votre projet">
+          <span className="showcase-nav-cta-label">Parlons de votre projet</span>
+          <span className="showcase-nav-cta-short" aria-hidden="true">
+            Parlons-en
+          </span>
+          <ArrowUpRight size={16} aria-hidden="true" />
         </Link>
       </header>
 
