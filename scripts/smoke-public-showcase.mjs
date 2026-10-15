@@ -75,6 +75,11 @@ async function navigationMetrics() {
 }
 
 async function capture(name) {
+  // Full-page capture does not scroll the viewport, so decode lazy product images first.
+  for (const image of await page.locator('.showcase-product-capture img').all()) {
+    await image.scrollIntoViewIfNeeded();
+    await image.evaluate((element) => element.decode());
+  }
   await page.evaluate(async () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     await document.fonts.ready;
