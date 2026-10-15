@@ -21,10 +21,27 @@ test('public showcase is static and does not initialize runtime services', async
 test('public copy keeps release and demo boundaries explicit', async () => {
   const source = await read('app/page.tsx');
   assert.match(source, /données fictives/i);
-  assert.match(source, /P1.*qualification|qualification.*P1/is);
+  assert.match(source, /qualification, revue humaine et ouverture contrôlée/);
+  assert.doesNotMatch(source, /\bP1(?:\.7)?\b/);
   assert.match(source, /intervention humaine/i);
   assert.match(source, /personnalisation/i);
   assert.doesNotMatch(source, /certifi(é|ée|cation) ISO|SOC ?2|conforme RGPD à 100%/i);
+});
+
+test('product captures are identified as fictitious data and never expose protected routes', async () => {
+  const source = await read('app/page.tsx');
+  assert.match(source, /Capture du produit · données fictives/);
+  assert.match(source, /loading="lazy"/);
+  assert.match(source, /width="1440"/);
+  assert.doesNotMatch(source, /href="\/admin/);
+  for (const file of [
+    'public/showcase/client-workspace.png',
+    'public/showcase/admin-reports.png',
+  ]) {
+    const data = await readFile(new URL(`../${file}`, import.meta.url));
+    assert.equal(data.subarray(1, 4).toString(), 'PNG');
+    assert.ok(data.byteLength < 250 * 1024, `${file} exceeds its asset budget`);
+  }
 });
 
 test('dedicated demo route preserves the existing interactive application', async () => {

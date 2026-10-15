@@ -4,6 +4,16 @@
 
 The public root route is a lightweight commercial presentation of SAV SC Assistant AI. It is intentionally separated from the interactive demonstration, real customer tracking, administration and P1 release qualification.
 
+## Enterprise presentation
+
+The presentation combines an ivory/forest-green identity, separate customer and administrator explanations, four native scenario selectors (repair, quote, delivery and return), scoped personalization, an implementation outline and a keyboard-operable FAQ. The guided trial follows the same visual system and retains the confirmed, visitor-controlled email flow.
+
+The scenario selectors use native radio inputs and CSS; they and the FAQ work without JavaScript. Examples are explicitly illustrative. They do not execute business actions or call an AI provider. Customer-facing copy explains qualification and controlled opening without internal release identifiers.
+
+`public/showcase/client-workspace.png` and `admin-reports.png` are exact product screenshots captured by `scripts/smoke-client-ui.mjs` (source `794ab634bf686de61ada91069a4d0566adec4c6d`) and `scripts/smoke-admin-business.mjs` (source `f6ba517c561f43e8b8c8121f925d87b52313511e`). The browser runs used synthetic API fixtures with external traffic blocked. These are product illustrations, not live customer data, live operational metrics or customer testimonials. Each is labeled, dimensioned, lazy-loaded, and can be opened at full size without exposing an admin route. Each PNG is limited to 250 KiB.
+
+The local SVG sprite contains a Lucide subset with its license. It avoids repeating icon path data and loads from the same origin; no font, analytics or illustration service is added.
+
 ## Route boundaries
 
 - `/` — static commercial showcase. No client component, session bootstrap, Supabase request or LLM/provider request is needed to render the first page.
@@ -30,17 +40,20 @@ Customization is described as a scoped service that can cover brand identity, cu
 
 The showcase is rendered as a server component and contains no direct `/api/`, `fetch`, Supabase or provider bootstrap. `tests/atlas-public-showcase.test.mjs` enforces this source boundary.
 
-`scripts/smoke-public-showcase.mjs` launches the application with external providers disabled and release mode off. It blocks all external browser traffic and verifies:
+After `npm run build`, `scripts/smoke-public-showcase.mjs` launches the **production build** with external providers disabled and release mode off. It blocks all external browser traffic and verifies:
 
 - the root performs no `/api/` or third-party request on first view;
 - the uncompressed root HTML remains below a 128 KiB regression budget;
 - the public internal destinations exposed by the root respond successfully;
-- the root has no horizontal overflow at 320 px, 390 px, 768 px and desktop width;
+- the root and all four scenarios have no horizontal overflow at 320, 390, 640, 768, 1024 and 1440 px;
 - the first keyboard stop exposes the skip link and primary CTA routes remain focusable;
+- scenario selection and FAQ expansion work using the keyboard and with JavaScript disabled;
+- navigation/CTA/scenario/FAQ targets meet minimum touch dimensions, image dimensions match the actual assets, and section links resolve uniquely;
+- reduced-motion preference removes transitions;
 - `/trial` exposes only the explicitly confirmed commercial recipient;
 - the browser reports no page errors.
 
-The 128 KiB raw-HTML ceiling is intentionally a regression guard, not a production transfer-size claim. The baseline observed when the guard was introduced was 110,089 bytes of uncompressed development HTML. Navigation transfer metrics are captured separately immediately after loading `/` and are diagnostic evidence only.
+The 128 KiB raw-HTML ceiling is a production regression guard, not a compressed transfer-size claim. Measuring the built route avoids counting development-only React component stacks and debug records, whose size changes with source layout and component count. The ceiling is unchanged. Navigation transfer metrics are captured separately immediately after loading `/` and are diagnostic evidence only; they do not establish field Core Web Vitals or conversion rates.
 
 ## Evidence workflow
 
@@ -48,9 +61,8 @@ The 128 KiB raw-HTML ceiling is intentionally a regression guard, not a producti
 
 Artifacts are named with the source branch head SHA on pull requests, or the push SHA on `main`, and retained for seven days. Each artifact contains:
 
-- `showcase-desktop.png`
-- `showcase-mobile.png`
-- `trial-mobile.png`
+- full-page and first-screen captures for desktop, compact mobile, mobile, tablet and laptop;
+- full-page and first-screen captures for the trial page on desktop and mobile;
 - `report.json`
 - `server.log`
 
