@@ -35,6 +35,16 @@ jobs:
         run: npm run test:admin-ui
       - name: Browser client design regression checks
         run: npm run test:client-ui
+      - name: Browser admin business regression checks
+        run: npm run test:admin-business-ui
+      - name: Admin business browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: admin-business-browser-evidence
+          path: outputs/admin-business
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Client browser evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

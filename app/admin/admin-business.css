@@ -1,0 +1,420 @@
+.admin-business-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 24px;
+  margin-top: 24px;
+  align-items: start;
+}
+.admin-business-grid > * {
+  min-width: 0;
+}
+.admin-business-grid h2,
+.admin-business-form h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 16px;
+  font-size: 21px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.admin-business-grid h2 small {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.admin-business-list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-business-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+}
+.admin-business-search > :is(label, input) {
+  flex: 1;
+  min-width: 0;
+}
+.admin-business-search label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-business-search input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--input);
+}
+.admin-business-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.admin-business-list > button {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 15px 16px;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.admin-business-list > button:hover {
+  background: var(--soft);
+  border-color: var(--primary);
+}
+.admin-business-list strong {
+  font-size: 15px;
+}
+.admin-business-list :is(span, small) {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.admin-business-pagination {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.admin-business-pagination span {
+  margin-right: auto;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.admin-business-empty {
+  display: grid;
+  justify-items: center;
+  padding: 36px 12px;
+  text-align: center;
+  gap: 12px;
+}
+.admin-business-empty svg {
+  color: var(--primary);
+}
+.admin-business-empty p {
+  margin: 0;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+  font-size: 15px;
+}
+.admin-business-form fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.admin-business-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 18px 0;
+}
+.admin-business-fields label,
+.admin-business-restore > label:not(.admin-business-check),
+.admin-business-batch fieldset > label:not(.admin-business-check) {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 0;
+}
+.admin-business-fields input,
+.admin-business-restore input:not([type='checkbox']),
+.admin-business-batch :is(select, textarea, input:not([type='checkbox'])) {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--input);
+  background: var(--surface);
+  color: var(--foreground);
+}
+.admin-business-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.admin-business-actions :is(button, a),
+.admin-business-list-heading button,
+.admin-business-batch > div button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+button.admin-business-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+.admin-business-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.admin-business-check input {
+  flex: none;
+  margin-top: 2px;
+}
+.admin-business-help {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.admin-business-selector {
+  min-width: 0;
+  padding: 16px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.admin-business-selector > p {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.admin-business-selector-results {
+  display: grid;
+  gap: 8px;
+}
+.admin-business-selector-results button {
+  padding: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.admin-business-link {
+  padding: 6px 0;
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.admin-business-case {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  margin-top: 24px;
+}
+.admin-business-case > .admin-control-card {
+  margin-top: 18px;
+}
+.admin-business-messages,
+.admin-business-batch details {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 18px;
+  background: var(--surface);
+}
+.admin-business-messages summary,
+.admin-business-batch summary {
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+.admin-business-messages summary svg,
+.admin-business-batch summary svg {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.admin-business-messages article {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft);
+  margin-top: 14px;
+  padding: 16px;
+}
+.admin-business-messages article header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.admin-business-messages time {
+  color: var(--muted-foreground);
+}
+.admin-business-messages article p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.75;
+  margin-bottom: 0;
+}
+.admin-business-restore {
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  margin-top: 18px;
+}
+.admin-business-restore h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.admin-business-restore p,
+.admin-business-batch details p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.admin-business-batch {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 4px;
+}
+.admin-business-batch fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.admin-business-batch-list {
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 16px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.admin-business-batch-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-business-batch-list strong {
+  font-size: 13px;
+}
+.admin-business-batch-list span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-left: auto;
+}
+.admin-business-batch fieldset > label {
+  margin-top: 16px;
+}
+.admin-business-period {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  margin: 24px 0;
+}
+.admin-business-period select {
+  padding: 10px 14px;
+  border: 1px solid var(--input);
+}
+.admin-business-report .admin-control-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.admin-business-report .admin-control-table {
+  max-height: 540px;
+  overflow: auto;
+}
+.admin-business-report .admin-control-table table {
+  min-width: 0;
+  width: 100%;
+}
+.admin-business-report .admin-control-table th {
+  white-space: normal;
+}
+@media (max-width: 1300px) {
+  .admin-workspace-nav nav {
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 767px) {
+  .admin-workspace-nav nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .admin-workspace-nav nav a {
+    font-size: 12px;
+    min-height: 66px;
+  }
+  .admin-business-grid,
+  .admin-business-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .admin-business-search {
+    flex-wrap: wrap;
+  }
+  .admin-business-search > button {
+    width: 100%;
+  }
+  .admin-business-actions :is(button, a) {
+    flex: 1;
+    min-width: min(100%, 150px);
+  }
+  .admin-business-case .admin-control-card {
+    padding: 16px;
+  }
+  .admin-business-report .admin-control-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-business-list-heading > button {
+    width: 100%;
+  }
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+  .admin-workspace-nav,
+  .admin-business-report .admin-business-actions,
+  .admin-business-period {
+    display: none !important;
+  }
+  .admin-business-report {
+    color: #14291f;
+    background: white;
+    padding: 0;
+    max-width: none;
+  }
+  .admin-business-report .admin-control-card {
+    break-inside: avoid;
+    box-shadow: none;
+    background: white;
+    color: #14291f;
+    border-color: #b8c6bf;
+  }
+  .admin-business-report .admin-control-table {
+    max-height: none;
+    overflow: visible;
+  }
+  .admin-business-report .admin-business-grid {
+    display: block;
+  }
+  .admin-business-report .admin-business-grid > * {
+    margin-top: 20px;
+  }
+  .admin-business-report :is(th, td) {
+    color: #14291f;
+    background: white;
+  }
+}

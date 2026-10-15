@@ -1,5 +1,8 @@
 'use client';
 
+import AdminCaseBusiness, { AdminEntitySelector } from '@/components/atlas/admin-case-business';
+import AdminCaseBatch from '@/components/atlas/admin-case-batch';
+
 import { useRouter } from 'next/navigation';
 import {
   CASE_PAGE_SIZE,
@@ -265,6 +268,8 @@ type CreateDraft = {
 };
 
 type EditDraft = {
+  customerId: string;
+  productId: string;
   title: string;
   description: string;
   storeId: string;
@@ -388,6 +393,8 @@ function createDraftForRole(role: Role | undefined): CreateDraft {
 
 function editDraftFromCase(value: CaseDetail): EditDraft {
   return {
+    customerId: value.customer_id ?? '',
+    productId: value.product_id ?? '',
     title: value.title,
     description: value.description,
     storeId: value.store_id ?? '',
@@ -463,6 +470,7 @@ export default function AdminOperationsPage() {
   const [productLookupError, setProductLookupError] = useState('');
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [customerChangeConfirmed, setCustomerChangeConfirmed] = useState(false);
   const [transitionStatus, setTransitionStatus] = useState<CaseStatus | ''>('');
   const [transitionNote, setTransitionNote] = useState('');
   const [transitionVisible, setTransitionVisible] = useState(true);
@@ -1010,6 +1018,7 @@ export default function AdminOperationsPage() {
     try {
       if (!formOptions.stores.length) await loadFormOptions(organizationId);
       setEditDraft(editDraftFromCase(selectedCase));
+      setCustomerChangeConfirmed(false);
       setEditing(true);
     } catch (cause) {
       if (!handleAuthError(cause))
@@ -1022,6 +1031,8 @@ export default function AdminOperationsPage() {
   async function saveEdit(event: FormEvent) {
     event.preventDefault();
     if (!selectedCase || !editDraft || !canManageSelected || !membership) return;
+    const customerChanged = editDraft.customerId !== (selectedCase.customer_id ?? '');
+    if (customerChanged && !customerChangeConfirmed) return;
     setBusy(true);
     setError('');
     setSuccess('');
@@ -1035,8 +1046,8 @@ export default function AdminOperationsPage() {
           expectedVersion: selectedCase.version,
           title: editDraft.title,
           description: editDraft.description,
-          customerId: selectedCase.customer_id,
-          productId: selectedCase.product_id,
+          customerId: editDraft.customerId || null,
+          productId: editDraft.productId || null,
           storeId: editDraft.storeId || null,
           warrantyStatus: editDraft.warrantyStatus,
           warrantyLabel: editDraft.warrantyLabel || null,
@@ -1048,7 +1059,9 @@ export default function AdminOperationsPage() {
           requestId: crypto.randomUUID(),
         }),
       });
-      setSuccess(`Dossier ${result.reference} mis à jour et audité.`);
+      setSuccess(
+        `Dossier ${result.reference} mis à jour et audité.${customerChanged ? ' Les anciens accès client sont révoqués. Renouvelez le code pour le nouveau client.' : ''}`,
+      );
       setEditing(false);
       await loadAll(organizationId, membership.role, {
         search,
@@ -2304,6 +2317,26 @@ export default function AdminOperationsPage() {
                 </button>
               </div>
             </nav>
+            {membership?.role !== 'analyst' && (
+              <AdminCaseBatch
+                key={`${organizationId}:${JSON.stringify(appliedFilters)}:${cases.map((item) => `${item.id}:${item.version}`).join(',')}`}
+                organizationId={organizationId}
+                role={membership?.role}
+                cases={cases}
+                filters={{
+                  search: appliedFilters.search,
+                  service: appliedFilters.service,
+                  archive: appliedFilters.archive,
+                  status: appliedFilters.status ?? '',
+                }}
+                beforeApply={confirmCaseNavigation}
+                onChanged={async () => {
+                  clearCaseDraft();
+                  await loadAll(organizationId, membership?.role, appliedFilters);
+                  setSuccess('Action groupée enregistrée. Les dossiers ont été actualisés.');
+                }}
+              />
+            )}
           </article>
 
           <article className="admin-ops-panel">
@@ -2371,6 +2404,42 @@ export default function AdminOperationsPage() {
 
                 {editing && editDraft && (
                   <form className="admin-ops-edit-form" onSubmit={saveEdit}>
+                    <div className="admin-business-fields">
+                      <AdminEntitySelector
+                        organizationId={organizationId}
+                        kind="customer"
+                        value={editDraft.customerId}
+                        initialLabel={customerLabel(selectedCase.customer)}
+                        onChange={(id) => {
+                          setEditDraft((current) =>
+                            current ? { ...current, customerId: id } : current,
+                          );
+                          setCustomerChangeConfirmed(false);
+                        }}
+                      />
+                      <AdminEntitySelector
+                        organizationId={organizationId}
+                        kind="product"
+                        value={editDraft.productId}
+                        initialLabel={selectedCase.product?.name ?? 'Aucun produit'}
+                        onChange={(id) =>
+                          setEditDraft((current) =>
+                            current ? { ...current, productId: id } : current,
+                          )
+                        }
+                      />
+                    </div>
+                    {editDraft.customerId !== (selectedCase.customer_id ?? '') && (
+                      <label className="admin-business-check">
+                        <input
+                          type="checkbox"
+                          checked={customerChangeConfirmed}
+                          onChange={(event) => setCustomerChangeConfirmed(event.target.checked)}
+                        />
+                        Je confirme le changement de client et la révocation des anciens codes et
+                        sessions d’accès.
+                      </label>
+                    )}
                     <div className="admin-ops-form-grid">
                       <label className="wide">
                         Objet
@@ -2518,7 +2587,14 @@ export default function AdminOperationsPage() {
                       </label>
                     </div>
                     <div className="admin-ops-inline-actions">
-                      <button type="submit" disabled={busy}>
+                      <button
+                        type="submit"
+                        disabled={
+                          busy ||
+                          (editDraft.customerId !== (selectedCase.customer_id ?? '') &&
+                            !customerChangeConfirmed)
+                        }
+                      >
                         <Check size={15} /> Enregistrer
                       </button>
                       <button
@@ -2773,6 +2849,41 @@ export default function AdminOperationsPage() {
                   ))}
                   {!selectedCase.events.length && <p>Aucun événement enregistré.</p>}
                 </div>
+                {!editing && (
+                  <AdminCaseBusiness
+                    key={`${selectedCase.id}:${selectedCase.version}`}
+                    organizationId={organizationId}
+                    caseId={selectedCase.id}
+                    reference={selectedCase.reference}
+                    version={selectedCase.version}
+                    archived={Boolean(selectedCase.archived_at)}
+                    canManage={canManageCase(membership?.role, selectedCase.service_type)}
+                    customerId={selectedCase.customer_id}
+                    productId={selectedCase.product_id}
+                    customerEmail={selectedCase.customer?.email ?? null}
+                    onChanged={async (message) => {
+                      try {
+                        const id = selectedCase.id;
+                        await loadAll(organizationId, membership?.role, appliedFilters);
+                        const result = await detailReads.current.run((signal) =>
+                          request<{ case: CaseDetail }>(
+                            `/api/production/admin/operations/case?${new URLSearchParams({ organizationId, caseId: id })}`,
+                            { signal },
+                          ),
+                        );
+                        if (result) setSelectedCase(result.case);
+                        setSuccess(message ?? 'Modification métier enregistrée et auditée.');
+                      } catch (cause) {
+                        if (!handleAuthError(cause))
+                          setError(
+                            cause instanceof Error
+                              ? cause.message
+                              : 'Actualisation du dossier impossible.',
+                          );
+                      }
+                    }}
+                  />
+                )}
               </div>
             ) : (
               <div className="admin-ops-empty detail">

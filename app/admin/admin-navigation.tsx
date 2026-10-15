@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Library,
   Sparkles,
+  ContactRound,
+  BarChart3,
 } from 'lucide-react';
 import { productionRequest } from '@/lib/atlas/production-client';
 import { ADMIN_LOGOUT_EVENT, ADMIN_SESSION_STATE_EVENT } from '@/lib/atlas/admin-session';
@@ -45,7 +47,9 @@ export default function AdminNavigation() {
   const links = [
     { href: '/admin', label: 'Vue d’ensemble', icon: LayoutDashboard },
     { href: '/admin/operations', label: 'Opérations', icon: Activity },
+    { href: '/admin/records', label: 'Référentiels', icon: ContactRound },
     { href: '/admin/knowledge', label: 'Connaissances', icon: Library },
+    { href: '/admin/reports', label: 'Rapports', icon: BarChart3 },
     { href: '/admin/performance', label: 'Performance & réglages', icon: SlidersHorizontal },
   ];
 
