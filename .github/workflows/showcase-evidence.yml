@@ -8,8 +8,10 @@ on:
       - 'app/demo/**'
       - 'app/trial/**'
       - 'app/showcase.css'
+      - 'public/showcase/**'
       - 'app/interface.css'
       - 'components/atlas/showcase-brand.tsx'
+      - 'components/atlas/showcase-icons.tsx'
       - 'components/atlas/copy-commercial-email.tsx'
       - 'app/layout.tsx'
       - 'scripts/smoke-public-showcase.mjs'
@@ -21,8 +23,10 @@ on:
       - 'app/demo/**'
       - 'app/trial/**'
       - 'app/showcase.css'
+      - 'public/showcase/**'
       - 'app/interface.css'
       - 'components/atlas/showcase-brand.tsx'
+      - 'components/atlas/showcase-icons.tsx'
       - 'components/atlas/copy-commercial-email.tsx'
       - 'app/layout.tsx'
       - 'scripts/smoke-public-showcase.mjs'
@@ -57,6 +61,8 @@ jobs:
         run: npm ci --no-audit --no-fund --strict-allow-scripts
       - name: Enforce showcase boundaries
         run: node --test tests/atlas-public-showcase.test.mjs
+      - name: Build the production presentation
+        run: npm run build
       - name: Capture public browser evidence
         run: node scripts/smoke-public-showcase.mjs
       - name: Upload public showcase evidence

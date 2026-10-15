@@ -441,55 +441,6 @@ body {
   font-size: 15px;
   min-height: 52px;
 }
-.showcase {
-  --showcase-muted: #4e6458;
-  --showcase-line: rgb(16 37 30 / 14%);
-}
-.showcase .showcase-nav {
-  min-height: 84px;
-}
-.showcase .showcase-brand {
-  font-size: 18px;
-  letter-spacing: -0.03em;
-}
-.showcase .showcase-nav-links a {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-.showcase .showcase-hero {
-  gap: clamp(32px, 5vw, 64px);
-  padding-block: 80px 64px;
-}
-.showcase h1 {
-  font-weight: 650;
-  font-size: clamp(44px, 6.2vw, 84px);
-  line-height: 1.04;
-  letter-spacing: -0.055em;
-  text-wrap: balance;
-}
-.showcase .showcase-preview {
-  padding: 12px;
-  border-radius: 24px;
-  box-shadow: 0 24px 64px -24px rgb(16 37 30 / 20%);
-  backdrop-filter: none;
-}
-.showcase .showcase-button {
-  border-radius: 12px;
-  min-height: 50px;
-}
-.showcase .showcase-feature-card,
-.showcase .showcase-audience-card {
-  border-radius: 18px;
-  box-shadow: var(--ui-shadow);
-}
-.showcase .showcase-section-heading h2 {
-  line-height: 1.15;
-  text-wrap: balance;
-}
-.showcase .showcase-faq summary {
-  min-height: 48px;
-}
 .customer-contact-route :is(.contact-clients-card, .contact-promise) {
   border-radius: 20px;
 }
@@ -634,12 +585,6 @@ body {
   }
   .discovery-page .discovery-section-heading h2 {
     font-size: 32px;
-  }
-  .showcase .showcase-hero {
-    padding-block: 48px 40px;
-  }
-  .showcase .showcase-brand {
-    font-size: 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

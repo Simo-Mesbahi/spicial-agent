@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Sparkles } from 'lucide-react';
+import { Sparkles } from '@/components/atlas/showcase-icons';
 
 export function ShowcaseBrand() {
   return (

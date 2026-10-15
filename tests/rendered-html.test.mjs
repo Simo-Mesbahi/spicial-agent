@@ -25,14 +25,15 @@ test('renders static commercial showcase and production metadata before hydratio
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>SAV SC Assistant AI<\/title>/);
-  assert.match(html, /Des demandes client plus/);
+  assert.match(html, /<title>Assistant IA SAV et service client · SAV SC Assistant AI<\/title>/);
+  assert.match(html, /Un SAV plus clair/);
   assert.match(html, /href="\/demo"/);
   assert.match(html, /href="\/trial"/);
   assert.match(html, /href="\/file"/);
   assert.match(html, /données fictives/i);
   assert.match(html, /personnalisation/i);
-  assert.match(html, /P1/i);
+  assert.match(html, /qualification, revue humaine et ouverture contrôlée/i);
+  assert.doesNotMatch(html, /\bP1(?:\.7)?\b/);
   assert.doesNotMatch(html, /mailto:/i);
   assert.doesNotMatch(html, /outloo\.com/i);
   assert.doesNotMatch(html, /Ollama|Gemini|Groq|OpenAI|fournisseur externe/i);
