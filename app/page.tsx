@@ -693,6 +693,10 @@ export default function PublicShowcasePage() {
         <div>
           <ShowcaseBrand />
           <p>Un suivi plus clair. Une équipe qui garde la main.</p>
+          <p className="showcase-footer-credit">
+            Application développée et testée par <strong>M. EL MESBAHI</strong>
+            <span>Spécialiste en AI, ML &amp; Data Sciences</span>
+          </p>
         </div>
         <nav aria-label="Liens de pied de page">
           <Link href="/demo">Démonstration</Link>
