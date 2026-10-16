@@ -232,17 +232,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p outputs/p1-live
-          node scripts/index-knowledge.mjs --live --max-chunks 32 | tee outputs/p1-live/knowledge-index.json
+          node scripts/prepare-p1-knowledge.mjs --live | tee outputs/p1-live/knowledge-index.json
           node - <<'NODE'
           const fs = require('node:fs');
           const result = JSON.parse(fs.readFileSync('outputs/p1-live/knowledge-index.json', 'utf8'));
-          if (result.status !== 'indexed') throw new Error('Knowledge indexing did not complete.');
-          if (result.trace?.calls > 1) throw new Error('Knowledge indexing exceeded one provider batch.');
-          if (result.remainingAfterBatch !== false) {
+          if (result.status !== 'ready' || result.ready !== true) {
             throw new Error(
               'Published knowledge corpus is not fully indexed in the selected embedding space. ' +
               'Refusing the expensive live qualification.',
             );
+          }
+          if (!Number.isInteger(result.embeddingCalls) || result.embeddingCalls < 0 || result.embeddingCalls > 4 ||
+              !Number.isInteger(result.indexed) || result.indexed < 0 || result.indexed > 128 ||
+              !Number.isInteger(result.batches) || result.batches < 1 || result.batches > 4) {
+            throw new Error('Knowledge preparation exceeded its bounded budget.');
           }
           if (!/^[a-f0-9]{64}$/.test(result.embeddingSpace ?? '')) {
             throw new Error('Knowledge embedding space identity is missing or invalid.');
@@ -250,7 +253,8 @@ jobs:
           console.log(JSON.stringify({
             status: 'hybrid_corpus_ready',
             indexed: result.indexed,
-            embeddingCalls: result.trace?.calls ?? 0,
+            embeddingCalls: result.embeddingCalls,
+            batches: result.batches,
             embeddingSpace: result.embeddingSpace,
           }, null, 2));
           NODE
