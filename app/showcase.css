@@ -1101,6 +1101,21 @@
   color: var(--showcase-muted);
   font-size: 11px;
 }
+.showcase-footer > div > .showcase-footer-credit {
+  margin-top: 22px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.showcase-footer-credit strong {
+  color: var(--showcase-ink);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.showcase-footer-credit span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+}
 .showcase-footer > nav {
   display: flex;
   justify-content: flex-end;
