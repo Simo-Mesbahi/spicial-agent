@@ -128,6 +128,28 @@ The governed live plan currently measures:
 
 The manual workflow performs the 20-query hybrid retrieval qualification **before** the completion-heavy stages. Each scenario starts from an authored FR/EN/DE/ES/AR customer utterance but exercises the reviewed French retrieval query used at the actual structured-orchestrator → `fr-FR` corpus boundary. A fresh report is bound to the `canonical_fr_from_multilingual_source` query contract, provider/model/revision, locale, market and relevance thresholds; an older raw-query report is rejected. Every per-query recall/precision requirement must pass before the report can be reused by the full qualification. This prevents spending the completion-heavy qualification budget when the production retrieval path is not release-ready. Live retrieval embeddings are now paced independently at 4000 ms start-to-start, including an initial delay after corpus indexing, so qualification does not burst the embedding provider. Retrieval itself still performs exactly one embedding request per query and never retries a 429.
 
+Before retrieval, `scripts/prepare-p1-knowledge.mjs --live` prepares at most four
+sequential batches of 32 published chunks: **128 chunks and four embedding batch
+requests maximum**, with at least 4000 ms start-to-start pacing and no retries.
+These document-indexing calls are separate from the 24-call retrieval embedding
+budget. The existing single-batch indexer still verifies content checksums before
+embedding and when storing vectors, then reads whether any published chunk is
+still missing or stale in the exact embedding space. An already-current corpus
+uses zero embedding calls. A larger unfinished corpus, changed embedding space,
+malformed result or any provider/database error blocks qualification before
+completion spend; reruns reuse only successfully persisted, current vectors.
+
+This replaces the former one-batch preparation, which could not prepare the
+version-4 corpus. A read-only preflight on 2026-10-16 found 31 published documents,
+110 chunks and zero current embeddings. Publication in lexical search remains
+distinct from readiness for hybrid retrieval. The new preparation supports this
+size; its dry run and offline tests do **not** claim that live indexing or P1
+qualification has occurred. To inspect the fixed budget without any requests:
+
+```bash
+node scripts/prepare-p1-knowledge.mjs
+```
+
 For the free-tier qualification baseline, completion calls are paced start-to-start with a 10000 ms minimum interval. The live qualification workflow defaults to `gemini-3.5-flash-lite`; earlier approved Gemini model identifiers remain allowlisted for explicit compatibility runs. The pacing helper itself never retries. Structured understanding, natural generation and the Gemini 3.5 factual judge use strict `json_schema` output. The factual transport is intentionally minimal: the provider returns only the detected language plus ordered semantic verdict/issue pairs; sentence indexes, factual/courtesy classification, evidence identity and citations are reconstructed by the server from the validated draft. Older allowlisted Gemini models retain the prompt-constrained fallback because earlier hosted qualification observed HTTP 400 for the larger judge schema. All factual outputs still pass strict local Zod validation.
 
 The hosted runs on 2026-09-23 measured repeated deadline exhaustion at the former 20s/5s/4s ceilings. Run #9 then measured structured p95 ≈43.25s and p99 ≈45.02s, with multiple otherwise-recoverable requests hitting the 45s boundary exactly. The preproduction qualification profile therefore uses the provider policy's maximum bounded 60-second deadline for structured requests and the maximum bounded 20-second deadline for natural generation and factual validation. These values do not change normal production defaults when the overrides are unset or extend evidence/session expiry. Recoverable structured retries also wait for a bounded 15-second cooldown before rebuilding the scenario, preventing an immediate retry storm during a short provider brownout.

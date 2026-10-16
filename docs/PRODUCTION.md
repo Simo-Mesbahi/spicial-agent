@@ -4,7 +4,7 @@ Le projet dispose désormais d’un socle de préproduction nettement plus avanc
 
 | Sujet | État actuel | Avant généralisation entreprise |
 | --- | --- | --- |
-| Vitrine | `/` statique, preuves desktop/mobile/clavier et absence d’appel IA/API à la première vue | Publier via Sites puis vérifier la version réellement servie |
+| Vitrine | `/` statique, publiée sur Cloudflare Workers ; preuves desktop/mobile/clavier et absence d’appel IA/API à la première vue | Maintenir la concordance entre révision publiée et preuves ; la vitrine ne qualifie pas les API métier |
 | Démonstration | `/demo`, scénarios et données fictifs | Ne jamais y injecter de dossier client réel |
 | Accès client | Référence + code, sessions bornées, contrat serveur | Valider hosted sur l’environnement production exact, anti-abus et restauration |
 | Identité admin | Supabase Auth, rôles, MFA/AAL2 | SSO/récupération selon l’entreprise, moindre privilège et revue des comptes |
